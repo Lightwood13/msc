@@ -1,8 +1,12 @@
 {
-  "name": "msc",
+	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr scripts syntax highlighting and basic upload-download functionality",
 	"version": "0.0.1",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Lightwood13/msc.git"
+	},
 	"engines": {
 		"vscode": "^1.63.0"
 	},
