@@ -1,6 +1,6 @@
 # Minr Scripts Extension README
 
-This extension adds basic syntax highlighting for minr scripts and fast upload and download functions to paste.minr.org.
+This extension adds basic syntax highlighting for minr.org Minecraft server scripts and fast upload and download functions to paste.minr.org.
 
 ## Features
 
