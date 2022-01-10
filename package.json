@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr scripts syntax highlighting and basic upload-download functionality",
-	"version": "0.0.1",
+	"version": "1.0.0",
 	"icon": "images/minr.png",
 	"publisher": "Lightwood13",
 	"repository": {
