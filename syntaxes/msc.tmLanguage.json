@@ -1,0 +1,95 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "msc",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numeric_literals"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#punctuation"
+		},
+		{
+			"include": "#types"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.msc",
+				"match": "(?<=^|\\s)@[a-z]+(?=\\s)"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.msc",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.msc",
+					"match": "\\\\\""
+				}
+			]
+		},
+		"numeric_literals": {
+			"patterns": [
+				{
+					"include": "#integer_literals"
+				},
+				{
+					"include": "#float_literals"
+				},
+				{
+					"include": "#bool_literals"
+				}
+			],
+			"repository": {
+				"integer_literals": {
+					"patterns": [{
+						"name": "constant.numeric.msc",
+						"match": "(?<!\\w)(\\d+L?)(?!\\w)"
+					}]
+				},
+				"float_literals": {
+					"patterns": [{
+						"name": "constant.numeric.msc",
+						"match": "(?<!\\w)(\\d+\\.?\\d*D?)(?!\\w)"
+					}]
+				},
+				"bool_literals": {
+					"patterns": [{
+						"name": "constant.language.msc",
+						"match": "(?<!\\w)(true|false)(?!\\w)"
+					}]
+				}
+			}
+		},
+		"operators": {
+			"patterns": [{
+				"name": "keyword.operator",
+				"match": "\\+|\\-|\\*|\\/|\\=|\\!="
+			}]
+		},
+		"punctuation": {
+			"patterns": [{
+				"name": "punctuation.msc",
+				"match": "\\.|\\::|\\(|\\)|\\[|\\]|\\{|\\}"
+			}]
+		},
+		"types": {
+			"patterns": [{
+				"name": "storage.type.msc",
+				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|Player|Entity|Block|BlockLocation)(?!\\w)"
+			}]
+		}
+	},
+	"scopeName": "source.msc"
+}
