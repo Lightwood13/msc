@@ -40,14 +40,12 @@
 			{
 			  "command": "msc.download",
 			  "key": "alt+d",
-			  "mac": "alt+d",
-			  "when": "editorTextFocus"
+			  "mac": "alt+d"
 			},
 			{
 				"command": "msc.upload",
 				"key": "alt+u",
-				"mac": "alt+u",
-				"when": "editorTextFocus"
+				"mac": "alt+u"
 			  }
 		  ]
 	},
