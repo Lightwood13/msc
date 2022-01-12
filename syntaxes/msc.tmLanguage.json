@@ -9,6 +9,9 @@
 			"include": "#strings"
 		},
 		{
+			"include": "#comments"
+		},
+		{
 			"include": "#numeric_literals"
 		},
 		{
@@ -36,8 +39,17 @@
 				{
 					"name": "constant.character.escape.msc",
 					"match": "\\\\\""
+				},
+				{
+					"name": "punctuation.msc",
+					"begin": "\\{\\{",
+					"end": "\\}\\}"
 				}
 			]
+		},
+		"comments": {
+			"name": "comment.msc",
+			"match": "^\\s*\\#.*$"
 		},
 		"numeric_literals": {
 			"patterns": [
@@ -87,7 +99,7 @@
 		"types": {
 			"patterns": [{
 				"name": "storage.type.msc",
-				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|Player|Entity|Block|BlockLocation)(?!\\w)"
+				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|Player|Entity|Block|BlockLocation|Region|Item)(?!\\w)"
 			}]
 		}
 	},
