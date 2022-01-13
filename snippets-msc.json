@@ -31,7 +31,7 @@
 	},
 	"chatscript": {
 		"prefix": ["@chatscript", "chatscript"],
-		"body": "@chatscript ${1:groupname} ${2:10s} ${3:do_stuff()}",
+		"body": "@chatscript ${1:10s} ${2:groupname} ${3:do_stuff()}",
 		"description": "Chatscript" 
 	},
 	"prompt": {
