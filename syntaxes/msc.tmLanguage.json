@@ -28,7 +28,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.msc",
-				"match": "(?<=^|\\s)@[a-z]+(?=\\s)"
+				"match": "(?<=^|\\s)@[a-z_]+(?=\\s)"
 			}]
 		},
 		"strings": {
@@ -38,7 +38,7 @@
 			"patterns": [
 				{
 					"name": "constant.character.escape.msc",
-					"match": "\\\\\""
+					"match": "\\\\[\\\"\\{\\}]"
 				},
 				{
 					"name": "punctuation.msc",
@@ -67,7 +67,7 @@
 				"integer_literals": {
 					"patterns": [{
 						"name": "constant.numeric.msc",
-						"match": "(?<!\\w)(\\d+L?)(?!\\w)"
+						"match": "(?<!\\w)(\\d+[Lsmhdw]?)(?!\\w)"
 					}]
 				},
 				"float_literals": {
@@ -87,13 +87,13 @@
 		"operators": {
 			"patterns": [{
 				"name": "keyword.operator",
-				"match": "\\+|\\-|\\*|\\/|\\=|\\!|\\&|\\|"
+				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|]"
 			}]
 		},
 		"punctuation": {
 			"patterns": [{
 				"name": "punctuation.msc",
-				"match": "\\.|\\::|\\(|\\)|\\[|\\]|\\{|\\}"
+				"match": "[\\.\\(\\)\\[\\]\\{\\}]|\\::"
 			}]
 		},
 		"types": {

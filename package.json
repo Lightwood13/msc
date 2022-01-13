@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr scripts syntax highlighting and basic upload-download functionality",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"icon": "images/minr.png",
 	"publisher": "Lightwood13",
 	"repository": {
@@ -27,33 +27,39 @@
 			"extensions": [".msc"],
 			"configuration": "./language-configuration.json"
 		  }],
-		  "grammars": [{
+		"snippets": [
+			{
 			  "language": "msc",
-			  "scopeName": "source.msc",
-			  "path": "./syntaxes/msc.tmLanguage.json"
-		  }],
-		  "commands": [
-			{
-			  "command": "msc.upload",
-			  "title": "Upload script"
-			},
-			{
-			  "command": "msc.download",
-			  "title": "Download script"
+			  "path": "./snippets-msc.json"
 			}
-		  ],
-		  "keybindings": [
-			{
-			  "command": "msc.download",
-			  "key": "alt+d",
-			  "mac": "alt+d"
-			},
-			{
-				"command": "msc.upload",
-				"key": "alt+u",
-				"mac": "alt+u"
-			  }
-		  ]
+		],
+		"grammars": [{
+			"language": "msc",
+			"scopeName": "source.msc",
+			"path": "./syntaxes/msc.tmLanguage.json"
+		}],
+		"commands": [
+		{
+			"command": "msc.upload",
+			"title": "Upload script"
+		},
+		{
+			"command": "msc.download",
+			"title": "Download script"
+		}
+		],
+		"keybindings": [
+		{
+			"command": "msc.download",
+			"key": "alt+d",
+			"mac": "alt+d"
+		},
+		{
+			"command": "msc.upload",
+			"key": "alt+u",
+			"mac": "alt+u"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

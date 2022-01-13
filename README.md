@@ -18,6 +18,10 @@ They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'Up
 
 ## Release Notes
 
+### 1.1.0
+
+Added code snippets.
+
 ### 1.0.0
 
 Initial release of Minr Scripts Extension.
