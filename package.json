@@ -1,43 +1,54 @@
 {
 	"name": "msc",
 	"displayName": "Minr Scripts",
-	"description": "Minr scripts syntax highlighting and basic upload-download functionality",
-	"version": "1.1.0",
+	"description": "Minr Scripts VS Code extension",
+	"version": "2.0.0",
 	"icon": "images/minr.png",
-	"publisher": "Lightwood13",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Lightwood13/msc.git"
 	},
+	"publisher": "Lightwood13",
+	"categories": [
+		"Programming Languages"
+	],
 	"engines": {
 		"vscode": "^1.63.0"
 	},
-	"categories": [
-		"Other"
-	],
 	"activationEvents": [
-        "onCommand:msc.upload",
-		"onCommand:msc.download"
+		"onCommand:msc.upload",
+		"onCommand:msc.download",
+		"onLanguage:msc",
+		"onLanguage:nms"
 	],
-	"main": "./out/extension.js",
+	"main": "./client/out/extension",
 	"contributes": {
-		"languages": [{
-			"id": "msc",
-			"aliases": ["msc"],
-			"extensions": [".msc"],
-			"configuration": "./language-configuration.json"
-		  }],
-		"snippets": [
+		"languages": [
 			{
-			  "language": "msc",
-			  "path": "./snippets-msc.json"
+				"id": "msc",
+				"aliases": ["msc"],
+				"extensions": [".msc"],
+				"configuration": "./msc-language-configuration.json"
+			},
+			{
+				"id": "nms",
+				"aliases": ["nms"],
+				"extensions": [".nms"],
+				"configuration": "./nms-language-configuration.json"
 			}
 		],
-		"grammars": [{
-			"language": "msc",
-			"scopeName": "source.msc",
-			"path": "./syntaxes/msc.tmLanguage.json"
-		}],
+		"grammars": [
+			{
+				"language": "msc",
+				"scopeName": "source.msc",
+				"path": "./syntaxes/msc.tmLanguage.json"
+			},
+			{
+				"language": "nms",
+				"scopeName": "source.nms",
+				"path": "./syntaxes/nms.tmLanguage.json"
+			}
+		],
 		"commands": [
 		{
 			"command": "msc.upload",
@@ -63,23 +74,23 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
-		"watch": "tsc -watch -p ./",
-		"pretest": "npm run compile && npm run lint",
-		"lint": "eslint src --ext ts",
-		"test": "node ./out/test/runTest.js"
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
+		"lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+		"test": "sh ./scripts/e2e.sh"
+	},
+	"dependencies": {
+		"axios": "^0.25.0"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.63.0",
-		"@types/glob": "^7.1.4",
-		"@types/mocha": "^9.0.0",
-		"@types/node": "14.x",
-		"@typescript-eslint/eslint-plugin": "^5.1.0",
-		"@typescript-eslint/parser": "^5.1.0",
-		"eslint": "^8.1.0",
-		"glob": "^7.1.7",
-		"mocha": "^9.1.3",
-		"typescript": "^4.4.4",
-		"@vscode/test-electron": "^1.6.2"
+		"@types/mocha": "^8.2.2",
+		"@types/node": "^12.12.0",
+		"@typescript-eslint/eslint-plugin": "^4.23.0",
+		"@typescript-eslint/parser": "^4.23.0",
+		"eslint": "^7.26.0",
+		"mocha": "^8.3.2",
+		"typescript": "^4.4.3",
+		"vscode": "^1.1.37"
 	}
 }

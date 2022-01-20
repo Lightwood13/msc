@@ -1,0 +1,320 @@
+@namespace __default__
+
+	@class Int
+	@endclass
+	
+	@class Long
+	@endclass
+
+	@class Float
+	@endclass
+
+	@class Double
+	@endclass
+
+	@class Boolean
+	@endclass
+	
+	@class Void
+	@endclass
+
+	@class String
+		# Clone a String.
+		String(String value)
+		# Get the textual value of an Int.
+		String(Int value)
+		# Get the textual value of a Long.
+		String(Long value)
+		# Get the textual value of a Float.
+		String(Float value)
+		# Get the textual value of a Boolean.
+		String(Boolean value)
+		# Get the textual value of a Double.
+		String(Double value)
+		# Get the Player name in textual form.
+		String(Player value)
+		# Get the Entity UUID in textual form.
+		String(Entity value)
+		# Get the Block coordinates in textual form.
+		String(Block value)
+		# Get the Item in textual form.
+		String(Item value)
+		# Returns true if the String contains *sequence*, false otherwise.
+		Boolean contains(String sequence)
+		# Returns true if the String is equal except for case to *other*, false otherwise.
+		Boolean equalsIgnoreCase(String other)
+		# Returns the index the first occurrence of *sequence* starts at.
+		# If the String does not contain *sequence*, returns -1.
+		Int indexOf(String sequence)
+		# Replaces all occurrences of *old* with *new* in the String
+		String replace(String old, String new)
+		# Returns a substring starting (inclusive) at *start* and ending (exclusive) at *end*.
+		# Throws IndexOutOfBoundsException when *start* or *end* are invalid indices within the string.
+		# Throws InvalidParameterException when *end* is smaller than *start*.
+		String substring(Int start, Int end)
+		# Returns the String in lowercase.
+		String toLowerCase()
+		# Returns the String in uppercase.
+		String toUpperCase()
+		# Returns the String with leading and trailing whitespace omitted.
+		String trim()
+	@endclass
+
+	@class Player
+		# Returns the distance this entity has fallen.
+		Float getFallDistance()
+		# Returns the entity's current fire ticks (ticks before the entity stops being on fire).
+		Int getFireTicks()
+		# Sets the entity's current fire ticks (ticks before the entity stops being on fire).
+		setFireTicks(Int ticks)
+		# Gets the entity's current x position.
+		Double getX()
+		# Gets the entity's current y position.
+		Double getY()
+		# Gets the entity's current z position.
+		Double getZ()
+		# Gets the entity's current rotation around the y axis.
+		Float getYaw()
+		# Gets the entity's current rotation around the x axis.
+		Float getPitch()
+		# Gets the entity's current velocity in the x direction.
+		Double getVelocityX()
+		# Gets the entity's current velocity in the y direction.
+		Double getVelocityY()
+		# Gets the entity's current velocity in the z direction.
+		Double getVelocityZ()
+		# Gets the current world this entity resides in.
+		String getWorld()
+		# Returns true if this entity has been marked for removal.
+		Boolean isDead()
+		# Checks to see if this player is currently flying or not.
+		Boolean isFlying()
+		# Returns true if the entity is supported by a block.
+		# This value is a state updated by the server and is not recalculated unless the entity moves.
+		Boolean isOnGround()
+		# Returns true if the player is in sneak mode
+		Boolean isSneaking()
+		# Gets whether the player is sprinting or not.
+		Boolean isSprinting()
+		# Gives the player the amount of experience specified.
+		giveExp(Int amount)
+		# Gets the player's current experience points towards the next level.
+		Float getExp()
+		# Sets the player's current experience points towards the next level.
+		giveExpLevels(Int amount)
+		# Gets the player's current experience level.
+		Float getLevel()
+		# Sets the player's current experience level.
+		setLevel(Int level)
+		# Deals the given amount of damage to this entity.
+		damage(Double amount)
+		# Gets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		Double getHealth()
+		# Sets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
+		setHealth(Double health)
+		# Gets the maximum health this entity has.
+		Double getMaxHealth()
+		# Sets the maximum health this entity has. If the health of the entity is
+		# above the value provided it will be clamped to the max value. Only sets
+		# the 'base' max health value, any modifiers changing this value (potions,
+		# etc) will apply *after* this value. The value returned by getMaxHealth may
+		# deviate from the value set here.
+		setMaxHealth()
+		# Gets the players current food level.
+		Float getFoodLevel()
+		# Sets the players current food level.
+		setFoodLevel(Int value)
+		# Gets the players current saturation level. Saturation is a buffer for food
+		# level. Your food level will not drop if you are saturated > 0.
+		Float getSaturation()
+		# Sets the players current saturation level.
+		setSaturation(Float value)
+		# Returns whether this entity is inside a vehicle.
+		Boolean isInsideVehicle()
+		# Leave the current vehicle. If the entity is currently in a vehicle (and is
+		# removed from it), true will be returned, otherwise false will be returned.
+		Boolean leaveVehicle()
+		# Force-closes the currently open inventory view for this player, if any.
+		closeInventory()
+		# Gets the player's playtime on the server in milliseconds.
+		Long getTimePlayed()
+		# Gets the player's current locale. The value of the locale String is not
+		# defined properly. The vanilla Minecraft client will use lowercase
+		# language / country pairs separated by an underscore, but custom resource
+		# packs may use any format they wish.
+		String getLocale()
+		# Gets the UUID of the entity (in string format).
+		String getUniqueId()
+		# Checks if this player is currently online.
+		Boolean isOnline()
+		# Checks if this Player is a server operator.
+		Boolean isOp()
+		# Request that the player's client downloads and switches resource pack.
+		setResourcePack(String url, String hash)
+		# Returns the Item found in the slot at the given index.
+		Item getItem(Int slot)
+		# Gets a copy of the item the player is currently holding in their main hand.
+		Item getItemInMainHand()
+		# Gets a copy of the item the player is currently holding in their off hand.
+		Item getItemInOffHand()
+		# Return the Item from the boots slot.
+		Item getBoots()
+		# Return the Item from the leg slot.
+		Item getLeggings()
+		# Return the Item from the chestplate slot.
+		Item getChestplate()
+		# Return the Item from the helmet slot.
+		Item getHelmet()
+		# Stores the Item at the given index of the inventory. Indexes 0 through 8 refer to the
+		# hotbar. 9 through 35 refer to the main inventory, counting up from 9 at the top left
+		# corner of the inventory, moving to the right, and moving to the row below it back on the
+		# left side when it reaches the end of the row. It follows the same path in the inventory like you
+		# would read a book. Indexes 36 through 39 refer to the armor slots. Though you can set
+		# armor with this method using these indexes, you are encouraged to use the provided
+		# methods for those slots. If you attempt to use this method with an index less than 0 or
+		# greater than 39, an ArrayIndexOutOfBounds exception will be thrown.
+		setItem(Int slot, Item item)
+		# Sets the item the player is holding in their main hand.
+		setItemInMainHand(Item item)
+		# Sets the item the player is holding in their off hand.
+		setItemInOffHand(Item item)
+		# Put the given Item into the boots slot. This does not check if the Item is a boots.
+		setBoots(Item item)
+		# Put the given Item into the leg slot. This does not check if the Item is a pair of leggings.
+		setLeggings(Item item)
+		# Put the given Item into the chestplate slot. This does not check if the Item is a chestplate.
+		setChestplate(Item item)
+		# Put the given Item into the helmet slot. This does not check if the Item is a helmet.
+		setHelmet(Item item)
+		# Returns whether the player is playing a challenge.
+		Boolean isPlayingChallenge()
+		# Returns the challenge the player is playing. Returns null when player is not playing any challenge.
+		String getCurrentChallenge()
+		# Returns the amount of challenge points the player has.
+		Int getChallengePoints()
+		# Returns the stage the player reached in hexa.
+		Int getHexaRecord()
+		# Returns whether the player has completed the specified challenge.
+		Boolean hasCompletedChallenge(String challengetag)
+		# Returns the current time the player has spent in the challenge.
+		Long getChallengeTime()
+		# Returns whether the player is playing a map.
+		Boolean isPlayingMap()
+		# Returns the checkpoint the player has. Returns null when no checkpoint
+		# in the current checkpoint mode is set. Returns the checkpoint from the
+		# current checkpoint mode (HC or FFA).
+		String getCurrentCheckpoint()
+		# Returns the amount of FFA points the player has.
+		Int getPoints()
+		# Returns the amount of global points the player has.
+		Int getGlobalPoints()
+		# Returns whether the player has completed the specified map.
+		Boolean hasCompletedMap(String maptag)
+		# Returns the current time the player has spent in the map.
+		Long getMapTime()
+		# Get the amount of times a player has hit any starting checkpoint sign.
+		Int getAttempts()
+		# Invalidate the player's challenge and map run.
+		invalidate()
+		# Invalidate the player's time on map and challenge, but allows
+		# them to complete the map and challenge.
+		invalidateTime()
+	@endclass
+
+	@class Entity
+		# Gets the entity's type. Actual value returned is a
+		# 'magic value' and can change at any spigot or bukkit update.
+		String getEntityType()
+		# Gets the entity's current x position.
+		Double getX()
+		# Gets the entity's current y position.
+		Double getY()
+		# Gets the entity's current z position.
+		Double getZ()
+		# Gets the entity's current rotation around the y axis.
+		Float getYaw()
+		# Gets the entity's current rotation around the x axis.
+		Float getPitch()
+		# Gets the entity's current velocity in the x direction.
+		Double getVelocityX()
+		# Gets the entity's current velocity in the y direction.
+		Double getVelocityY()
+		# Gets the entity's current velocity in the z direction.
+		Double getVelocityZ()
+		# Gets the current world this entity resides in.
+		String getWorld()
+		# Returns true if this entity has been marked for removal.
+		Boolean isDead()
+		# Returns true if the entity is supported by a block.
+		# This value is a state updated by the server and is not recalculated unless the entity moves.
+		Boolean isOnGround()
+		# Deals the given amount of damage to this entity.
+		damage(Double amount)
+		# Gets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		Double getHealth()
+		# Sets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
+		setHealth(Double health)
+		# Gets the maximum health this entity has.
+		Double getMaxHealth()
+		# Sets the maximum health this entity has. If the health of the entity is
+		# above the value provided it will be clamped to the max value. Only sets
+		# the 'base' max health value, any modifiers changing this value (potions,
+		# etc) will apply *after* this value. The value returned by getMaxHealth may
+		# deviate from the value set here.
+		setMaxHealth()
+		# Gets the UUID of the entity (in string format).
+		String getUniqueId()
+	@endclass
+
+	@class Block
+		# Returns the Redstone power being provided to this block.
+		Int getBlockPower()
+		# Returns the amount of light at this block.
+		Int getLightLevel()
+		# Returns the amount of light at this block from nearby blocks.
+		Int getLightFromBlocks()
+		# Returns the amount of light at this block from the sky.
+		Int getLightFromSky()
+		# Gets the block at the given offsets.
+		Block getRelative(Int modX, Int modY, Int modZ)
+		# Gets the type of this block. Actual value returned is a
+		# 'magic value' and can change at any spigot or bukkit update.
+		String getBlockType()
+		# Returns the x-coordinate of this block.
+		Int getX()
+		# Returns the y-coordinate of this block.
+		Int getY()
+		# Returns the z-coordinate of this block.
+		Int getZ()
+		# Returns the world where this block resides in.
+		String getWorld()
+		# Returns true if the block is being indirectly powered by Redstone.
+		Boolean isBlockIndirectlyPowered()
+		# Returns true if the block is being powered by Redstone.
+		Boolean isBlockPowered()
+		# Returns true if this block is Air.
+		Boolean isEmpty()
+		# Returns true if this block is liquid.
+		Boolean isLiquid()
+	@endclass
+
+	@class Item
+		# Gets the amount of items in this stack.
+		Int getAmount()
+		# Gets the type of this item.
+		String getItemType()
+		# Get the maximum stacksize for the material held in
+		# this ItemStack. (Returns -1 if it has no idea).
+		Int getMaxStackSize()
+		# Sets the amount of items in this stack.
+		setAmount(Int amount)
+		# Sets the type of this item. Note that in doing so 
+		# you will reset the extra data for this stack as well.
+		# Throws MaterialNotFoundException when passed an invalid name.
+		setItemType(String item)
+		# Returns whether two items are equal, but does not consider stack size (amount).
+		Boolean isSimilar(Item item)
+	@endclass
+@endnamespace

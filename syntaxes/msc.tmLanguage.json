@@ -28,7 +28,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.msc",
-				"match": "(?<=^|\\s)@[a-z_]+(?=\\s)"
+				"match": "(?<=^\\s*)@(bypass|cancel|chatscript|command|console|cooldown|define|delay|done|else|elseif|fast|fi|for|global_cooldown|if|player|prompt|return|slow|using|var)(?=\\s)"
 			}]
 		},
 		"strings": {
