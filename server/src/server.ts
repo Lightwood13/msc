@@ -121,7 +121,7 @@ const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-
 const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
 const variableSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)\s*$/;
 const commentRegExp = /^\s*#\s*(.*)\s*$/;
-const firstLineCommentRegExp = /^\s*#(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+$/;
+const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+(?:\s*\)\s*)?$/;
 
 function refreshNamespaceFiles() {
 	readdir('.', (err, files) => {
@@ -378,8 +378,12 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 
 	const lines = text.split(newLineRegExp);
 	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
-		const commentStart = lines[0].indexOf('#');
-		const params = lines[0].substring(commentStart + 1).split(',');
+		const openingBracketPos = lines[0].indexOf('(');
+		const closingBracketPos = lines[0].indexOf(')');
+
+		const paramListStart = (openingBracketPos === -1) ? lines[0].indexOf('#') : openingBracketPos;
+		const paramListEnd = (closingBracketPos === -1) ? lines[0].length : closingBracketPos;
+		const params = lines[0].substring(paramListStart + 1, paramListEnd).split(',');
 		for (const param of params) {
 			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
 			if (regExpRes === null)
