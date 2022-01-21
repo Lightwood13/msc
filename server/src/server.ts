@@ -93,7 +93,7 @@ interface MemberInfo {
 }
 interface NamespaceInfo {
 	members: Map<string, MemberInfo>;
-	membersSignatures: Map<string, SignatureInformation[] | undefined>;
+	memberSignatures: Map<string, SignatureInformation[] | undefined>;
 	memberSuggestions: CompletionItem[];
 }
 type ClassInfo = NamespaceInfo;
@@ -161,10 +161,35 @@ function parseNamespaceFile(text: string, namespaceStorage: Map<string, Namespac
 	}
 }
 
+function getArrayClassDefinition(name: string): string[] {
+	const result = [
+		`add(${name} value, Int index)`,
+		`append(${name} value)`,
+		`clear()`,
+		`Boolean contains(${name} value)`,
+		`Int find(${name} value)`,
+		`Int length()`,
+		`${name} pop()`,
+		`${name} remove(Int index)`,
+		`Void reverse()`,
+		`Void shuffle()`,
+		`String string()`
+	];
+	if (['Int', 'Long', 'Float', 'Double'].includes(name)) {
+		result.push(`Double avg()`);
+		result.push(`${name} sum()`);
+	}
+	else if (name === 'String') {
+		result.push('String concat()');
+		result.push('String join(String delimiter)');
+	}
+	return result;
+}
+
 function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>): NamespaceInfo {
 	const result: NamespaceInfo = {
 		members: new Map(),
-		membersSignatures: new Map(),
+		memberSignatures: new Map(),
 		memberSuggestions: []
 	};
 	for (let i = 0; i < lines.length; i++) {
@@ -176,12 +201,12 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 				if (newMember.suggestion !== undefined)
 					result.memberSuggestions.push(newMember.suggestion);
 				if (newMember.signature !== undefined) {
-					let signatures = result.membersSignatures.get(newMember.name);
+					let signatures = result.memberSignatures.get(newMember.name);
 					if (signatures === undefined)
 						signatures = [];
 					if (!signatures.includes(newMember.signature))
 						signatures.push(newMember.signature);
-					result.membersSignatures.set(newMember.name, signatures);
+					result.memberSignatures.set(newMember.name, signatures);
 				}
 			}
 			continue;
@@ -201,18 +226,25 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 		if (name !== '__default__')
 			className = name + '::' + className;
 		classStorage.set(className, parseClass(className, lines.slice(i + 1, j)));
+		classStorage.set(className + '[]', parseClass(className + '[]', getArrayClassDefinition(className)));
 		i = j;
 		const newClass: CompletionItem = {
-			label: classRegExpRes[1],
+			label: className,
 			kind: CompletionItemKind.Class,
 			detail: 'class ' + className
+		};
+		const newClassArray: CompletionItem = {
+			label: className + '[]',
+			kind: CompletionItemKind.Class,
+			detail: 'class' + className + '[]'
 		};
 		if (description.length !== 0)
 			newClass.documentation = {
 				kind: MarkupKind.Markdown,
 				value: description
 			};
-		result.memberSuggestions.push(newClass);	
+		result.memberSuggestions.push(newClass);
+		result.memberSuggestions.push(newClassArray);
 	}
 	return result;
 }
@@ -220,7 +252,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 function parseClass(name: string, lines: string[]): ClassInfo {
 	const result: ClassInfo = {
 		members: new Map(),
-		membersSignatures: new Map(),
+		memberSignatures: new Map(),
 		memberSuggestions: []
 	};
 	for (let i = 0; i < lines.length; i++) {
@@ -230,12 +262,12 @@ function parseClass(name: string, lines: string[]): ClassInfo {
 			if (newMember.suggestion !== undefined)
 				result.memberSuggestions.push(newMember.suggestion);
 			if (newMember.signature !== undefined) {
-				let signatures = result.membersSignatures.get(newMember.name);
+				let signatures = result.memberSignatures.get(newMember.name);
 				if (signatures === undefined)
 					signatures = [];
 				if (!signatures.includes(newMember.signature))
 					signatures.push(newMember.signature);
-				result.membersSignatures.set(newMember.name, signatures);
+				result.memberSignatures.set(newMember.name, signatures);
 			}
 		}
 	}
@@ -736,8 +768,8 @@ connection.onSignatureHelp(
 				const functionName = name.substring(scopeOperatorPosition + 2);
 				const currentNamespace = namespaces.get(namespaceName);
 				if (currentNamespace === undefined)
-					return result;
-				const signatures = currentNamespace.membersSignatures.get(functionName);
+					break;
+				const signatures = currentNamespace.memberSignatures.get(functionName);
 				if (signatures !== undefined)
 					result.signatures = signatures;
 				break;
@@ -750,11 +782,11 @@ connection.onSignatureHelp(
 				const currentClass = classes.get(className);
 				//fix call chain
 				if (currentClass === undefined)
-					return result;
-				const signatures = currentClass.membersSignatures.get(methodName);
+					break;
+				const signatures = currentClass.memberSignatures.get(methodName);
 				if (signatures !== undefined)
 					result.signatures = signatures;
-				return result;
+				break;
 			}
 			else {
 				// class constructor call
@@ -766,10 +798,10 @@ connection.onSignatureHelp(
 				let constructorName = name;
 				if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2)
 					constructorName = constructorName.substring(scopeOperatorPosition + 2);
-				const signatures = currentClass.membersSignatures.get(constructorName);
+				const signatures = currentClass.memberSignatures.get(constructorName);
 				if (signatures !== undefined)
 					result.signatures = signatures;
-				return result;
+				break;
 			}
 		}
 

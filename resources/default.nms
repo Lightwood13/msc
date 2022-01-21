@@ -1,18 +1,70 @@
 @namespace __default__
 
 	@class Int
+		# Make an Int from another Int. (Clone operation)
+		Int(Int value)
+		# Cast a Long down to an Int. (Precision loss)
+		Int(Long value)
+		# Discard the decimals and convert a Float to Int.
+		Int(Float value)
+		# Discard the decimals and convert a Double to Int.
+		Int(Double value)
+		# Attempt to parse a String into an Int.
+		# Only succeeds if the entire String can be represented as an Int.
+		# Throws NumberFormatException otherwise
+		Int(String value)
 	@endclass
 	
 	@class Long
+		# Upcast an Int to a Long.
+		Long(Int value)
+		# Clone a Long.
+		Long(Long value)
+		# Discard the decimals and convert a Float to Long.
+		Long(Float value)
+		# Discard the decimals and convert a Double to Long.
+		Long(Double value)
+		# Attempt to parse a String into a Long.
+		# Only succeeds if the entire String can be represented as a Long.
+		# Throws NumberFormatException otherwise
+		Long(String value)
 	@endclass
 
 	@class Float
+		# Cast an Int to a Float.
+		Float(Int value)
+		# Cast a Long to a Float.
+		Float(Long value)
+		# Clone a Float.
+		Float(Float value)
+		# Cast a Double to a Float. (Precision loss)
+		Float(Double value)
+		# Attempt to parse a String into a Float.
+		# Only succeeds if the entire String can be represented as a Float.
+		# Throws NumberFormatException otherwise
+		Float(String value)
 	@endclass
 
 	@class Double
+		# Cast an Int to a Double.
+		Double(Int value)
+		# Cast a Long to a Double.
+		Double(Long value)
+		# Upcast a Float to a Double.
+		Double(Float value)
+		# Clone a Double.
+		Double(Double value)
+		# Attempt to parse a String into a Double.
+		# Only succeeds if the entire String can be represented as a Double.
+		# Throws NumberFormatException otherwise
+		Double(String value)
 	@endclass
 
 	@class Boolean
+		# Copy a Boolean.
+		Boolean(Boolean)
+		# Parse true or false in string format to a boolean. Defaults to false
+		Boolean(String)
 	@endclass
 	
 	@class Void
@@ -61,6 +113,14 @@
 	@endclass
 
 	@class Player
+		# Construct a player from their name or UUID.
+		# Null if the player does not exist.
+		Player(String value)
+		# Find a player at these coordinates in the passed world.
+		# Null if the player does not exist. In the scenario that multiple players
+		# are in the same location, nondeterministically returns one Player at that location.
+		Player(Int x, Int y, Int z, String world)
+
 		# Returns the distance this entity has fallen.
 		Float getFallDistance()
 		# Returns the entity's current fire ticks (ticks before the entity stops being on fire).
@@ -223,6 +283,14 @@
 	@endclass
 
 	@class Entity
+		# Construct an entity from its UUID.
+		# Returns null if it does not exist.
+		Entity(String uuid)
+		# Find an entity at these coordinates in the passed world.
+		# Null if the entity does not exist. In the scenario that multiple entities
+		# are in the same location, nondeterministically returns one entity at that location.
+		Entity(Int x, Int y, Int z, String world)
+
 		# Gets the entity's type. Actual value returned is a
 		# 'magic value' and can change at any spigot or bukkit update.
 		String getEntityType()
@@ -269,6 +337,9 @@
 	@endclass
 
 	@class Block
+		# Get the block at these coordinates in the given world.
+		Block(Int x, Int y, Int z, String world)
+		
 		# Returns the Redstone power being provided to this block.
 		Int getBlockPower()
 		# Returns the amount of light at this block.
@@ -301,6 +372,10 @@
 	@endclass
 
 	@class Item
+		# Create an item from the passed name with a stack size of amount.
+		# Throws MaterialNotFoundException when passed an invalid name.
+		Item(String item, Int amount)
+
 		# Gets the amount of items in this stack.
 		Int getAmount()
 		# Gets the type of this item.
