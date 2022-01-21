@@ -119,7 +119,7 @@ const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*)\s*$/;
 const classSignatureRegExp = /^\s*@class\s+([A-Z][a-zA-Z0-9_]*)\s*$/;
 const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)?\s+([a-z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
 const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-const variableSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)\s*$/;
+const variableSignatureRegExp = /^\s*(relative\s+)?((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)(?:\s*=.*)?\s*$/;
 const commentRegExp = /^\s*#\s*(.*)\s*$/;
 const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+(?:\s*\)\s*)?$/;
 
@@ -290,12 +290,12 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		};
 	}
 	else if (variableRegExpRes !== null) {
-		result.name = variableRegExpRes[2];
-		result.returnType = variableRegExpRes[1];
+		result.name = variableRegExpRes[3];
+		result.returnType = variableRegExpRes[2];
 		result.suggestion = {
-			label: variableRegExpRes[2],
+			label: variableRegExpRes[3],
 			kind: CompletionItemKind.Variable,
-			detail: lines[line].replace(variableSignatureRegExp, '$1 ' + namePrefix + '$2')
+			detail: lines[line].replace(variableSignatureRegExp, (variableRegExpRes [1] !== '' ? 'relative ' : '') + '$2 ' + namePrefix + '$3')
 		};
 	}
 	if (result.returnType === undefined)
@@ -375,6 +375,25 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 		variables: new Map(),
 		usingDeclarations: [],
 	};
+
+	result.variables.set('player', {
+		lineDeclared: -1,
+		type: 'Player',
+		suggestion: {
+			label: 'player',
+			kind: CompletionItemKind.Variable,
+			detail: 'Player player'
+		}
+	});
+	result.variables.set('block', {
+		lineDeclared: -1,
+		type: 'Block',
+		suggestion: {
+			label: 'block',
+			kind: CompletionItemKind.Variable,
+			detail: 'Block block'
+		}
+	});
 
 	const lines = text.split(newLineRegExp);
 	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
