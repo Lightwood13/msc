@@ -17,6 +17,21 @@ import {
 
 let client: LanguageClient;
 
+function uploadFile(text: string) {
+	axios({
+		httpsAgent: new https.Agent({
+			rejectUnauthorized: false
+		}),
+		url: 'https://paste.minr.org/documents',
+		method: 'POST',
+		data: text
+	})
+	.then(data => env.clipboard.writeText('https://paste.minr.org/' + data.data.key))
+	.catch(err => console.log(err));
+
+	window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+}
+
 export function activate(context: ExtensionContext) {
 	
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -30,19 +45,13 @@ export function activate(context: ExtensionContext) {
 			window.showErrorMessage('No file open to upload');
 			return;
 		}
-		
-		axios({
-			httpsAgent: new https.Agent({
-				rejectUnauthorized: false
-			}),
-			url: 'https://paste.minr.org/documents',
-			method: 'POST',
-			data: textEditor.document.getText()
-		})
-		.then(data => env.clipboard.writeText('https://paste.minr.org/' + data.data.key))
-		.catch(err => console.log(err));
 
-		window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+		if (textEditor.document.languageId === 'nms')
+			client.sendNotification('Export namespace', textEditor.document.getText());
+		else
+			uploadFile(textEditor.document.getText());
+		
+		
 	});
 	context.subscriptions.push(disposable);
 
@@ -125,15 +134,18 @@ export function activate(context: ExtensionContext) {
 	client.start();
 
 	client.onReady().then(() => {
-		const snippetsUri = Uri.joinPath(context.extensionUri, 'snippets.json');
-		workspace.fs.readFile(snippetsUri).then((result) => {
-			client.sendNotification('addSnippets', JSON.parse(result.toString()));
-		});
 		client.onNotification('getDefaultNamespace', () => {
 			const defaultNamespaceUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
 			workspace.fs.readFile(defaultNamespaceUri).then((result) => {
 				client.sendNotification('processDefaultNamespace', result.toString());
 			});
+		});
+		client.onNotification('Upload namespace script', (text: string) => {
+			uploadFile(text);
+		});
+		const snippetsUri = Uri.joinPath(context.extensionUri, 'snippets.json');
+		workspace.fs.readFile(snippetsUri).then((result) => {
+			client.sendNotification('addSnippets', JSON.parse(result.toString()));
 		});
 	});
 }

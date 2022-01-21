@@ -36,7 +36,11 @@ They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'Up
 
 ## Custom namespace Files (.nms)
 
-You can make a custom namespace file for your namespace to get code completion. Extension automatically scans currently opened folder for .nms files and updates them on save. You'll have to open folder (File -> Open Folder) to use them. The format is as following (documentation is optional, and consists of one or multiple lines of comments directly above variable, function, field, method, or class definition. It will be shown in code completion suggestions):
+You can make a custom namespace file for your namespace to get code completion. Extension automatically scans currently opened folder for .nms files and updates them on save. You'll have to open folder (File -> Open Folder) to use them.
+
+By calling upload (Alt+U) with .nms file open, extension will automatically generate script for namespace import. **Be careful. Namespace import script automatically removes everything contained in the namespace at the start of execution. Only execute it if you already have fully documented your namespace in .nms.**
+
+The format is as following (documentation is optional, and consists of one or multiple lines of comments directly above variable, function, field, method, or class definition. It will be shown in code completion suggestions):
 
 ```
 @namespace myNamespace
@@ -65,6 +69,10 @@ Note that any use of variables and classes in .nms file has to include the names
 ![feature_3](images/feature_3.gif)
 
 ## Release Notes
+
+### 2.1.0
+
+Added namespace upload.
 
 ### 2.0.0
 

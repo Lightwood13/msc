@@ -5,11 +5,8 @@
 import {
 	createConnection,
 	TextDocuments,
-	Diagnostic,
-	DiagnosticSeverity,
 	ProposedFeatures,
 	InitializeParams,
-	DidChangeConfigurationNotification,
 	CompletionItem,
 	CompletionItemKind,
 	TextDocumentPositionParams,
@@ -136,30 +133,35 @@ function refreshNamespaceFiles() {
 				readFile(filename, (err, data) => {
 					if (err)
 						return console.log('Unable to read file: ' + err);
-					const lines = data.toString().split(newLineRegExp);
-					for (let i = 0; i < lines.length; i++)
-					{
-						const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
-						if (regExpRes === null)
-							continue;
-						let j = i;
-						for (j = i; j < lines.length; j++)
-						{
-							if (lines[j].trim() == '@endnamespace')
-								break;
-						}
-						if (j == lines.length)
-							break;
-						namespaces.set(regExpRes[1], parseNamespace(regExpRes[1], lines.slice(i + 1, j)));
-						i = j;
-					}
+					parseNamespaceFile(data.toString(), namespaces, classes);
 				});
 			}
 		});
 	});
 }
 
-function parseNamespace(name: string, lines: string[]): NamespaceInfo {
+function parseNamespaceFile(text: string, namespaceStorage: Map<string, NamespaceInfo>,
+	classStorage: Map<string, ClassInfo>) {
+	const lines = text.split(newLineRegExp);
+	for (let i = 0; i < lines.length; i++)
+	{
+		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
+		if (regExpRes === null)
+			continue;
+		let j = i;
+		for (j = i; j < lines.length; j++)
+		{
+			if (lines[j].trim() == '@endnamespace')
+				break;
+		}
+		if (j == lines.length)
+			break;
+		namespaceStorage.set(regExpRes[1], parseNamespace(regExpRes[1], lines.slice(i + 1, j), classStorage));
+		i = j;
+	}
+}
+
+function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>): NamespaceInfo {
 	const result: NamespaceInfo = {
 		members: new Map(),
 		membersSignatures: new Map(),
@@ -167,8 +169,7 @@ function parseNamespace(name: string, lines: string[]): NamespaceInfo {
 	};
 	for (let i = 0; i < lines.length; i++) {
 		const classRegExpRes = classSignatureRegExp.exec(lines[i]);
-		if (classRegExpRes === null)
-		{
+		if (classRegExpRes === null) {
 			const newMember = parseVariableOrFunctionAtLine(name + '::', lines, i);
 			if (newMember !== null) {
 				result.members.set(newMember.name, newMember);
@@ -189,8 +190,7 @@ function parseNamespace(name: string, lines: string[]): NamespaceInfo {
 		const description = parseCommentsAboveLine(lines, i);
 
 		let j = i;
-		for (j = i; j < lines.length; j++)
-		{
+		for (j = i; j < lines.length; j++) {
 			if (lines[j].trim() == '@endclass')
 				break;
 		}
@@ -200,7 +200,7 @@ function parseNamespace(name: string, lines: string[]): NamespaceInfo {
 		let className = classRegExpRes[1];
 		if (name !== '__default__')
 			className = name + '::' + className;
-		classes.set(className, parseClass(className, lines.slice(i + 1, j)));
+		classStorage.set(className, parseClass(className, lines.slice(i + 1, j)));
 		i = j;
 		const newClass: CompletionItem = {
 			label: classRegExpRes[1],
@@ -791,8 +791,6 @@ connection.onHover(
 		
 		const callChain = parseCallChain(parseString);
 		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace);
-		console.log(callChain);
-		console.log(nameAndType);
 		if (nameAndType === undefined)
 			return undefined;
 
@@ -939,7 +937,7 @@ connection.onNotification('updateDocument', (document: Temp) => {
 
 connection.onNotification('processDefaultNamespace', (text: string) => {
 	const lines = text.split(newLineRegExp);
-	namespaces.set('__default__', parseNamespace('__default__', lines.slice(1,lines.length - 1)));
+	namespaces.set('__default__', parseNamespace('__default__', lines.slice(1,lines.length - 1), classes));
 });
 
 connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {
@@ -951,6 +949,69 @@ connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {
 		modifiedSnippet.insertText = snippet.insertText?.substring(1);
 		snippetsWithoutAtSymbol.push(modifiedSnippet);
 	}
+});
+
+connection.onNotification('Export namespace', (text: string) => {
+	const lines = text.split(newLineRegExp);
+	const resultLines: string[] = [];
+	for (let i = 0; i < lines.length; i++)
+	{
+		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
+		if (regExpRes === null)
+			continue;
+		let namespaceEndLine = i;
+		for (namespaceEndLine = i; namespaceEndLine < lines.length; namespaceEndLine++)
+		{
+			if (lines[namespaceEndLine].trim() == '@endnamespace')
+				break;
+		}
+		if (namespaceEndLine == lines.length)
+			break;
+		const namespaceName: string = regExpRes[1];
+		resultLines.push(`@bypass /namespace remove ${namespaceName}`);
+		resultLines.push(`@bypass /namespace define ${namespaceName}`);
+		
+		for (let j = i + 1; j < namespaceEndLine; j++) {
+			const classRegExpRes = classSignatureRegExp.exec(lines[j]);
+			if (classRegExpRes !== null) {
+				let classEndLine = j;
+				for (; classEndLine < namespaceEndLine; classEndLine++)
+				{
+					if (lines[classEndLine].trim() == '@endclass')
+						break;
+				}
+				if (classEndLine == namespaceEndLine)
+					break;
+				const className = classRegExpRes[1];
+				resultLines.push(`@bypass /type define ${namespaceName} ${className}`);
+				
+				for (let k = j + 1; k < classEndLine; k++) {
+					const functionRegExpRes = functionSignatureRegExp.exec(lines[k]);
+					const constructorRegExpRes = constructorSignatureRegExp.exec(lines[k]);
+					const variableRegExpRes = variableSignatureRegExp.exec(lines[k]);
+					if (functionRegExpRes !== null)
+						resultLines.push(`@bypass /type method define ${namespaceName} ${className} ${lines[k].trim()}`);
+					else if (constructorRegExpRes !== null)
+						resultLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
+					else if (variableRegExpRes !== null)
+						resultLines.push(`@bypass /type field define ${namespaceName} ${className} ${lines[k].trim()}`);
+				}
+				
+				j = classEndLine;
+				continue;
+			}
+			const functionRegExpRes = functionSignatureRegExp.exec(lines[j]);
+			const variableRegExpRes = variableSignatureRegExp.exec(lines[j]);
+			if (functionRegExpRes !== null)
+				resultLines.push(`@bypass /function define ${namespaceName} ${lines[j].trim()}`);
+			else if (variableRegExpRes !== null)
+				resultLines.push(`@bypass /variable define ${namespaceName} ${lines[j].trim()}`);
+			}
+
+		i = namespaceEndLine;
+	}
+	const result: string = resultLines.join('\n');
+	connection.sendNotification('Upload namespace script', result);
 });
 
 // Make the text document manager listen on the connection
