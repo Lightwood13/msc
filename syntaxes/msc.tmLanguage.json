@@ -49,7 +49,7 @@
 		},
 		"comments": {
 			"name": "comment.msc",
-			"match": "^\\s*\\#.*$"
+			"match": "^\\s*\\#\\s.*$"
 		},
 		"numeric_literals": {
 			"patterns": [
