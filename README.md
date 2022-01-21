@@ -34,34 +34,41 @@ The upload function uploads currently opened file and copies the resulting URL t
 
 They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'Upload script' and 'Download script'. Also keyboard shortcuts are available: Alt+U and Alt+D. They can be reassigned in 'Preferences: Open Keyboard Shortcuts' in Command Palette.
 
+### Namespace import
+
+By calling upload (Alt+U) with .nms file open, extension will automatically generate script for namespace import.
+The script defines all variables, functions and classes (as well as their members) present in namespace. It then searches workspace folder for .msc files of functions present in namespace. These files should be put in a folder with the same name as the namespace. For classes methods they should be put in a subfolder with class name, inside namespace folder. The example folder structure is shown on the image below. After execution, the import script removes itself (it has to be aplied as an interact script to a block). **Be careful. Namespace import script automatically removes everything contained in the namespace at the start of execution. Only execute it if you already have full namespace definition in .nms and all your functions saved in .msc.**
+
+![feature_2](images/namespace_file_structure.png)
+
 ## Custom namespace Files (.nms)
 
 You can make a custom namespace file for your namespace to get code completion. Extension automatically scans currently opened folder for .nms files and updates them on save. You'll have to open folder (File -> Open Folder) to use them.
-
-By calling upload (Alt+U) with .nms file open, extension will automatically generate script for namespace import. **Be careful. Namespace import script automatically removes everything contained in the namespace at the start of execution. Only execute it if you already have fully documented your namespace in .nms and .msc.**
 
 The format is as following (documentation is optional, and consists of one or multiple lines of comments directly above variable, function, field, method, or class definition. It will be shown in code completion suggestions):
 
 ```
 @namespace myNamespace
 	# myFunc documentation
-	Int myFunc(Player player, Item item)
+	Double myFunc(Player player, Item item)
 	myVoidFunc()
 	# myVar documentation
 	Double myVar
 
 	# myClass documentation
-	@class myClass
+	@class MyClass
 		# constructor
-		myClass(Double value)
+		MyClass(Double value)
+		# another constructor
+		MyClass(Double value1, Double value 2)
 		# field
-		Double myField
+		Double x
 		# getter
-		Double getMyField()
+		Double getX()
 		# setter
-		setMyField(Double newValue)
-		myNamespace::myClass getMyClass()
-	@endclass myClass
+		setX(Double newValue)
+		myNamespace::MyClass getMyClass()
+	@endclass
 @endnamespace
 ```
 Note that any use of variables and classes in .nms file has to include the namespace. For example, the ```getMyClass()``` method in example returns ```myNamespace::myClass```, not just ```myClass```. The only exception is the constructor name.

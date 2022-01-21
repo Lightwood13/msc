@@ -381,7 +381,7 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 		const commentStart = lines[0].indexOf('#');
 		const params = lines[0].substring(commentStart + 1).split(',');
 		for (const param of params) {
-			const regExpRes = /([A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
+			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
 			if (regExpRes === null)
 				continue;
 			result.variables.set(regExpRes[2], {
@@ -951,9 +951,46 @@ connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {
 	}
 });
 
-connection.onNotification('Export namespace', (text: string) => {
-	const lines = text.split(newLineRegExp);
+interface DocumentContents {
+	text: string
+}
+interface NamespaceFunction {
+	namespaceName: string,
+	functionName: string
+}
+interface ClassConstructor {
+	namespaceName: string,
+	className: string,
+	constructorSignature: string
+}
+interface ClassMethod {
+	namespaceName: string,
+	className: string,
+	methodName: string
+}
+interface NamespaceUploadResult {
+	document: DocumentContents, 
+	defineScript: string,
+	functions: NamespaceFunction[],
+	constructors: ClassConstructor[],
+	methods: ClassMethod[]
+}
+
+function getConstructorSignature(className: string, params: string): string {
+	const paramsList = params.substring(1, params.length - 1).split(',');
+	let result = className + '(';
+	for (const param of paramsList)
+		result += param.trim().split(' ')[0] + ',';
+	result = result.substring(0, result.length - 1) + ')';
+	return result;
+}
+
+connection.onNotification('Export namespace', (document: DocumentContents) => {
+	const lines = document.text.split(newLineRegExp);
 	const resultLines: string[] = [];
+	const functions: NamespaceFunction[] = [];
+	const methods: ClassMethod[] = [];
+	const constructors: ClassConstructor[] = [];
 	for (let i = 0; i < lines.length; i++)
 	{
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
@@ -989,10 +1026,22 @@ connection.onNotification('Export namespace', (text: string) => {
 					const functionRegExpRes = functionSignatureRegExp.exec(lines[k]);
 					const constructorRegExpRes = constructorSignatureRegExp.exec(lines[k]);
 					const variableRegExpRes = variableSignatureRegExp.exec(lines[k]);
-					if (functionRegExpRes !== null)
+					if (functionRegExpRes !== null) {
 						resultLines.push(`@bypass /type method define ${namespaceName} ${className} ${lines[k].trim()}`);
-					else if (constructorRegExpRes !== null)
+						methods.push({
+							namespaceName: namespaceName,
+							className: className,
+							methodName: functionRegExpRes[2]
+						});
+					}
+					else if (constructorRegExpRes !== null) {
 						resultLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
+						constructors.push({
+							namespaceName: namespaceName,
+							className: className,
+							constructorSignature: getConstructorSignature(constructorRegExpRes[1], constructorRegExpRes[2])
+						});
+					}
 					else if (variableRegExpRes !== null)
 						resultLines.push(`@bypass /type field define ${namespaceName} ${className} ${lines[k].trim()}`);
 				}
@@ -1002,15 +1051,27 @@ connection.onNotification('Export namespace', (text: string) => {
 			}
 			const functionRegExpRes = functionSignatureRegExp.exec(lines[j]);
 			const variableRegExpRes = variableSignatureRegExp.exec(lines[j]);
-			if (functionRegExpRes !== null)
+			if (functionRegExpRes !== null) {
 				resultLines.push(`@bypass /function define ${namespaceName} ${lines[j].trim()}`);
+				functions.push({
+					namespaceName: namespaceName,
+					functionName: functionRegExpRes[2]
+				});
+			}
 			else if (variableRegExpRes !== null)
 				resultLines.push(`@bypass /variable define ${namespaceName} ${lines[j].trim()}`);
 			}
 
 		i = namespaceEndLine;
 	}
-	const result: string = resultLines.join('\n');
+	const script: string = resultLines.join('\n');
+	const result: NamespaceUploadResult = {
+		document: document,
+		defineScript: script,
+		functions: functions, 
+		constructors: constructors,
+		methods: methods
+	};
 	connection.sendNotification('Upload namespace script', result);
 });
 

@@ -17,19 +17,50 @@ import {
 
 let client: LanguageClient;
 
-function uploadFile(text: string) {
-	axios({
+interface DocumentContents {
+	text: string,
+	uri: Uri
+}
+interface NamespaceFunction {
+	namespaceName: string,
+	functionName: string
+}
+interface ClassConstructor {
+	namespaceName: string,
+	className: string,
+	constructorSignature: string
+}
+interface ClassMethod {
+	namespaceName: string,
+	className: string,
+	methodName: string
+}
+interface NamespaceUploadResult {
+	document: DocumentContents,
+	defineScript: string,
+	functions: NamespaceFunction[],
+	constructors: ClassConstructor[],
+	methods: ClassMethod[]
+}
+
+async function uploadFile(text: string): Promise<string> {
+	const data = await axios({
 		httpsAgent: new https.Agent({
 			rejectUnauthorized: false
 		}),
 		url: 'https://paste.minr.org/documents',
 		method: 'POST',
 		data: text
-	})
-	.then(data => env.clipboard.writeText('https://paste.minr.org/' + data.data.key))
-	.catch(err => console.log(err));
+	});
+	return 'https://paste.minr.org/' + data.data.key;
+}
 
-	window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+async function findAndUploadFile(fileName: string): Promise<string | undefined> {
+	const files: Uri[] = await workspace.findFiles(fileName);
+	if (files.length === 0)
+		return undefined;
+	const fileContents: Uint8Array = await workspace.fs.readFile(files[0]);
+	return await uploadFile(fileContents.toString());
 }
 
 export function activate(context: ExtensionContext) {
@@ -47,11 +78,15 @@ export function activate(context: ExtensionContext) {
 		}
 
 		if (textEditor.document.languageId === 'nms')
-			client.sendNotification('Export namespace', textEditor.document.getText());
-		else
-			uploadFile(textEditor.document.getText());
-		
-		
+			client.sendNotification('Export namespace', {
+				text: textEditor.document.getText(),
+				uri: textEditor.document.uri
+			});
+		else {
+			const result: string = await uploadFile(textEditor.document.getText());
+			env.clipboard.writeText(result);
+			window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+		}
 	});
 	context.subscriptions.push(disposable);
 
@@ -107,10 +142,9 @@ export function activate(context: ExtensionContext) {
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
-		// Register the server for plain text documents
 		documentSelector: [{ language: 'msc' }],
 		synchronize: {
-			// Notify the server about file changes to '.clientrc files contained in the workspace
+			// Notify the server about file changes to '.nms files contained in the workspace
 			fileEvents: workspace.createFileSystemWatcher('**/*.nms')
 		}
 	};
@@ -140,8 +174,37 @@ export function activate(context: ExtensionContext) {
 				client.sendNotification('processDefaultNamespace', result.toString());
 			});
 		});
-		client.onNotification('Upload namespace script', (text: string) => {
-			uploadFile(text);
+		client.onNotification('Upload namespace script', async (namespaceInfo: NamespaceUploadResult) => {
+			
+			const lines: string[] = [];
+
+			for (const functionInfo of namespaceInfo.functions) {
+				const functionLink: string | undefined = await findAndUploadFile(
+					`${functionInfo.namespaceName}/${functionInfo.functionName}.msc`
+				);
+				if (functionLink !== undefined)
+					lines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
+			}
+			for (const constructorInfo of namespaceInfo.constructors) {
+				const constructorLink: string | undefined = await findAndUploadFile(
+					`${constructorInfo.namespaceName}/${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`
+				);
+				if (constructorLink !== undefined)
+					lines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
+			}
+			for (const methodInfo of namespaceInfo.methods) {
+				const methodLink: string | undefined = await findAndUploadFile(
+					`${methodInfo.namespaceName}/${methodInfo.className}/${methodInfo.methodName}.msc`
+				);
+				if (methodLink !== undefined)
+					lines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
+			}
+			lines.push('@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}');
+
+			const script: string = namespaceInfo.defineScript + '\n' + lines.join('\n');
+			const finalLink: string = await uploadFile(script);
+			env.clipboard.writeText(finalLink);
+			window.showInformationMessage('Upload finished. Script url was copied to clipboard');
 		});
 		const snippetsUri = Uri.joinPath(context.extensionUri, 'snippets.json');
 		workspace.fs.readFile(snippetsUri).then((result) => {
