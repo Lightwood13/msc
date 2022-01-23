@@ -116,6 +116,7 @@
 		# Construct a player from their name or UUID.
 		# Null if the player does not exist.
 		Player(String value)
+		Player(String value, Player visibleTo)
 		# Find a player at these coordinates in the passed world.
 		# Null if the player does not exist. In the scenario that multiple players
 		# are in the same location, nondeterministically returns one Player at that location.
@@ -182,7 +183,7 @@
 		# deviate from the value set here.
 		setMaxHealth()
 		# Gets the players current food level.
-		Float getFoodLevel()
+		Float getFoodLevels()
 		# Sets the players current food level.
 		setFoodLevel(Int value)
 		# Gets the players current saturation level. Saturation is a buffer for food
@@ -211,7 +212,7 @@
 		# Checks if this Player is a server operator.
 		Boolean isOp()
 		# Request that the player's client downloads and switches resource pack.
-		setResourcePack(String url, String hash)
+		setResourcePack(String resourcePackURL, String resourcePackSHA1)
 		# Returns the Item found in the slot at the given index.
 		Item getItem(Int slot)
 		# Gets a copy of the item the player is currently holding in their main hand.
@@ -270,7 +271,7 @@
 		# Returns the amount of global points the player has.
 		Int getGlobalPoints()
 		# Returns whether the player has completed the specified map.
-		Boolean hasCompletedMap(String maptag)
+		Boolean hasCompletedMap(String tag)
 		# Returns the current time the player has spent in the map.
 		Long getMapTime()
 		# Get the amount of times a player has hit any starting checkpoint sign.
@@ -280,6 +281,33 @@
 		# Invalidate the player's time on map and challenge, but allows
 		# them to complete the map and challenge.
 		invalidateTime()
+
+		Boolean canSee(Player target)
+		Int countItem(String id)
+		Location getBedLocation()
+		String getBedLocationWorld()
+		Double getBedLocationX()
+		Double getBedLocationY()
+		Double getBedLocationZ()
+		Double getDirectionX()
+		Double getDirectionY()
+		Double getDirectionZ()
+		String getDisplayName()
+		Int getEntityStatistic(statistic::Statistic statistic, entity::EntityType entityType)
+		String getGameMode()
+		Location getLocation()
+		Int getMaterialStatistic(statistic::Statistic statistic, material::Material material)
+		String getName()
+		Position getPosition()
+		String getRank()
+		Int getSpeedrunScore()
+		Int getStatistic(statistic::Statistic statistic)
+		Boolean hasBedLocation()
+		sendMessage(String message)
+		sendMessageFancy(text::TextComponent[] msg)
+		setExp(Float exp)
+		String string()
+		teleport(Position destination)
 	@endclass
 
 	@class Entity
@@ -300,10 +328,14 @@
 		Double getY()
 		# Gets the entity's current z position.
 		Double getZ()
+		Location getLocation()
 		# Gets the entity's current rotation around the y axis.
 		Float getYaw()
 		# Gets the entity's current rotation around the x axis.
 		Float getPitch()
+		Double getDirectionX()
+		Double getDirectionY()
+		Double getDirectionZ()
 		# Gets the entity's current velocity in the x direction.
 		Double getVelocityX()
 		# Gets the entity's current velocity in the y direction.
@@ -325,18 +357,20 @@
 		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
 		setHealth(Double health)
 		# Gets the maximum health this entity has.
-		Double getMaxHealth()
+		Int getMaxHealth()
 		# Sets the maximum health this entity has. If the health of the entity is
 		# above the value provided it will be clamped to the max value. Only sets
 		# the 'base' max health value, any modifiers changing this value (potions,
 		# etc) will apply *after* this value. The value returned by getMaxHealth may
 		# deviate from the value set here.
-		setMaxHealth()
+		setMaxHealth(Int value)
 		# Gets the UUID of the entity (in string format).
 		String getUniqueId()
+		teleport(Position destination)
 	@endclass
 
 	@class Block
+		Block(BlockLocation location)
 		# Get the block at these coordinates in the given world.
 		Block(Int x, Int y, Int z, String world)
 		
@@ -348,8 +382,6 @@
 		Int getLightFromBlocks()
 		# Returns the amount of light at this block from the sky.
 		Int getLightFromSky()
-		# Gets the block at the given offsets.
-		Block getRelative(Int modX, Int modY, Int modZ)
 		# Gets the type of this block. Actual value returned is a
 		# 'magic value' and can change at any spigot or bukkit update.
 		String getBlockType()
@@ -361,6 +393,7 @@
 		Int getZ()
 		# Returns the world where this block resides in.
 		String getWorld()
+		BlockLocation getLocation()
 		# Returns true if the block is being indirectly powered by Redstone.
 		Boolean isBlockIndirectlyPowered()
 		# Returns true if the block is being powered by Redstone.
@@ -369,6 +402,7 @@
 		Boolean isEmpty()
 		# Returns true if this block is liquid.
 		Boolean isLiquid()
+		String string()
 	@endclass
 
 	@class Item
@@ -380,6 +414,8 @@
 		Int getAmount()
 		# Gets the type of this item.
 		String getItemType()
+		String getDisplayName()
+		Boolean hasDisplayName()
 		# Get the maximum stacksize for the material held in
 		# this ItemStack. (Returns -1 if it has no idea).
 		Int getMaxStackSize()
@@ -391,5 +427,252 @@
 		setItemType(String item)
 		# Returns whether two items are equal, but does not consider stack size (amount).
 		Boolean isSimilar(Item item)
+		String string()
 	@endclass
+
+	@class Location
+		Location(Vector3 vector, String world)
+		Location(Float x, Float y, Float z, String world)
+		Location(Double x, Double y, Double z, String world)
+		Location(Int x, Int y, Int z, String world)
+
+		BlockLocation asBlockLocation()
+		Vector2 asVector2()
+		Vector3 asVector3()
+		String getWorld()
+		Double getX()
+		Double getY()
+		Double getZ()
+		String string()
+	@endclass
+
+	@class BlockLocation
+		BlockLocation(BlockVector3 vector, String world)
+		BlockLocation(Int x, Int y, Int z, String world)
+
+		BlockVector2 asBlockVector2()
+		BlockVector3 asBlockVector3()
+		Location asLocation()
+		Region[] getRegions()
+		String getWorld()
+		Int getX()
+		Int getY()
+		Int getZ()
+		set(String block)
+		String string()
+	@endclass
+
+	@class Position
+		Position(Location location, Float yaw, Float pitch)
+		Position(Double x, Double y, Double z, FLoat yaw, Float pitch, String world)
+		Position(Double x, Double y, Double z, Int yaw, Int pitch, String world)
+		Position(Int x, Int y, Int z, Float yaw, Float pitch, String world)
+		Position(Int x, Int y, Int z, Int yaw, Int pitch, String world)
+		Position(Float x, Float y, Float z, Float yaw, Float pitch, String world)
+		Position(Float c, Float y, Float z, Iny yaw, Int pitch, String world)
+
+		Location asLocation()
+		Float getPitch()
+		String getWorld()
+		Double getX()
+		Double getY()
+		Double getZ()
+		Float getYaw()
+		String string()
+	@endclass
+
+	@class Vector2
+		Vector2(Double x, Double z)
+		Vector2(Float x, Float z)
+		Vector2(Int x, Int z)
+		Vector2(Long x, Long z)
+
+		Vector2 abs()
+		BlockVector2 asBlockVector2()
+		Vector3 asVector3()
+		Vector2 ceil()
+		Boolean containedWithin(Vector2 min, Vector2 max)
+		Double distance(Vector2 other)
+		Double distanceSq(Vector2 other)
+		Double dot(Vector2 other)
+		Vector2 floor()
+		Vector2 getMaximum(Vector2 other)
+		Vector2 getMinimum(Vector2 other)
+		Double getX()
+		Double getZ()
+		Double length()
+		Double lengthSq()
+		Vector2 normalise()
+		Vector2 round()
+		String string()
+		Vector2 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
+	@endclass
+
+	@class BlockVector2
+		BlockVector2(Int x, Int z)
+
+		BlockVector2 abs()
+		BlockVector3 asBlockVector3()
+		Vector2 asVector2()
+		BlockVector2 ceil()
+		Boolean containedWithin(BlockVector2 min, BlockVector2 max)
+		Double distance(BlockVector2 other)
+		Double distanceSq(BlockVector2 other)
+		Double dot(BlockVector2 other)
+		BlockVector2 floor()
+		BlockVector2 getMaximum(BlockVector2 other)
+		BlockVector2 getMinimum(BlockVector2 other)
+		Int getX()
+		Int getZ()
+		Double length()
+		Double lengthSq()
+		BloclVector2 normalise()
+		BlockVector2 round()
+		String string()
+		BlockVector2 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
+	@endclass
+
+	@class Vector3
+		Vector3(Double x, Double y, Double z)
+		Vector3(Float x, Float y, Float z)
+		Vector3(Int x, Int y, Int z)
+		Vector3(Long x, Long y, Long z)
+
+		Vector3 abs()
+		BlockVector3 asBlockVector3()
+		Location asLocation(String world)
+		Vector2 asVector2()
+		Vector3 ceil()
+		Vector3 clampY(Int min, Int max)
+		Boolean containedWithin(Vector3 min, Vector3 max)
+		Vector3 cross(Vector3 other)
+		Double distance(Vector3 other)
+		Double distanceSq(Vector3 other)
+		Double dot(Vector3 other)
+		Vector3 floor()
+		Vector3 getMaximum(Vector3 other)
+		Vector3 getMinimum(Vector3 other)
+		Double getX()
+		Double getY()
+		Double getZ()
+		Double length()
+		Double lengthSq()
+		Vector3 normalise()
+		Vector3 round()
+		String string()
+		Vector3 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
+	@endclass
+
+	@class BlockVector3
+		BlockVector3(Int x, Int y, Int z)
+
+		BlockVector3 abs()
+		BlockLocation asBlockLocation(String world)
+		BlockVector2 asBlockVector2()
+		Vector3 asVector3()
+		BlockVector3 ceil()
+		BlockVector3 clampY(Int min, Int max)
+		Boolean containedWithin(BlockVector3 min, BlockVector3 max)
+		BlockVector3 cross(BlockVector3 other)
+		Double distance(BlockVector3 other)
+		Double distanceSq(BlockVector3 other)
+		Double dot(BlockVector3 other)
+		BlockVector3 floor()
+		BlockVector3 getMaximum(BlockVector3 other)
+		BlockVector3 getMinimum(BlockVector3 other)
+		Double getX()
+		Double getY()
+		Double getZ()
+		Double length()
+		Double lengthSq()
+		BlockVector3 normalise()
+		BlockVector3 round()
+		String string()
+		BlockVector3 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
+	@endclass
+
+	@class Region
+		Region(String id, String world)
+		Region(BlockVector3 min, BlockVector3 max, String world)
+		Region(String id, BLockVector3 min, BlockVector3 max, String world)
+		Region(BlockVector2[] points, Int minY, Int maxY, String world)
+		Region(String id, BlockVectro2[] points, Int minY, Int maxY, String world)
+		Region(Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
+		Region(String id, Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
+
+		addMemberGroup(String group)
+		addMemberPlayer(Player player)
+		addOwnerGroup(String group)
+		addOwnerPlayer(Player player)
+		clearParent()
+		Boolean containsAny(BlockVector2[] positions)
+		Boolean containsBlockVector2(BlockVector2 vector)
+		Boolean containsBlockVector3(BlockVector3 vector)
+		Boolean containsCoordinates(Int x, Int y, Int z, String world)
+		Boolean containsLocation(BlockLocation location)
+		Boolean containsPlayer(Player player)
+		Double getDoubleFlag(String flag)
+		String getID()
+		Int getIntFlag(String flag)
+		Region[] getIntersectingRegions(Region[] candidates)
+		BlockLocation getMaximumPoint()
+		String[] getMemberGroups()
+		Player[] getMemberPlayers()
+		BlockLocation getMinimumPoint()
+		String[] getOwningGroups()
+		Player[] getOwningPlayers()
+		Region getParent()
+		Player[] getPlayersInside()
+		Vector2[] getPoints()
+		Int getPriority()
+		String getRegionType()
+		Int getVolume()
+		String getWorld()
+		Boolean hasMembersOrOwners()
+		Boolean isMemberGroup(String group)
+		Boolean isMemberPlayer(Player player)
+		Boolean isOwnerGroup(String group)
+		Boolean isOwnerPlayer(Player player)
+		Boolean isPhysicalArea()
+		Boolean isTransient()
+		Void setDoubleFlag(String flag, Double value)
+		Void setIntFlag(String flag, Int value)
+		Void setParent(Region parent)
+		Void setPriority(Int priority)
+		String string()
+	@endclass
+@endnamespace
+
+
+@namespace system
+	Long currentTimeMillis()
+	Double[] getTPS()
+@endnamespace
+
+
+@namespace math
+	Double abs(Double x)
+	Double arccos(Double x)
+	Double arcsin(Double x)
+	Double arctan(Double x)
+	Int ceil(Double x)
+	Double cos(Double x)
+	Double deg(Double x)
+	Int floor(Double x)
+	Double pow(Double base, Double exponent)
+	Double rad(Double x)
+	Double radarccos(Double x)
+	Double radarcsin(Double x)
+	Double radarctan(Double x)
+	Double radcos(Double x)
+	Double radsin(Double x)
+	Double radtan(Double x)
+	Double random(Double min, Double max)
+	Double randomDouble()
+	Float randomFloat()
+	Int randomInt()
+	Long randomLong()
+	Double sin(Double x)
+	Double sqrt(Double x)
+	Double tan(Double x)
 @endnamespace

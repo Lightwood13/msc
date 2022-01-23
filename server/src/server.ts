@@ -50,7 +50,6 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			// Tell the client that this server supports code completion.
 			completionProvider: {
-				resolveProvider: true,
 				triggerCharacters: ['.', ':']
 			},
 			signatureHelpProvider: {
@@ -82,6 +81,7 @@ connection.onInitialized(() => {
 interface VariableInfo {
 	type: string;
 	lineDeclared: number;
+	lineUndeclared: number | undefined;
 	suggestion: CompletionItem;
 }
 interface MemberInfo {
@@ -102,7 +102,7 @@ interface UsingDeclaration {
 	namespace: string
 }
 interface SourceFileData{
-	variables: Map<string, VariableInfo>,
+	variables: Map<string, VariableInfo[]>,
 	usingDeclarations: UsingDeclaration[]
 }
 
@@ -115,7 +115,7 @@ const snippetsWithoutAtSymbol: CompletionItem[] = [];
 const newLineRegExp = /\r?\n/;
 const allowedTypeNameWithNamespaceRegExp = /^([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?$/;
 const allowedNameRegExp = /^[a-z][a-zA-Z0-9_]*$/;
-const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*)\s*$/;
+const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*|__default__)\s*$/;
 const classSignatureRegExp = /^\s*@class\s+([A-Z][a-zA-Z0-9_]*)\s*$/;
 const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)?\s+([a-z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
 const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
@@ -127,7 +127,7 @@ function refreshNamespaceFiles() {
 	readdir('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
-		files.forEach((filename) => {
+		for (const filename of files) {
 			const filenamesSplit = filename.split('.');
 			if (filenamesSplit[filenamesSplit.length - 1] == 'nms') {
 				readFile(filename, (err, data) => {
@@ -136,7 +136,7 @@ function refreshNamespaceFiles() {
 					parseNamespaceFile(data.toString(), namespaces, classes);
 				});
 			}
-		});
+		}
 	});
 }
 
@@ -236,7 +236,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 		const newClassArray: CompletionItem = {
 			label: className + '[]',
 			kind: CompletionItemKind.Class,
-			detail: 'class' + className + '[]'
+			detail: 'class ' + className + '[]'
 		};
 		if (description.length !== 0)
 			newClass.documentation = {
@@ -364,11 +364,11 @@ function getParamsFromSignature(signature: string): ParameterInformation[] {
 		return [];
 	const paramsString = regExpRes[1];
 	const params = paramsString.split(',');
-	params.forEach((param: string) => {
+	for (const param of params) {
 		result.push({
 			label: param.trim()
 		});
-	});
+	}
 	return result;
 }
 
@@ -408,24 +408,26 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 		usingDeclarations: [],
 	};
 
-	result.variables.set('player', {
+	result.variables.set('player', [{
 		lineDeclared: -1,
+		lineUndeclared: undefined,
 		type: 'Player',
 		suggestion: {
 			label: 'player',
 			kind: CompletionItemKind.Variable,
 			detail: 'Player player'
 		}
-	});
-	result.variables.set('block', {
+	}]);
+	result.variables.set('block', [{
 		lineDeclared: -1,
+		lineUndeclared: undefined,
 		type: 'Block',
 		suggestion: {
 			label: 'block',
 			kind: CompletionItemKind.Variable,
 			detail: 'Block block'
 		}
-	});
+	}]);
 
 	const lines = text.split(newLineRegExp);
 	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
@@ -439,24 +441,30 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
 			if (regExpRes === null)
 				continue;
-			result.variables.set(regExpRes[2], {
+			result.variables.set(regExpRes[2], [{
 				lineDeclared: 0,
+				lineUndeclared: undefined,
 				type: regExpRes[1],
 				suggestion: {
 					label: regExpRes[2],
 					kind: CompletionItemKind.Variable,
 					detail: regExpRes[1] + ' ' + regExpRes[2]
 				}
-			});
+			}]);
 		}
 	}
+	const forLoopVariableStack: string[] = [];
 	for (let i = 0; i < lines.length; i++) {
-		const tokens = lines[i].split(/\s+/);
-		if (tokens.length >= 3 && tokens[0] === '@define') {
+		const tokens = lines[i].trim().split(/\s+/);
+		if (tokens.length >= 3 && (tokens[0] === '@define' || tokens[0] === '@for')) {
 			if (!allowedTypeNameWithNamespaceRegExp.test(tokens[1]) || !allowedNameRegExp.test(tokens[2]))
 				continue;
-			result.variables.set(tokens[2], {
+			let sameNameVariables = result.variables.get(tokens[2]);
+			if (sameNameVariables === undefined)
+				sameNameVariables = [];
+			sameNameVariables.push({
 				lineDeclared: i,
+				lineUndeclared: undefined,
 				type: tokens[1],
 				suggestion: {
 					label: tokens[2],
@@ -464,6 +472,18 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 					detail: tokens[1] + ' ' + tokens[2]
 				}
 			});
+			result.variables.set(tokens[2], sameNameVariables);
+			if (tokens[0] === '@for')
+				forLoopVariableStack.push(tokens[2]);
+		}
+		else if (tokens.length === 1 && tokens[0] === '@done') {
+			const loopVariableName = forLoopVariableStack.pop();
+			if (loopVariableName === undefined)
+				continue;
+			const loopVariable = result.variables.get(loopVariableName);
+			if (loopVariable === undefined)
+				continue;
+			loopVariable[loopVariable.length - 1].lineUndeclared = i;
 		}
 		else if (tokens.length === 2 && tokens[0] === '@using')
 			result.usingDeclarations.push({
@@ -563,7 +583,7 @@ interface FunctionCallInfo {
 }
 
 function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
-	activeNamespace: string | undefined): FunctionCallInfo | undefined {
+	activeNamespace: string | undefined, lineNumber: number): FunctionCallInfo | undefined {
 	let i = line.length - 1;
 	let paramNumber = 0;
 	for (; i >= 0; i--) {
@@ -610,7 +630,7 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			if (!/[a-zA-Z0-9_]/.test(line[i - 1]))
 				return undefined;
 			const callChain = parseCallChain(line.substring(0, i) + '().a');
-			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, currentDocumentData, activeNamespace);
+			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, currentDocumentData, activeNamespace, lineNumber);
 			if (lastNameAndType === undefined)
 				return undefined;
 			return {
@@ -627,7 +647,8 @@ interface NameAndType {
 	type: string
 }
 
-function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentData: SourceFileData, activeNamespace: string | undefined): NameAndType | undefined {
+function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentData: SourceFileData,
+	activeNamespace: string | undefined, lineNumber: number): NameAndType | undefined {
 	if (callChain.length === 0)
 		return undefined;
 	
@@ -662,7 +683,13 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 			currentClass = callChain[0].substring(0, callChain[0].length - 2);
 		}
 		else {
-			const currentVariable = currentDocumentData.variables.get(callChain[0]);
+			const currentVariables = currentDocumentData.variables.get(callChain[0]);
+			let currentVariable: VariableInfo | undefined = undefined;
+			if (currentVariables !== undefined)
+				for (const variable of currentVariables)
+					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined
+						|| variable.lineUndeclared > lineNumber))
+							currentVariable = variable;
 			if (currentVariable !== undefined) {
 				currentClass = currentVariable.type;
 			}
@@ -718,12 +745,12 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number) : string | undefined {
 	let closestUsingLine = -1;
 	let result: string | undefined = undefined;
-	usingDeclarations.forEach((usingDeclaration: UsingDeclaration) => {
+	for (const usingDeclaration of usingDeclarations) {
 		if (usingDeclaration.lineDeclared > closestUsingLine && usingDeclaration.lineDeclared < line) {
 			closestUsingLine = usingDeclaration.lineDeclared;
 			result = usingDeclaration.namespace;
 		}
-	});
+	}
 	return result;
 }
 
@@ -751,7 +778,7 @@ connection.onSignatureHelp(
 			}
 		});
 		
-		const info = parseFunctionCall(line, documentData, activeNamespace);
+		const info = parseFunctionCall(line, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (info === undefined)
 			return result;
 		let name = info.name;
@@ -805,8 +832,8 @@ connection.onSignatureHelp(
 			}
 		}
 
-		if (result.signatures.length !== 0)
-			result.signatures[0].activeParameter = info.paramNumber;
+		for (const signature of result.signatures)
+			signature.activeParameter = info.paramNumber;
 		return result;
 	}
 );
@@ -815,7 +842,7 @@ connection.onHover(
 	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-
+		
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return undefined;
@@ -828,7 +855,7 @@ connection.onHover(
 				character: 0
 			}
 		});
-		line = line.trim();
+		line = line.trimEnd();
 		let i = textDocumentPosition.position.character;
 		if (!/[a-zA-Z0-9_]/.test(line[i]))
 			return undefined;
@@ -845,7 +872,7 @@ connection.onHover(
 			parseString += '.a';
 		
 		const callChain = parseCallChain(parseString);
-		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace);
+		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (nameAndType === undefined)
 			return undefined;
 
@@ -883,7 +910,6 @@ connection.onHover(
 	}
 );
 
-// This handler provides the initial list of the completion items.
 connection.onCompletion(
 	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
@@ -921,29 +947,30 @@ connection.onCompletion(
 		const variableOrClassSuggestionRegExpRes = variableOrClassSuggestionRegExp.exec(line);
 		if (variableOrClassSuggestionRegExpRes !== null) {
 			let result: CompletionItem[] = [];
-			documentData.variables.forEach((variableData: VariableInfo, name: string) => {
-				if (variableData.lineDeclared < textDocumentPosition.position.line)
-					result.push(variableData.suggestion);
-			});
+			for (const [variableName, variableArray] of documentData.variables.entries())
+				for (const variable of variableArray)
+					if (variable.lineDeclared < textDocumentPosition.position.line
+						&& (variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
+						result.push(variable.suggestion);
 			if (activeNamespace !== undefined) {
 				const currentNamespace = namespaces.get(activeNamespace);
 				if (currentNamespace !== undefined) {
 					result = result.concat(currentNamespace.memberSuggestions);
 				}
 			}
-			namespaces.forEach((_namespaceInfo: NamespaceInfo, name: string) => {
-				if (name !== '__default__') {
+			for (const [namespaceName, namespaceInfo] of namespaces) {
+				if (namespaceName !== '__default__') {
 					result.push({
-						label: name,
+						label: namespaceName,
 						kind: CompletionItemKind.Module,
-						insertText: name + '::',
+						insertText: namespaceName + '::',
 						command: {
 							title: 'Trigger Suggest',
 							command: 'editor.action.triggerSuggest'
 						}
 					});
 				}
-			});
+			}
 			const defaultClasses = namespaces.get('__default__');
 			if (defaultClasses !== undefined)
 				result = result.concat(defaultClasses.memberSuggestions);
@@ -953,7 +980,7 @@ connection.onCompletion(
 		const classMemberSuggestionRegExpRes = classMemberSuggestionRegExp.exec(line);
 		if (classMemberSuggestionRegExpRes !== null) {
 			const callChain = parseCallChain(line);
-			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace);
+			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 			if (lastNameAndType === undefined)
 				return [];
 			
@@ -963,21 +990,6 @@ connection.onCompletion(
 			return currentClassInfo.memberSuggestions;
 		}
 		return [];
-	}
-);
-
-// This handler resolves additional information for the item selected in
-// the completion list.
-connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
-		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
-		}
-		return item;
 	}
 );
 
@@ -991,8 +1003,7 @@ connection.onNotification('updateDocument', (document: Temp) => {
 });
 
 connection.onNotification('processDefaultNamespace', (text: string) => {
-	const lines = text.split(newLineRegExp);
-	namespaces.set('__default__', parseNamespace('__default__', lines.slice(1,lines.length - 1), classes));
+	parseNamespaceFile(text, namespaces, classes);
 });
 
 connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {

@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr Scripts VS Code extension",
-	"version": "2.1.5",
+	"version": "2.1.6",
 	"icon": "images/minr.png",
 	"repository": {
 		"type": "git",
@@ -50,25 +50,32 @@
 			}
 		],
 		"commands": [
-		{
-			"command": "msc.upload",
-			"title": "Upload script"
-		},
-		{
-			"command": "msc.download",
-			"title": "Download script"
-		}
+			{
+				"command": "msc.upload",
+				"title": "Upload script"
+			},
+			{
+				"command": "msc.download",
+				"title": "Download script"
+			}
 		],
 		"keybindings": [
-		{
-			"command": "msc.download",
-			"key": "alt+d",
-			"mac": "alt+d"
-		},
-		{
-			"command": "msc.upload",
-			"key": "alt+u",
-			"mac": "alt+u"
+			{
+				"command": "msc.download",
+				"key": "alt+d",
+				"mac": "alt+d"
+			},
+			{
+				"command": "msc.upload",
+				"key": "alt+u",
+				"mac": "alt+u"
+			}
+		],
+		"iconThemes": [
+			{
+			  "id": "msc",
+			  "label": "Minr scripts",
+			  "path": "./fileicons/vs-seti-plus-msc-icon-theme.json"
 			}
 		]
 	},
