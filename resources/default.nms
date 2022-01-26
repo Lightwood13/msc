@@ -676,3 +676,112 @@
 	Double sqrt(Double x)
 	Double tan(Double x)
 @endnamespace
+
+
+@namespace list
+	Int[] range(Int start, Int end)
+@endnamespace
+
+
+@namespace util
+	Int executeAndQueryResult(String command)
+	Boolean executeAndQuerySuccess(String command)
+	String randomUUID()
+@endnamespace
+
+
+@namespace text
+	text::TextComponent[] deserialise(String json)
+	String escapeJSON(String json)
+	text::TextComponent[] fromLegacyText(String text, format::TextFormat defaultColor)
+	String serialise(text::TextComponent[] components)
+	String toLegacyText(text::TextComponent[] components)
+	String toPlainText(text::TextComponent[] components)
+
+	@class TextComponent
+		TextComponent(String text)
+		TextComponent(String componentType, String value)
+
+		text::TextComponent addExtraComponent(text::TextComponent component)
+		text::TextComponent addExtraString(String text)
+		text::TextComponent clearBold()
+		text::TextComponent clearClickEvent()
+		text::TextComponent clearItalic()
+		text::TextComponent clearObfuscated()
+		text::TextComponent clearStrikethrough()
+		text::TextComponent clearUnderlined()
+		text::TextComponent copyFormatting(text::TextComponent component, Boolean replace)
+		String debug()
+		text::TextComponent duplicate()
+		String getClickEventAction()
+		String getClickEventValue()
+		format::TextFormat getColor()
+		format::TextFormat getColorRaw()
+		String getComponentType()
+		String getContent()
+		text::TextComponent[] getExtra()
+		String getFont()
+		String getFontRaw()
+		String getInsertion()
+		Boolean hasFormatting()
+		Boolean isBold()
+		Boolean isBoldRaw()
+		Boolean isItalic()
+		Boolean isItalicRaw()
+		Boolean isObfuscated()
+		Boolean isObfuscatedRaw()
+		Boolean isStrikethrough()
+		Boolean isStrikethroughRaw()
+		Boolean isUnderlined()
+		Boolean isUnderlinedRaw()
+		text::TextComponent retain(String retention)
+		String serialise()
+		text::TextComponent setBold(Boolean state)
+		text::TextComponent setClickEvent(String action, String value)
+		text::TextComponent setColor(format::TextFormat color)
+		text::TextComponent setContent(String value)
+		text::TextComponent setExtra(text::TextComponent[] components)
+		text::TextComponent setFont(String font)
+		text::TextComponent setInsertion(String insertion)
+		text::TextComponent setItalic(Boolean state)
+		text::TextComponent setObfuscated(Boolean state)
+		text::TextComponent setStrikethrough(Boolean state)
+		text::TextComponent setUnderlined(Boolean state)
+		String string()
+		String toLegacyText()
+		String toPlainText()
+	@endclass
+
+	@class ComponentBuilder
+		ComponentBuilder()
+		ComponentBuilder(text::TextComponent component)
+		ComponentBuilder(text::ComponentBuilder other)
+		ComponentBuilder(String text)
+
+		text::ComponentBuilder appendComponent(text::TextComponent component)
+		text::ComponentBuilder appendComponentRetain(text::TextComponent component, String formatRetention)
+		text::ComponentBuilder appendComponents(text::TextComponent[] components)
+		text::ComponentBuilder appendComponentsRetain(text::TextComponent[] components, String formatRetention)
+		text::ComponentBuilder appendLegacyText(String text)
+		text::ComponentBuilder appendText(String text)
+		text::ComponentBuilder appendTextRetain(String text, String formatRetention)
+		text::ComponentBuilder bold(Boolean bold)
+		text::ComponentBuilder click(String action, String value)
+		text::ComponentBuilder color(format::TextFormat color)
+		text::TextComponent[] create()
+		text::ComponentBuilder font(String font)
+		text::TextComponent getComponent(Int pos)
+		text::TextComponent getCurrentComponent()
+		text::ComponentBuilder insertion(String insertion)
+		text::ComponentBuilder italic(Boolean italic)
+		text::ComponentBuilder obfuscated(Boolean obfuscated)
+		Void removeComponent(Int pos)
+		text::ComponentBuilder reset()
+		text::ComponentBuilder resetCursor()
+		text::ComponentBuilder retain(String formatRetention)
+		text::ComponentBuilder setCursor(Int pos)
+		text::ComponentBuilder strikethrough(Boolean strikethrough)
+		String string()
+		text::ComponentBuilder underline(Boolean underline)
+	@endclass
+@endnamespace

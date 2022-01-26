@@ -56,11 +56,15 @@ async function uploadFile(text: string): Promise<string> {
 }
 
 async function findAndUploadFile(fileName: string): Promise<string | undefined> {
-	const files: Uri[] = await workspace.findFiles(fileName);
+	const files: Uri[] = await workspace.findFiles(escapeArrayAccess(fileName));
 	if (files.length === 0)
 		return undefined;
 	const fileContents: Uint8Array = await workspace.fs.readFile(files[0]);
 	return await uploadFile(fileContents.toString());
+}
+
+function escapeArrayAccess(text: string): string {
+	return text.replace('[]', '[[][]]');
 }
 
 export function activate(context: ExtensionContext) {

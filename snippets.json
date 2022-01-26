@@ -119,5 +119,93 @@
 			"kind": "plaintext",
 			"value": "@global_cooldown 1s"
 		}
+	},
+	{
+		"label": "bypass",
+		"kind": 14
+	},
+	{
+		"label": "cancel",
+		"kind": 14
+	},
+	{
+		"label": "chatscript",
+		"kind": 14
+	},
+	{
+		"label": "command",
+		"kind": 14
+	},
+	{
+		"label": "console",
+		"kind": 14
+	},
+	{
+		"label": "cooldown",
+		"kind": 14
+	},
+	{
+		"label": "define",
+		"kind": 14
+	},
+	{
+		"label": "delay",
+		"kind": 14
+	},
+	{
+		"label": "done",
+		"kind": 14
+	},
+	{
+		"label": "else",
+		"kind": 14
+	},
+	{
+		"label": "elseif",
+		"kind": 14
+	},
+	{
+		"label": "fast",
+		"kind": 14
+	},
+	{
+		"label": "fi",
+		"kind": 14
+	},
+	{
+		"label": "for",
+		"kind": 14
+	},
+	{
+		"label": "global_cooldown",
+		"kind": 14
+	},
+	{
+		"label": "if",
+		"kind": 14
+	},
+	{
+		"label": "player",
+		"kind": 14
+	},
+	{
+		"label": "prompt",
+		"kind": 14
+	},
+	{
+		"label": "return",
+		"kind": 14
+	},
+	{
+		"label": "slow",
+		"kind": 14
+	},
+	{
+		"label": "using",
+		"kind": 14
+	},
+	{
+		"label": "var",
+		"kind": 14
 	}
 ]
