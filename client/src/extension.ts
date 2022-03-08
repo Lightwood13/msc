@@ -64,7 +64,8 @@ async function findAndUploadFile(fileName: string): Promise<string | undefined> 
 }
 
 function escapeArrayAccess(text: string): string {
-	return text.replace('[]', '[[][]]');
+	const temp = text.replace(/\[\]/g, '[[][]]');
+	return temp.replace(/::/g, '__');
 }
 
 export function activate(context: ExtensionContext) {
