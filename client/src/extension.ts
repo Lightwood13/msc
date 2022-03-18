@@ -120,7 +120,7 @@ export function activate(context: ExtensionContext) {
 		.then(async data => {
 			await workspace.openTextDocument({'language': 'msc', 'content': data.data.data});
 		})
-		.catch(err => {
+		.catch(_err => {
 			window.showErrorMessage('Cannot get requested script. Please copy a valid script URL to clipboard');
 		});
 	});
@@ -162,13 +162,6 @@ export function activate(context: ExtensionContext) {
 		clientOptions
 	);
 
-	workspace.onDidChangeTextDocument((event) => {
-		client.sendNotification('updateDocument', {
-			documentUri: event.document.uri.toString(), 
-			documentText: event.document.getText()
-		});
-	});
-
 	// Start the client. This will also launch the server
 	client.start();
 
@@ -185,7 +178,7 @@ export function activate(context: ExtensionContext) {
 				console.log('Successfully fetched default namespace file from github');
 				client.sendNotification('processDefaultNamespace', data.data);
 			})
-			.catch(err => {
+			.catch(_err => {
 				console.log('Couldn\'t connect to github');
 				const defaultNamespaceUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
 				workspace.fs.readFile(defaultNamespaceUri).then((result) => {

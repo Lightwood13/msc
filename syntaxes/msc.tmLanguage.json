@@ -87,7 +87,7 @@
 		"operators": {
 			"patterns": [{
 				"name": "keyword.operator",
-				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|]"
+				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|\\%\\^]"
 			}]
 		},
 		"punctuation": {
@@ -99,7 +99,7 @@
 		"types": {
 			"patterns": [{
 				"name": "storage.type.msc",
-				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|Player|Entity|Block|BlockLocation|Region|Item)(?!\\w)"
+				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|String|Player|Entity|Block|Item|Location|BlockLocation|Position|Vector2|BlockVector2|Vector3|BlockVector3|Region)(?!\\w)"
 			}]
 		}
 	},

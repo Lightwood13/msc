@@ -12,8 +12,7 @@ import {
 	TextDocumentPositionParams,
 	TextDocumentSyncKind,
 	InitializeResult,
-	MarkupKind,
-	InsertTextFormat
+	MarkupKind
 } from 'vscode-languageserver/node';
 
 import {
@@ -21,13 +20,26 @@ import {
 } from 'vscode-languageserver-textdocument';
 import {
 	SignatureHelp,
-	SignatureInformation,
-	ParameterInformation,
+	SignatureHelpParams,
 	Hover,
-	HoverParams,
-	SignatureHelpParams
+	HoverParams
 } from 'vscode-languageserver-protocol';
 import { readdir, readFile } from 'fs';
+
+import {
+	VariableInfo,
+	NamespaceInfo,
+	ClassInfo,
+	UsingDeclaration,
+	SourceFileData,
+	parseNamespaceFile,
+	newLineRegExp,
+	namespaceSignatureRegExp,
+	classSignatureRegExp,
+	functionSignatureRegExp,
+	constructorSignatureRegExp,
+	variableSignatureRegExp
+} from './parser';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -78,50 +90,15 @@ connection.onInitialized(() => {
 	refreshNamespaceFiles();
 });
 
-interface VariableInfo {
-	type: string;
-	lineDeclared: number;
-	lineUndeclared: number | undefined;
-	suggestion: CompletionItem;
-}
-interface MemberInfo {
-	name: string,
-	returnType: string,
-	documentation: string | undefined,
-	suggestion: CompletionItem | undefined,
-	signature: SignatureInformation | undefined;
-}
-interface NamespaceInfo {
-	members: Map<string, MemberInfo>;
-	memberSignatures: Map<string, SignatureInformation[] | undefined>;
-	memberSuggestions: CompletionItem[];
-}
-type ClassInfo = NamespaceInfo;
-interface UsingDeclaration {
-	lineDeclared: number,
-	namespace: string
-}
-interface SourceFileData{
-	variables: Map<string, VariableInfo[]>,
-	usingDeclarations: UsingDeclaration[]
-}
-
 const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
 let snippets: CompletionItem[] = [];
 const snippetsWithoutAtSymbol: CompletionItem[] = [];
 
-const newLineRegExp = /\r?\n/;
 const allowedTypeNameWithNamespaceRegExp = /^([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?$/;
 const allowedNameRegExp = /^[a-z][a-zA-Z0-9_]*$/;
-const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*|__default__)\s*$/;
-const classSignatureRegExp = /^\s*@class\s+([A-Z][a-zA-Z0-9_]*)\s*$/;
-const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)?\s+([a-z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-const variableSignatureRegExp = /^\s*(relative\s+)?(final\s+)?(relative\s+)?((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)(?:\s*=.*)?\s*$/;
-const commentRegExp = /^\s*#\s*(.*)\s*$/;
-const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+(?:\s*\)\s*)?$/;
+const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+(?:\s*\))?\s*$/;
 
 function refreshNamespaceFiles() {
 	readdir('.', (err, files) => {
@@ -129,7 +106,7 @@ function refreshNamespaceFiles() {
 			return console.log('Unable to scan directory: ' + err);
 		for (const filename of files) {
 			const filenamesSplit = filename.split('.');
-			if (filenamesSplit[filenamesSplit.length - 1] == 'nms') {
+			if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
 				readFile(filename, (err, data) => {
 					if (err)
 						return console.log('Unable to read file: ' + err);
@@ -138,242 +115,6 @@ function refreshNamespaceFiles() {
 			}
 		}
 	});
-}
-
-function parseNamespaceFile(text: string, namespaceStorage: Map<string, NamespaceInfo>,
-	classStorage: Map<string, ClassInfo>) {
-	const lines = text.split(newLineRegExp);
-	for (let i = 0; i < lines.length; i++)
-	{
-		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
-		if (regExpRes === null)
-			continue;
-		let j = i;
-		for (j = i; j < lines.length; j++)
-		{
-			if (lines[j].trim() == '@endnamespace')
-				break;
-		}
-		if (j == lines.length)
-			break;
-		namespaceStorage.set(regExpRes[1], parseNamespace(regExpRes[1], lines.slice(i + 1, j), classStorage));
-		i = j;
-	}
-}
-
-function getArrayClassDefinition(name: string): string[] {
-	const result = [
-		`add(${name} value, Int index)`,
-		`append(${name} value)`,
-		`clear()`,
-		`Boolean contains(${name} value)`,
-		`Int find(${name} value)`,
-		`Int length()`,
-		`${name} pop()`,
-		`${name} remove(Int index)`,
-		`Void reverse()`,
-		`Void shuffle()`,
-		`String string()`
-	];
-	if (['Int', 'Long', 'Float', 'Double'].includes(name)) {
-		result.push(`Double avg()`);
-		result.push(`${name} sum()`);
-	}
-	else if (name === 'String') {
-		result.push('String concat()');
-		result.push('String join(String delimiter)');
-	}
-	return result;
-}
-
-function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>): NamespaceInfo {
-	const result: NamespaceInfo = {
-		members: new Map(),
-		memberSignatures: new Map(),
-		memberSuggestions: []
-	};
-	for (let i = 0; i < lines.length; i++) {
-		const classRegExpRes = classSignatureRegExp.exec(lines[i]);
-		if (classRegExpRes === null) {
-			const newMember = parseVariableOrFunctionAtLine(name + '::', lines, i);
-			if (newMember !== null) {
-				result.members.set(newMember.name, newMember);
-				if (newMember.suggestion !== undefined)
-					result.memberSuggestions.push(newMember.suggestion);
-				if (newMember.signature !== undefined) {
-					let signatures = result.memberSignatures.get(newMember.name);
-					if (signatures === undefined)
-						signatures = [];
-					if (!signatures.includes(newMember.signature))
-						signatures.push(newMember.signature);
-					result.memberSignatures.set(newMember.name, signatures);
-				}
-			}
-			continue;
-		}
-
-		const description = parseCommentsAboveLine(lines, i);
-
-		let j = i;
-		for (j = i; j < lines.length; j++) {
-			if (lines[j].trim() == '@endclass')
-				break;
-		}
-		if (j == lines.length)
-			break;
-
-		const className = classRegExpRes[1];
-		let classNameWithNamespace = className;
-		if (name !== '__default__')
-			classNameWithNamespace = name + '::' + className;
-		classStorage.set(classNameWithNamespace, parseClass(classNameWithNamespace, lines.slice(i + 1, j)));
-		classStorage.set(classNameWithNamespace + '[]', parseClass(classNameWithNamespace + '[]', getArrayClassDefinition(classNameWithNamespace)));
-		i = j;
-		const newClass: CompletionItem = {
-			label: className,
-			kind: CompletionItemKind.Class,
-			detail: 'class ' + className
-		};
-		const newClassArray: CompletionItem = {
-			label: className + '[]',
-			kind: CompletionItemKind.Class,
-			detail: 'class ' + className + '[]'
-		};
-		if (description.length !== 0)
-			newClass.documentation = {
-				kind: MarkupKind.Markdown,
-				value: description
-			};
-		result.memberSuggestions.push(newClass);
-		result.memberSuggestions.push(newClassArray);
-	}
-	return result;
-}
-
-function parseClass(name: string, lines: string[]): ClassInfo {
-	const result: ClassInfo = {
-		members: new Map(),
-		memberSignatures: new Map(),
-		memberSuggestions: []
-	};
-	for (let i = 0; i < lines.length; i++) {
-		const newMember = parseVariableOrFunctionAtLine(name + '.', lines, i);
-		if (newMember !== null) {
-			result.members.set(newMember.name, newMember);
-			if (newMember.suggestion !== undefined)
-				result.memberSuggestions.push(newMember.suggestion);
-			if (newMember.signature !== undefined) {
-				let signatures = result.memberSignatures.get(newMember.name);
-				if (signatures === undefined)
-					signatures = [];
-				if (!signatures.includes(newMember.signature))
-					signatures.push(newMember.signature);
-				result.memberSignatures.set(newMember.name, signatures);
-			}
-		}
-	}
-	return result;
-}
-
-function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line: number): MemberInfo | null {
-	const functionRegExpRes = functionSignatureRegExp.exec(lines[line]);
-	const constructorRegExpRes = constructorSignatureRegExp.exec(lines[line]);
-	const variableRegExpRes = variableSignatureRegExp.exec(lines[line]);
-	if (functionRegExpRes === null && constructorRegExpRes === null && variableRegExpRes === null)
-		return null;
-	const description = parseCommentsAboveLine(lines, line);
-
-	const result: MemberInfo = {
-		returnType: '',
-		name: '',
-		suggestion:  {
-			label: 'label'
-		},
-		signature: undefined,
-		documentation: undefined
-	};
-	if (functionRegExpRes !== null) {
-		result.name = functionRegExpRes[2] + '()';
-		result.returnType = functionRegExpRes[1];
-		result.suggestion = {
-			label: functionRegExpRes[2],
-			insertText: functionRegExpRes[2] + '($0)',
-			insertTextFormat: InsertTextFormat.Snippet,
-			kind: CompletionItemKind.Method,
-			detail: lines[line].replace(functionSignatureRegExp, '$1 ' + namePrefix + '$2$3'),
-			command: {
-			title: 'Trigger Parameter Hints',
-			command: 'editor.action.triggerParameterHints'
-			}
-		};
-		if (result.suggestion.detail !== undefined)
-			result.signature = {
-				label: result.suggestion.detail,
-				parameters: getParamsFromSignature(result.suggestion.detail)
-			};
-	}
-	else if (constructorRegExpRes !== null) {
-		result.name = constructorRegExpRes[1] + '()';
-		result.returnType = constructorRegExpRes[1];
-		result.suggestion = undefined;
-		const temp = lines[line].replace(constructorSignatureRegExp, '$1$2');
-		result.signature = {
-			label: temp,
-			parameters: getParamsFromSignature(temp)
-		};
-	}
-	else if (variableRegExpRes !== null) {
-		result.name = variableRegExpRes[5];
-		result.returnType = variableRegExpRes[4];
-		result.suggestion = {
-			label: variableRegExpRes[5],
-			kind: CompletionItemKind.Variable,
-			detail: lines[line].replace(variableSignatureRegExp,
-				((variableRegExpRes[2] !== undefined) ? 'final ' : '')
-				+ ((variableRegExpRes[1] !== undefined || variableRegExpRes[3] !== undefined) ? 'relative ' : '')
-				+ '$4 ' + namePrefix + '$5')
-		};
-	}
-	if (result.returnType === undefined)
-		result.returnType = 'Void';
-	if (description.length !== 0) {
-		if (result.suggestion !== undefined)
-			result.suggestion.documentation = {
-				kind: MarkupKind.Markdown,
-				value: description
-			};
-		if (result.signature !== undefined)
-			result.signature.documentation = description;
-		result.documentation = description;
-	}
-	return result;
-}
-
-function parseCommentsAboveLine(lines: string[], line: number): string {
-	const descriptionArray: string[] = [];
-	for (let j = line - 1; j >= 0; j--) {
-		const commentRegExpRes = commentRegExp.exec(lines[j]);
-		if (commentRegExpRes === null)
-			break;
-		descriptionArray.push(commentRegExpRes[1]);
-	}
-	descriptionArray.reverse();
-	return descriptionArray.join(' ');
-}
-
-function getParamsFromSignature(signature: string): ParameterInformation[] {
-	const result: ParameterInformation[] = [];
-	const regExpRes = /\((.*)\)/.exec(signature);
-	if (regExpRes === null)
-		return [];
-	const paramsString = regExpRes[1];
-	const params = paramsString.split(',');
-	for (const param of params) {
-		result.push({
-			label: param.trim()
-		});
-	}
-	return result;
 }
 
 function getDocumentData(documentUri: string): Thenable<SourceFileData> {
@@ -394,13 +135,16 @@ function refreshDocument(documentUri: string): Promise<SourceFileData> {
 			});
 		}
 		else
-			resolve(parseDocument(document?.getText()));
+			resolve(parseDocument(document.getText()));
 	});
 	sourceFileData.set(documentUri, result);
 	return result;
 }
 
-// Only keep settings for open documents
+documents.onDidChangeContent(e => {
+	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
+});
+
 documents.onDidClose(e => {
 	sourceFileData.delete(e.document.uri);
 });
@@ -413,6 +157,7 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 	};
 
 	result.variables.set('player', [{
+		name: 'player',
 		lineDeclared: -1,
 		lineUndeclared: undefined,
 		type: 'Player',
@@ -423,6 +168,7 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 		}
 	}]);
 	result.variables.set('block', [{
+		name: 'block',
 		lineDeclared: -1,
 		lineUndeclared: undefined,
 		type: 'Block',
@@ -446,6 +192,7 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 			if (regExpRes === null)
 				continue;
 			result.variables.set(regExpRes[2], [{
+				name: regExpRes[2],
 				lineDeclared: 0,
 				lineUndeclared: undefined,
 				type: regExpRes[1],
@@ -457,16 +204,20 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 			}]);
 		}
 	}
-	const forLoopVariableStack: string[] = [];
+	const variableStack: VariableInfo[][] = [];
 	for (let i = 0; i < lines.length; i++) {
 		const tokens = lines[i].trim().split(/\s+/);
-		if (tokens.length >= 3 && (tokens[0] === '@define' || tokens[0] === '@for')) {
+		if (tokens.length === 0)
+			continue;
+		if (tokens[0] === '@if') {
+			variableStack.push([]);
+		}
+		else if (tokens.length >= 3 && tokens[0] === '@for') {
+			variableStack.push([]);
 			if (!allowedTypeNameWithNamespaceRegExp.test(tokens[1]) || !allowedNameRegExp.test(tokens[2]))
 				continue;
-			let sameNameVariables = result.variables.get(tokens[2]);
-			if (sameNameVariables === undefined)
-				sameNameVariables = [];
-			sameNameVariables.push({
+			variableStack[variableStack.length - 1].push({
+				name: tokens[2],
 				lineDeclared: i,
 				lineUndeclared: undefined,
 				type: tokens[1],
@@ -476,18 +227,50 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 					detail: tokens[1] + ' ' + tokens[2]
 				}
 			});
-			result.variables.set(tokens[2], sameNameVariables);
-			if (tokens[0] === '@for')
-				forLoopVariableStack.push(tokens[2]);
 		}
-		else if (tokens.length === 1 && tokens[0] === '@done') {
-			const loopVariableName = forLoopVariableStack.pop();
-			if (loopVariableName === undefined)
-				continue;
-			const loopVariable = result.variables.get(loopVariableName);
-			if (loopVariable === undefined)
-				continue;
-			loopVariable[loopVariable.length - 1].lineUndeclared = i;
+		else if (tokens[0] === '@fi' || tokens[0] === '@else' || tokens[0] === '@elseif' || tokens[0] === '@done') {
+			const lastBlockVariables = variableStack.pop();
+			if (lastBlockVariables === undefined)
+				break;
+			for (const variable of lastBlockVariables) {
+				variable.lineUndeclared = i;
+				let sameNameVariables = result.variables.get(variable.name);
+				if (sameNameVariables === undefined)
+					sameNameVariables = [];
+				sameNameVariables.push(variable);
+				result.variables.set(variable.name, sameNameVariables);
+			}
+			if (tokens[0] === '@else' || tokens[0] === '@elseif') {
+				variableStack.push([]);
+			}
+		}
+
+		if (tokens.length >= 3 && tokens[0] === '@define') {
+			if (tokens[2].endsWith('='))
+				tokens[2] = tokens[2].substring(0, tokens[2].length - 1);
+
+			const newVariableInfo: VariableInfo = {
+				name: tokens[2],
+				lineDeclared: i,
+				lineUndeclared: undefined,
+				type: tokens[1],
+				suggestion: {
+					label: tokens[2],
+					kind: CompletionItemKind.Variable,
+					detail: tokens[1] + ' ' + tokens[2]
+				}
+			};
+			
+			if (variableStack.length > 0) {
+				variableStack[variableStack.length - 1].push(newVariableInfo);
+			}
+			else {
+				let sameNameVariables = result.variables.get(newVariableInfo.name);
+				if (sameNameVariables === undefined)
+					sameNameVariables = [];
+				sameNameVariables.push(newVariableInfo);
+				result.variables.set(newVariableInfo.name, sameNameVariables);
+			}
 		}
 		else if (tokens.length === 2 && tokens[0] === '@using')
 			result.usingDeclarations.push({
@@ -498,7 +281,7 @@ async function parseDocument(text: string): Promise<SourceFileData> {
 	return result;
 }
 
-connection.onDidChangeWatchedFiles(change => {
+connection.onDidChangeWatchedFiles(_ => {
 	refreshNamespaceFiles();
 });
 
@@ -509,7 +292,7 @@ function skipParenthesizedExpression(line: string, pos: number, closingParenthes
 		let openQuotesCount = 0;
 		for (; pos >= 0; pos--) {
 			const c = line[pos];
-			if (c === '"' && (pos === 0 || line[pos - 1] != '\\'))
+			if (c === '"' && (pos === 0 || line[pos - 1] !== '\\'))
 				openQuotesCount = 1 - openQuotesCount;
 			else if (c === closingParentheses && openQuotesCount === 0)
 				openParenthesesCount++;
@@ -712,12 +495,12 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 	let i = line.length - 1;
 	let paramNumber = 0;
 	for (; i >= 0; i--) {
-		if (line[i] == '"') {
+		if (line[i] === '"') {
 			if (i === 0)
 				return undefined;
 			let j = i - 1;
 			for (; j >= 0; j--) {
-				if (line[j] === '"' && (j === 0 || line[j - 1] != '\\'))
+				if (line[j] === '"' && (j === 0 || line[j - 1] !== '\\'))
 					break;
 			}
 			if (j === -1)
@@ -732,7 +515,7 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			let j = i;
 			for (; j >= 0; j--) {
 				const d = line[j];
-				if (d === '"' && (j === 0 || line[j - 1] != '\\'))
+				if (d === '"' && (j === 0 || line[j - 1] !== '\\'))
 					openQuotesCount = 1 - openQuotesCount;
 				else if (d === ')' && openQuotesCount === 0)
 					openParenthesesCount++;
@@ -971,7 +754,7 @@ connection.onCompletion(
 		const variableOrClassSuggestionRegExpRes = variableOrClassSuggestionRegExp.exec(line);
 		if (variableOrClassSuggestionRegExpRes !== null) {
 			let result: CompletionItem[] = [];
-			for (const [variableName, variableArray] of documentData.variables.entries())
+			for (const [_variableName, variableArray] of documentData.variables.entries())
 				for (const variable of variableArray)
 					if (variable.lineDeclared < textDocumentPosition.position.line
 						&& (variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
@@ -982,7 +765,7 @@ connection.onCompletion(
 					result = result.concat(currentNamespace.memberSuggestions);
 				}
 			}
-			for (const [namespaceName, namespaceInfo] of namespaces) {
+			for (const [namespaceName, _namespaceInfo] of namespaces) {
 				if (namespaceName !== '__default__') {
 					result.push({
 						label: namespaceName,
@@ -1016,15 +799,6 @@ connection.onCompletion(
 		return [];
 	}
 );
-
-interface Temp {
-	documentUri: string,
-	documentText: string
-}
-
-connection.onNotification('updateDocument', (document: Temp) => {
-	sourceFileData.set(document.documentUri, parseDocument(document.documentText));
-});
 
 connection.onNotification('processDefaultNamespace', (text: string) => {
 	parseNamespaceFile(text, namespaces, classes);
@@ -1091,10 +865,10 @@ connection.onNotification('Export namespace', (document: DocumentContents) => {
 		let namespaceEndLine = i;
 		for (namespaceEndLine = i; namespaceEndLine < lines.length; namespaceEndLine++)
 		{
-			if (lines[namespaceEndLine].trim() == '@endnamespace')
+			if (lines[namespaceEndLine].trim() === '@endnamespace')
 				break;
 		}
-		if (namespaceEndLine == lines.length)
+		if (namespaceEndLine === lines.length)
 			break;
 		const namespaceName: string = regExpRes[1];
 		namespaceDefinitionsLines.push(`@bypass /namespace remove ${namespaceName}`);
@@ -1106,10 +880,10 @@ connection.onNotification('Export namespace', (document: DocumentContents) => {
 				let classEndLine = j;
 				for (; classEndLine < namespaceEndLine; classEndLine++)
 				{
-					if (lines[classEndLine].trim() == '@endclass')
+					if (lines[classEndLine].trim() === '@endclass')
 						break;
 				}
-				if (classEndLine == namespaceEndLine)
+				if (classEndLine === namespaceEndLine)
 					break;
 				const className = classRegExpRes[1];
 				classDefinitionsLines.push(`@bypass /type define ${namespaceName} ${className}`);

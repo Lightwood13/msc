@@ -469,7 +469,7 @@
 		Position(Int x, Int y, Int z, Float yaw, Float pitch, String world)
 		Position(Int x, Int y, Int z, Int yaw, Int pitch, String world)
 		Position(Float x, Float y, Float z, Float yaw, Float pitch, String world)
-		Position(Float c, Float y, Float z, Iny yaw, Int pitch, String world)
+		Position(Float x, Float y, Float z, Int yaw, Int pitch, String world)
 
 		Location asLocation()
 		Float getPitch()
