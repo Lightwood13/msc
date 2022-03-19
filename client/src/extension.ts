@@ -4,10 +4,19 @@
  * ------------------------------------------------------------------------------------------ */
 
 import * as path from 'path';
-import { commands, window, env, workspace, ExtensionContext, Uri } from 'vscode';
+import {
+	commands,
+	window,
+	env,
+	workspace,
+	ExtensionContext,
+	Uri,
+	Progress,
+	ProgressLocation,
+	CancellationToken
+} from 'vscode';
 import axios from 'axios';
 import * as https from 'https';
-
 import {
 	LanguageClient,
 	LanguageClientOptions,
@@ -17,10 +26,6 @@ import {
 
 let client: LanguageClient;
 
-interface DocumentContents {
-	text: string,
-	uri: Uri
-}
 interface NamespaceFunction {
 	namespaceName: string,
 	functionName: string
@@ -36,7 +41,6 @@ interface ClassMethod {
 	methodName: string
 }
 interface NamespaceUploadResult {
-	document: DocumentContents,
 	defineScript: string,
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
@@ -82,11 +86,9 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 
-		if (textEditor.document.languageId === 'nms')
-			client.sendNotification('Export namespace', {
-				text: textEditor.document.getText(),
-				uri: textEditor.document.uri
-			});
+		if (textEditor.document.languageId === 'nms') {
+			client.sendNotification('Export namespace', textEditor.document.getText());
+		}
 		else {
 			const result: string = await uploadFile(textEditor.document.getText());
 			env.clipboard.writeText(result);
@@ -187,36 +189,62 @@ export function activate(context: ExtensionContext) {
 			});
 		});
 		client.onNotification('Upload namespace script', async (namespaceInfo: NamespaceUploadResult) => {
-			
-			const lines: string[] = [];
+			window.withProgress({
+				title: 'Uploading namespace',
+				cancellable: false,
+				location: ProgressLocation.Notification
+			}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<void> => {
+				progress.report({increment: 0, message: '0%'});
+				
+				const lines: string[] = [];
 
-			for (const functionInfo of namespaceInfo.functions) {
-				const functionLink: string | undefined = await findAndUploadFile(
-					`${functionInfo.namespaceName}/${functionInfo.functionName}.msc`
-				);
-				if (functionLink !== undefined)
-					lines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
-			}
-			for (const constructorInfo of namespaceInfo.constructors) {
-				const constructorLink: string | undefined = await findAndUploadFile(
-					`${constructorInfo.namespaceName}/${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`
-				);
-				if (constructorLink !== undefined)
-					lines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
-			}
-			for (const methodInfo of namespaceInfo.methods) {
-				const methodLink: string | undefined = await findAndUploadFile(
-					`${methodInfo.namespaceName}/${methodInfo.className}/${methodInfo.methodName}.msc`
-				);
-				if (methodLink !== undefined)
-					lines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
-			}
-			lines.push('@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}');
+				const totalUploadNumber = namespaceInfo.functions.length + namespaceInfo.constructors.length + namespaceInfo.methods.length;
+				let currentUploadNumber = 0;
+				const failedUploads: string[] = [];
 
-			const script: string = namespaceInfo.defineScript + '\n' + lines.join('\n');
-			const finalLink: string = await uploadFile(script);
-			env.clipboard.writeText(finalLink);
-			window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				for (const functionInfo of namespaceInfo.functions) {
+					const fileName = `${functionInfo.namespaceName}/${functionInfo.functionName}.msc`;
+					const functionLink: string | undefined = await findAndUploadFile(fileName);
+					if (functionLink !== undefined) {
+						lines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
+					} else {
+						failedUploads.push(fileName);
+					}
+					currentUploadNumber += 1;
+					progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
+				}
+				for (const constructorInfo of namespaceInfo.constructors) {
+					const fileName = `${constructorInfo.namespaceName}/${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`;
+					const constructorLink: string | undefined = await findAndUploadFile(fileName);
+					if (constructorLink !== undefined) {
+						lines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
+					} else {
+						failedUploads.push(fileName);
+					}
+					currentUploadNumber += 1;
+					progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
+				}
+				for (const methodInfo of namespaceInfo.methods) {
+					const fileName = `${methodInfo.namespaceName}/${methodInfo.className}/${methodInfo.methodName}.msc`;
+					const methodLink: string | undefined = await findAndUploadFile(fileName);
+					if (methodLink !== undefined) {
+						lines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
+					} else {
+						failedUploads.push(fileName);
+					}
+					currentUploadNumber += 1;
+					progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
+				}
+				lines.push('@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}');
+
+				const script: string = namespaceInfo.defineScript + '\n' + lines.join('\n');
+				const finalLink: string = await uploadFile(script);
+				env.clipboard.writeText(finalLink);
+				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				if (failedUploads.length !== 0) {
+					window.showWarningMessage('Failed to find files: ' + failedUploads.join(', '));
+				}
+			});
 		});
 		const snippetsUri = Uri.joinPath(context.extensionUri, 'snippets.json');
 		workspace.fs.readFile(snippetsUri).then((result) => {

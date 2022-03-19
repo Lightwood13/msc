@@ -151,26 +151,64 @@ connection.onDidChangeWatchedFiles(_ => {
 	refreshNamespaceFiles();
 });
 
+function skipString(line: string, pos: number): number | undefined {
+	const stack: string[] = [];
+	for(; pos >= 0; pos--) {
+		if (line[pos] === '"') {
+			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
+				stack.push('"');
+			}
+			else if (pos === 0 || line[pos - 1] !== '\\') {
+				stack.pop();
+				if (stack.length === 0)
+					return pos;
+			}
+		}
+		else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
+			(pos === 1 || line[pos - 2] !== '\\')) {
+			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
+				stack.push('}');
+			}
+			else {
+				return undefined;
+			}
+		}
+		else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
+			(pos === 1 || line[pos - 2] !== '\\')) {
+				if (stack.length !== 0 && stack[stack.length - 1] === '}') {
+					stack.pop();
+				}
+				else {
+					return undefined;
+				}
+			}
+	}
+	return undefined;
+}
 
-
-function skipParenthesizedExpression(line: string, pos: number, closingParentheses: string): number {
+function skipParenthesizedExpression(line: string, pos: number, closingParentheses: string): number | undefined {
 	const openingParentheses = closingParentheses === ')' ? '(' : '[';
-	if (line[pos] === closingParentheses) {
-		let openParenthesesCount = 0;
-		let openQuotesCount = 0;
-		for (; pos >= 0; pos--) {
-			const c = line[pos];
-			if (c === '"' && (pos === 0 || line[pos - 1] !== '\\'))
-				openQuotesCount = 1 - openQuotesCount;
-			else if (c === closingParentheses && openQuotesCount === 0)
-				openParenthesesCount++;
-			else if (c === openingParentheses && openQuotesCount === 0)
-				openParenthesesCount--;
+	if (line[pos] !== closingParentheses)
+		return pos;
+
+	let openParenthesesCount = 0;
+	for (; pos >= 0; pos--) {
+		const c = line[pos];
+		if (line[pos] === '"') {
+			const newPos = skipString(line, pos);
+			if (newPos === undefined)
+				return undefined;
+			pos = newPos;
+		}
+		else if (c === closingParentheses)
+			openParenthesesCount++;
+		else if (c === openingParentheses) {
+			openParenthesesCount--;
 			if (openParenthesesCount === 0)
-				break;
+				return pos;
 		}
 	}
-	return pos;
+	return undefined;
 }
 
 function parseCallChain(line: string): string[] {
@@ -195,6 +233,8 @@ function parseCallChain(line: string): string[] {
 			// skip array element access
 			let hasArraySubscript = false;
 			let newI = skipParenthesizedExpression(line, i - 1, ']');
+			if (newI === undefined)
+				return [];
 			if (newI < i - 1) {
 				hasArraySubscript = true;
 				i = newI;
@@ -202,6 +242,8 @@ function parseCallChain(line: string): string[] {
 			// skip method call
 			let isFunction = false;
 			newI = skipParenthesizedExpression(line, i - 1, ')');
+			if (newI === undefined)
+				return [];
 			if (newI < i - 1) {
 				isFunction = true;
 				i = newI;
@@ -210,7 +252,7 @@ function parseCallChain(line: string): string[] {
 				return [];
 			let k = i - 1;
 			for (; k >= 0; k--) {
-				if (/[.:\s([{+\-*/!=<>&|,]/.test(line[k]))
+				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k]))
 					break;
 				if (!/[a-zA-Z0-9_]/.test(line[k]))
 					return [];
@@ -228,7 +270,7 @@ function parseCallChain(line: string): string[] {
 			scopeOperatorUsed = true;
 			let k = i - 2;
 			for (; k >= 0; k--) {
-				if (/[.:\s([{+\-*/!=<>&|,]/.test(line[k]))
+				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k]))
 					break;
 				if (!/[a-zA-Z0-9_]/.test(line[k]))
 					return [];
@@ -238,7 +280,7 @@ function parseCallChain(line: string): string[] {
 			result.push(line.substring(k + 1, i + 1));
 			i = k;
 		}
-		else if (/[.:\s([{+\-*/!=<>&|,]/.test(line[i]))
+		else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
 			return result.reverse();
 		else
 			return [];
@@ -323,18 +365,18 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 		}
 		let currentClassInfo = classes.get(currentClass);
 		if (currentClassInfo === undefined) {
-			if (i !== startingI || activeNamespaceName === undefined)
+			if (i !== 1 || activeNamespaceName === undefined)
 				return undefined;
 			currentClassInfo = classes.get(activeNamespaceName + '::' + currentClass);
 			if (currentClassInfo === undefined)
 				return undefined;
 			currentClass = activeNamespaceName + '::' + currentClass;
 		}
-		const nextClass = currentClassInfo.members.get(callChain[i]);
-		if (nextClass === undefined)
+		const nextMember = currentClassInfo.members.get(callChain[i]);
+		if (nextMember === undefined)
 			return undefined;
-		currentName = currentClass + '.' + callChain[i];
-		currentClass = nextClass.returnType;
+		currentName = currentClass + '.' + nextMember.name;
+		currentClass = nextMember.returnType;
 	}
 
 	let currentClassWithoutArray = currentClass;
@@ -364,48 +406,31 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 	let paramNumber = 0;
 	for (; i >= 0; i--) {
 		if (line[i] === '"') {
-			if (i === 0)
-				return undefined;
-			let j = i - 1;
-			for (; j >= 0; j--) {
-				if (line[j] === '"' && (j === 0 || line[j - 1] !== '\\'))
-					break;
-			}
-			if (j === -1)
+			const j = skipString(line, i);
+			if (j === undefined)
 				return undefined;
 			i = j;
 		}
+		else if (line[i] === ')' || line[i] === ']') {
+			const j = skipParenthesizedExpression(line, i, line[i]);
+			if (j === undefined)
+				return undefined;
+			i = j;
+		}
+		else if (line[i] === '[')
+			return undefined;
 		else if (line[i] === ',')
 			paramNumber++;
-		else if (line[i] === ')') {
-			let openParenthesesCount = 0;
-			let openQuotesCount = 0;
-			let j = i;
-			for (; j >= 0; j--) {
-				const d = line[j];
-				if (d === '"' && (j === 0 || line[j - 1] !== '\\'))
-					openQuotesCount = 1 - openQuotesCount;
-				else if (d === ')' && openQuotesCount === 0)
-					openParenthesesCount++;
-				else if (d === '(' && openQuotesCount === 0)
-					openParenthesesCount--;
-				if (openParenthesesCount === 0)
-					break;
-			}
-			if (j === -1)
-				return undefined;
-			i = j;
-		}
 		else if (line[i] === '(') {
 			if (i === 0)
 				return undefined;
-			if (/[\s([+\-*/!=<>&|,]/.test(line[i - 1])) {
+			if (/[\s([+\-*/%^!=<>&|,]/.test(line[i - 1])) {
 				paramNumber = 0;
 				continue;
 			}
 			if (!/[a-zA-Z0-9_]/.test(line[i - 1]))
 				return undefined;
-			const callChain = parseCallChain(line.substring(0, i) + '().a');
+			const callChain = parseCallChain(line.substring(0, i) + '().');
 			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, currentDocumentData, activeNamespace, lineNumber);
 			if (lastNameAndType === undefined)
 				return undefined;
@@ -683,9 +708,6 @@ connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {
 	}
 });
 
-interface DocumentContents {
-	text: string
-}
 interface NamespaceFunction {
 	namespaceName: string,
 	functionName: string
@@ -701,7 +723,6 @@ interface ClassMethod {
 	methodName: string
 }
 interface NamespaceUploadResult {
-	document: DocumentContents, 
 	defineScript: string,
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
@@ -717,22 +738,21 @@ function getConstructorSignature(className: string, params: string): string {
 	return result;
 }
 
-connection.onNotification('Export namespace', (document: DocumentContents) => {
-	const lines = document.text.split(newLineRegExp);
+connection.onNotification('Export namespace', (text: string) => {
+
+	const lines = text.split(newLineRegExp);
 	const namespaceDefinitionsLines: string[] = [];
 	const classDefinitionsLines: string[] = [];
 	const memberDefinitionsLines: string[] = [];
 	const functions: NamespaceFunction[] = [];
 	const methods: ClassMethod[] = [];
 	const constructors: ClassConstructor[] = [];
-	for (let i = 0; i < lines.length; i++)
-	{
+	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
 		if (regExpRes === null)
 			continue;
 		let namespaceEndLine = i;
-		for (namespaceEndLine = i; namespaceEndLine < lines.length; namespaceEndLine++)
-		{
+		for (namespaceEndLine = i; namespaceEndLine < lines.length; namespaceEndLine++) {
 			if (lines[namespaceEndLine].trim() === '@endnamespace')
 				break;
 		}
@@ -746,8 +766,7 @@ connection.onNotification('Export namespace', (document: DocumentContents) => {
 			const classRegExpRes = classSignatureRegExp.exec(lines[j]);
 			if (classRegExpRes !== null) {
 				let classEndLine = j;
-				for (; classEndLine < namespaceEndLine; classEndLine++)
-				{
+				for (; classEndLine < namespaceEndLine; classEndLine++) {
 					if (lines[classEndLine].trim() === '@endclass')
 						break;
 				}
@@ -801,7 +820,6 @@ connection.onNotification('Export namespace', (document: DocumentContents) => {
 	const script: string = namespaceDefinitionsLines.join('\n') + '\n' +
 		classDefinitionsLines.join('\n') + '\n' + memberDefinitionsLines.join('\n');
 	const result: NamespaceUploadResult = {
-		document: document,
 		defineScript: script,
 		functions: functions, 
 		constructors: constructors,
