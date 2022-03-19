@@ -110,6 +110,12 @@
 		String toUpperCase()
 		# Returns the String with leading and trailing whitespace omitted.
 		String trim()
+
+		Int length()
+		Boolean matches(String regex)
+		String[] split(String delimiter)
+		Boolean startsWith(String start)
+		String string()
 	@endclass
 
 	@class Player

@@ -36,6 +36,10 @@ export const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a
 export const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
 export const variableSignatureRegExp = /^\s*(relative\s+)?(final\s+)?(relative\s+)?((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)(?:\s*=.*)?\s*$/;
 const commentRegExp = /^\s*#\s*(.*)\s*$/;
+const allowedTypeNameWithNamespaceRegExp = /^([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?$/;
+const allowedNameRegExp = /^[a-z][a-zA-Z0-9_]*$/;
+const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?\s+[a-z][a-zA-Z0-9_]*)+(?:\s*\))?\s*$/;
+
 
 export function parseNamespaceFile(text: string, namespaceStorage: Map<string, NamespaceInfo>,
 	classStorage: Map<string, ClassInfo>) {
@@ -274,6 +278,138 @@ function getParamsFromSignature(signature: string): ParameterInformation[] {
 		result.push({
 			label: param.trim()
 		});
+	}
+	return result;
+}
+
+export async function parseDocument(text: string): Promise<SourceFileData> {
+	const result: SourceFileData = 
+	{
+		variables: new Map(),
+		usingDeclarations: [],
+	};
+
+	result.variables.set('player', [{
+		name: 'player',
+		lineDeclared: -1,
+		lineUndeclared: undefined,
+		type: 'Player',
+		suggestion: {
+			label: 'player',
+			kind: CompletionItemKind.Variable,
+			detail: 'Player player'
+		}
+	}]);
+	result.variables.set('block', [{
+		name: 'block',
+		lineDeclared: -1,
+		lineUndeclared: undefined,
+		type: 'Block',
+		suggestion: {
+			label: 'block',
+			kind: CompletionItemKind.Variable,
+			detail: 'Block block'
+		}
+	}]);
+
+	const lines = text.split(newLineRegExp);
+	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
+		const openingBracketPos = lines[0].indexOf('(');
+		const closingBracketPos = lines[0].indexOf(')');
+
+		const paramListStart = (openingBracketPos === -1) ? lines[0].indexOf('#') : openingBracketPos;
+		const paramListEnd = (closingBracketPos === -1) ? lines[0].length : closingBracketPos;
+		const params = lines[0].substring(paramListStart + 1, paramListEnd).split(',');
+		for (const param of params) {
+			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
+			if (regExpRes === null)
+				continue;
+			result.variables.set(regExpRes[2], [{
+				name: regExpRes[2],
+				lineDeclared: 0,
+				lineUndeclared: undefined,
+				type: regExpRes[1],
+				suggestion: {
+					label: regExpRes[2],
+					kind: CompletionItemKind.Variable,
+					detail: regExpRes[1] + ' ' + regExpRes[2]
+				}
+			}]);
+		}
+	}
+	const variableStack: VariableInfo[][] = [];
+	for (let i = 0; i < lines.length; i++) {
+		const tokens = lines[i].trim().split(/\s+/);
+		if (tokens.length === 0)
+			continue;
+		if (tokens[0] === '@if') {
+			variableStack.push([]);
+		}
+		else if (tokens.length >= 3 && tokens[0] === '@for') {
+			variableStack.push([]);
+			if (!allowedTypeNameWithNamespaceRegExp.test(tokens[1]) || !allowedNameRegExp.test(tokens[2]))
+				continue;
+			variableStack[variableStack.length - 1].push({
+				name: tokens[2],
+				lineDeclared: i,
+				lineUndeclared: undefined,
+				type: tokens[1],
+				suggestion: {
+					label: tokens[2],
+					kind: CompletionItemKind.Variable,
+					detail: tokens[1] + ' ' + tokens[2]
+				}
+			});
+		}
+		else if (tokens[0] === '@fi' || tokens[0] === '@else' || tokens[0] === '@elseif' || tokens[0] === '@done') {
+			const lastBlockVariables = variableStack.pop();
+			if (lastBlockVariables === undefined)
+				break;
+			for (const variable of lastBlockVariables) {
+				variable.lineUndeclared = i;
+				let sameNameVariables = result.variables.get(variable.name);
+				if (sameNameVariables === undefined)
+					sameNameVariables = [];
+				sameNameVariables.push(variable);
+				result.variables.set(variable.name, sameNameVariables);
+			}
+			if (tokens[0] === '@else' || tokens[0] === '@elseif') {
+				variableStack.push([]);
+			}
+		}
+
+		if (tokens.length >= 3 && tokens[0] === '@define') {
+			if (tokens[2].endsWith('='))
+				tokens[2] = tokens[2].substring(0, tokens[2].length - 1);
+
+			const newVariableInfo: VariableInfo = {
+				name: tokens[2],
+				lineDeclared: i,
+				lineUndeclared: undefined,
+				type: tokens[1],
+				suggestion: {
+					label: tokens[2],
+					kind: CompletionItemKind.Variable,
+					detail: tokens[1] + ' ' + tokens[2]
+				}
+			};
+			
+			if (variableStack.length > 0) {
+				variableStack[variableStack.length - 1].push(newVariableInfo);
+			}
+			else {
+				let sameNameVariables = result.variables.get(newVariableInfo.name);
+				if (sameNameVariables === undefined)
+					sameNameVariables = [];
+				sameNameVariables.push(newVariableInfo);
+				result.variables.set(newVariableInfo.name, sameNameVariables);
+			}
+		}
+		else if (tokens.length === 2 && tokens[0] === '@using')
+			result.usingDeclarations.push({
+				lineDeclared: i,
+				namespace: tokens[1]
+			});
 	}
 	return result;
 }
