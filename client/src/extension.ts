@@ -193,14 +193,15 @@ export function activate(context: ExtensionContext) {
 				title: 'Uploading namespace',
 				cancellable: false,
 				location: ProgressLocation.Notification
-			}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<void> => {
-				progress.report({increment: 0, message: '0%'});
-				
+			}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<void> => {	
 				const lines: string[] = [];
 
 				const totalUploadNumber = namespaceInfo.functions.length + namespaceInfo.constructors.length + namespaceInfo.methods.length;
 				let currentUploadNumber = 0;
 				const failedUploads: string[] = [];
+
+				if (totalUploadNumber !== 0)
+					progress.report({increment: 0, message: '0%'});
 
 				for (const functionInfo of namespaceInfo.functions) {
 					const fileName = `${functionInfo.namespaceName}/${functionInfo.functionName}.msc`;
