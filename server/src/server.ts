@@ -744,6 +744,7 @@ connection.onNotification('Export namespace', (text: string) => {
 	const namespaceDefinitionsLines: string[] = [];
 	const classDefinitionsLines: string[] = [];
 	const memberDefinitionsLines: string[] = [];
+    const variableDefinitionsLines: string[] = [];
 	const functions: NamespaceFunction[] = [];
 	const methods: ClassMethod[] = [];
 	const constructors: ClassConstructor[] = [];
@@ -812,13 +813,13 @@ connection.onNotification('Export namespace', (text: string) => {
 				});
 			}
 			else if (variableRegExpRes !== null)
-				memberDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${lines[j].trim()}`);
+				variableDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${lines[j].trim()}`);
 			}
 
 		i = namespaceEndLine;
 	}
 	const script: string = namespaceDefinitionsLines.join('\n') + '\n' +
-		classDefinitionsLines.join('\n') + '\n' + memberDefinitionsLines.join('\n');
+		classDefinitionsLines.join('\n') + '\n' + memberDefinitionsLines.join('\n') + '\n' + variableDefinitionsLines.join('\n');
 	const result: NamespaceUploadResult = {
 		defineScript: script,
 		functions: functions, 
