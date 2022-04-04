@@ -34,7 +34,7 @@ export const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*
 export const classSignatureRegExp = /^\s*@class\s+([A-Z][a-zA-Z0-9_]*)\s*$/;
 export const functionSignatureRegExp = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)?\s+([a-z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
 export const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-export const variableSignatureRegExp = /^\s*(relative\s+)?(final\s+)?(relative\s+)?((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)(?:\s*=.*)?\s*$/;
+export const variableSignatureRegExp = /^\s*((relative\s+)?(final\s+)?(relative\s+)?((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*))\s*(=.*)?$/;
 const commentRegExp = /^\s*#\s*(.*)\s*$/;
 const allowedTypeNameWithNamespaceRegExp = /^([a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(\[\])?$/;
 const allowedNameRegExp = /^[a-z][a-zA-Z0-9_]*$/;
@@ -225,14 +225,14 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		};
 	}
 	else if (variableRegExpRes !== null) {
-		result.name = variableRegExpRes[5];
-		result.returnType = variableRegExpRes[4];
+		result.name = variableRegExpRes[6];
+		result.returnType = variableRegExpRes[5];
 		result.suggestion = {
-			label: variableRegExpRes[5],
+			label: variableRegExpRes[6],
 			kind: CompletionItemKind.Variable,
 			detail: lines[line].replace(variableSignatureRegExp,
-				((variableRegExpRes[2] !== undefined) ? 'final ' : '')
-				+ ((variableRegExpRes[1] !== undefined || variableRegExpRes[3] !== undefined) ? 'relative ' : '')
+				((variableRegExpRes[3] !== undefined) ? 'final ' : '')
+				+ ((variableRegExpRes[2] !== undefined || variableRegExpRes[4] !== undefined) ? 'relative ' : '')
 				+ '$4 ' + namePrefix + '$5')
 		};
 	}

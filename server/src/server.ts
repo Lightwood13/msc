@@ -151,7 +151,7 @@ connection.onDidChangeWatchedFiles(_ => {
 	refreshNamespaceFiles();
 });
 
-function skipString(line: string, pos: number): number | undefined {
+function skipStringBackward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
 	for(; pos >= 0; pos--) {
 		if (line[pos] === '"') {
@@ -186,6 +186,41 @@ function skipString(line: string, pos: number): number | undefined {
 	return undefined;
 }
 
+function skipStringForward(line: string, pos: number): number | undefined {
+	const stack: string[] = [];
+	for(; pos < line.length; pos++) {
+		if (line[pos] === '"') {
+			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
+				stack.push('"');
+			}
+			else if (pos === 0 || line[pos - 1] !== '\\') {
+				stack.pop();
+				if (stack.length === 0)
+					return pos;
+			}
+		}
+		else if (line[pos] === '{' && pos + 1 < line.length && line[pos + 1] === '{' &&
+			(pos === 0 || line[pos - 1] !== '\\')) {
+			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
+				stack.push('{');
+			}
+			else {
+				return undefined;
+			}
+		}
+		else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
+			(pos === 0 || line[pos - 1] !== '\\')) {
+				if (stack.length !== 0 && stack[stack.length - 1] === '{') {
+					stack.pop();
+				}
+				else {
+					return undefined;
+				}
+			}
+	}
+	return undefined;
+}
+
 function skipParenthesizedExpression(line: string, pos: number, closingParentheses: string): number | undefined {
 	const openingParentheses = closingParentheses === ')' ? '(' : '[';
 	if (line[pos] !== closingParentheses)
@@ -194,8 +229,8 @@ function skipParenthesizedExpression(line: string, pos: number, closingParenthes
 	let openParenthesesCount = 0;
 	for (; pos >= 0; pos--) {
 		const c = line[pos];
-		if (line[pos] === '"') {
-			const newPos = skipString(line, pos);
+		if (c === '"') {
+			const newPos = skipStringBackward(line, pos);
 			if (newPos === undefined)
 				return undefined;
 			pos = newPos;
@@ -208,6 +243,39 @@ function skipParenthesizedExpression(line: string, pos: number, closingParenthes
 				return pos;
 		}
 	}
+	return undefined;
+}
+
+function skipParenthesizedExpressionToEnd(lines: string[], startLine: number, endLine: number): number | undefined {
+	const parenthesesStack: string[] = [];
+
+	for (let line = startLine; line < endLine; line++) {
+		for (let pos = 0; pos < lines[line].length; pos++) {
+			const c = lines[line][pos];
+			if (c === '"') {
+				const newPos = skipStringForward(lines[line], pos);
+				if (newPos === undefined)
+					return undefined;
+				pos = newPos;
+			}
+			else if (c === '(' || c === '[')
+				parenthesesStack.push(c);
+			else if (c === ')') {
+				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '(')
+					return undefined;
+				parenthesesStack.pop();
+			}
+			else if (c === ']') {
+				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '[')
+					return undefined;
+				parenthesesStack.pop();
+			}
+		}
+
+		if (parenthesesStack.length === 0)
+			return line;
+	}
+
 	return undefined;
 }
 
@@ -406,7 +474,7 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 	let paramNumber = 0;
 	for (; i >= 0; i--) {
 		if (line[i] === '"') {
-			const j = skipString(line, i);
+			const j = skipStringBackward(line, i);
 			if (j === undefined)
 				return undefined;
 			i = j;
@@ -724,6 +792,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	defineScript: string,
+	initializeScript: string,
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
 	methods: ClassMethod[]
@@ -745,6 +814,7 @@ connection.onNotification('Export namespace', (text: string) => {
 	const classDefinitionsLines: string[] = [];
 	const memberDefinitionsLines: string[] = [];
     const variableDefinitionsLines: string[] = [];
+	const variableInitializationsLines: string[] = [];
 	const functions: NamespaceFunction[] = [];
 	const methods: ClassMethod[] = [];
 	const constructors: ClassConstructor[] = [];
@@ -796,8 +866,22 @@ connection.onNotification('Export namespace', (text: string) => {
 							constructorSignature: getConstructorSignature(constructorRegExpRes[1], constructorRegExpRes[2])
 						});
 					}
-					else if (variableRegExpRes !== null)
-						memberDefinitionsLines.push(`@bypass /type field define ${namespaceName} ${className} ${lines[k].trim()}`);
+					else if (variableRegExpRes !== null) {
+						const fieldDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, k, classEndLine);
+						if (fieldDeclarationEndLine === undefined)
+							continue;
+							
+						if (variableRegExpRes[7] !== undefined) {
+							const fieldIntialization: string = variableRegExpRes[7] + ' ' + lines.slice(k + 1, fieldDeclarationEndLine + 1)
+								.map((value:string):string => value.trim())
+								.join(' ');
+							variableInitializationsLines.push(`@bypass /type field set ${namespaceName} ${className} ${variableRegExpRes[6]} ${fieldIntialization}`);
+						}
+						
+						k = fieldDeclarationEndLine;
+						memberDefinitionsLines.push(`@bypass /type field define ${namespaceName} ${className} ${variableRegExpRes[1]}`);
+						
+					}
 				}
 				
 				j = classEndLine;
@@ -812,16 +896,32 @@ connection.onNotification('Export namespace', (text: string) => {
 					functionName: functionRegExpRes[2]
 				});
 			}
-			else if (variableRegExpRes !== null)
-				variableDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${lines[j].trim()}`);
+			else if (variableRegExpRes !== null) {
+				const variableDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, j, namespaceEndLine);
+				if (variableDeclarationEndLine === undefined)
+					continue;
+
+				if (variableRegExpRes[7] !== undefined) {
+					const variableIntialization: string = variableRegExpRes[7] + ' ' + lines.slice(j + 1, variableDeclarationEndLine + 1)
+						.map((value:string):string => value.trim())
+						.join(' ');
+					variableInitializationsLines.push(`@bypass /variable set ${namespaceName} ${variableRegExpRes[6]} ${variableIntialization}`);
+				}
+					
+				j = variableDeclarationEndLine;
+				variableDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${variableRegExpRes[1]}`);
+				
 			}
+		}
 
 		i = namespaceEndLine;
 	}
-	const script: string = namespaceDefinitionsLines.join('\n') + '\n' +
+	const defineScript: string = namespaceDefinitionsLines.join('\n') + '\n' +
 		classDefinitionsLines.join('\n') + '\n' + memberDefinitionsLines.join('\n') + '\n' + variableDefinitionsLines.join('\n');
+	const initializeScript: string = variableInitializationsLines.join('\n');
 	const result: NamespaceUploadResult = {
-		defineScript: script,
+		defineScript: defineScript,
+		initializeScript: initializeScript,
 		functions: functions, 
 		constructors: constructors,
 		methods: methods

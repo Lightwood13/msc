@@ -6,7 +6,19 @@
 			"include": "#keywords"
 		},
 		{
+			"include": "#strings"
+		},
+		{
 			"include": "#comments"
+		},
+		{
+			"include": "#numeric_literals"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#punctuation"
 		},
 		{
 			"include": "#types"
@@ -19,9 +31,70 @@
 				"match": "(?<=^\\s*)@(namespace|class|endnamespace|endclass)(?=\\s)"
 			}]
 		},
+		"strings": {
+			"name": "string.quoted.double.nms",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.nms",
+					"match": "\\\\[\\\"\\{\\}]"
+				},
+				{
+					"name": "punctuation.nms",
+					"begin": "\\{\\{",
+					"end": "\\}\\}"
+				}
+			]
+		},
 		"comments": {
 			"name": "comment.nms",
 			"match": "^\\s*\\#.*$"
+		},
+		"numeric_literals": {
+			"patterns": [
+				{
+					"include": "#integer_literals"
+				},
+				{
+					"include": "#float_literals"
+				},
+				{
+					"include": "#bool_literals"
+				}
+			],
+			"repository": {
+				"integer_literals": {
+					"patterns": [{
+						"name": "constant.numeric.nms",
+						"match": "(?<!\\w)(\\d+[Lsmhdw]?)(?!\\w)"
+					}]
+				},
+				"float_literals": {
+					"patterns": [{
+						"name": "constant.numeric.nms",
+						"match": "(?<!\\w)(\\d+\\.?\\d*D?)(?!\\w)"
+					}]
+				},
+				"bool_literals": {
+					"patterns": [{
+						"name": "constant.language.nms",
+						"match": "(?<!\\w)(true|false)(?!\\w)"
+					}]
+				}
+			}
+		},
+		"operators": {
+			"patterns": [{
+				"name": "keyword.operator",
+				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|\\%\\^]"
+			}]
+		},
+		"punctuation": {
+			"patterns": [{
+				"name": "punctuation.nms",
+				"match": "[\\.\\(\\)\\[\\]\\{\\}]|\\::"
+			}]
 		},
 		"types": {
 			"patterns": [{

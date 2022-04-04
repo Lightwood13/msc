@@ -42,6 +42,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	defineScript: string,
+	initializeScript: string,
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
 	methods: ClassMethod[]
@@ -236,9 +237,11 @@ export function activate(context: ExtensionContext) {
 					currentUploadNumber += 1;
 					progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
 				}
-				lines.push('@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}');
 
-				const script: string = namespaceInfo.defineScript + '\n' + lines.join('\n');
+				const script: string = namespaceInfo.defineScript + '\n' + lines.join('\n')
+					+ (namespaceInfo.initializeScript.indexOf('(') !== -1 ? '\n@delay 3s' : '')
+					+ '\n' + namespaceInfo.initializeScript
+					+ '\n' + '@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}';
 				const finalLink: string = await uploadFile(script);
 				env.clipboard.writeText(finalLink);
 				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
