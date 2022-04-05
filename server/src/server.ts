@@ -791,6 +791,7 @@ interface ClassMethod {
 	methodName: string
 }
 interface NamespaceUploadResult {
+	name: string,
 	defineScript: string,
 	initializeScript: string,
 	functions: NamespaceFunction[],
@@ -809,15 +810,10 @@ function getConstructorSignature(className: string, params: string): string {
 
 connection.onNotification('Export namespace', (text: string) => {
 
+	const result: NamespaceUploadResult[] = [];
+
 	const lines = text.split(newLineRegExp);
-	const namespaceDefinitionsLines: string[] = [];
-	const classDefinitionsLines: string[] = [];
-	const memberDefinitionsLines: string[] = [];
-    const variableDefinitionsLines: string[] = [];
-	const variableInitializationsLines: string[] = [];
-	const functions: NamespaceFunction[] = [];
-	const methods: ClassMethod[] = [];
-	const constructors: ClassConstructor[] = [];
+	
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
 		if (regExpRes === null)
@@ -830,6 +826,15 @@ connection.onNotification('Export namespace', (text: string) => {
 		if (namespaceEndLine === lines.length)
 			break;
 		const namespaceName: string = regExpRes[1];
+		const namespaceDefinitionsLines: string[] = [];
+		const classDefinitionsLines: string[] = [];
+		const memberDefinitionsLines: string[] = [];
+		const variableDefinitionsLines: string[] = [];
+		const variableInitializationsLines: string[] = [];
+		const functions: NamespaceFunction[] = [];
+		const methods: ClassMethod[] = [];
+		const constructors: ClassConstructor[] = [];
+
 		namespaceDefinitionsLines.push(`@bypass /namespace remove ${namespaceName}`);
 		namespaceDefinitionsLines.push(`@bypass /namespace define ${namespaceName}`);
 		
@@ -902,10 +907,10 @@ connection.onNotification('Export namespace', (text: string) => {
 					continue;
 
 				if (variableRegExpRes[7] !== undefined) {
-					const variableIntialization: string = variableRegExpRes[7] + ' ' + lines.slice(j + 1, variableDeclarationEndLine + 1)
+					const variableInitialization: string = variableRegExpRes[7] + ' ' + lines.slice(j + 1, variableDeclarationEndLine + 1)
 						.map((value:string):string => value.trim())
 						.join(' ');
-					variableInitializationsLines.push(`@bypass /variable set ${namespaceName} ${variableRegExpRes[6]} ${variableIntialization}`);
+					variableInitializationsLines.push(`@bypass /variable set ${namespaceName} ${variableRegExpRes[6]} ${variableInitialization}`);
 				}
 					
 				j = variableDeclarationEndLine;
@@ -915,17 +920,24 @@ connection.onNotification('Export namespace', (text: string) => {
 		}
 
 		i = namespaceEndLine;
+
+		const defineScript: string =
+			namespaceDefinitionsLines.concat([''])
+			.concat(classDefinitionsLines)
+			.concat(memberDefinitionsLines)
+			.concat(variableDefinitionsLines).join('\n');
+		const initializeScript: string = variableInitializationsLines.join('\n');
+		const currentNamespace: NamespaceUploadResult = {
+			name: namespaceName,
+			defineScript: defineScript,
+			initializeScript: initializeScript,
+			functions: functions, 
+			constructors: constructors,
+			methods: methods
+		};
+		result.push(currentNamespace);
 	}
-	const defineScript: string = namespaceDefinitionsLines.join('\n') + '\n' +
-		classDefinitionsLines.join('\n') + '\n' + memberDefinitionsLines.join('\n') + '\n' + variableDefinitionsLines.join('\n');
-	const initializeScript: string = variableInitializationsLines.join('\n');
-	const result: NamespaceUploadResult = {
-		defineScript: defineScript,
-		initializeScript: initializeScript,
-		functions: functions, 
-		constructors: constructors,
-		methods: methods
-	};
+	
 	connection.sendNotification('Upload namespace script', result);
 });
 
