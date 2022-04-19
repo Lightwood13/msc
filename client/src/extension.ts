@@ -309,10 +309,6 @@ export function activate(context: ExtensionContext) {
 				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
 			}
 		});
-		const snippetsUri = Uri.joinPath(context.extensionUri, 'snippets.json');
-		workspace.fs.readFile(snippetsUri).then((result) => {
-			client.sendNotification('addSnippets', JSON.parse(result.toString()));
-		});
 	});
 }
 

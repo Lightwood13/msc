@@ -41,6 +41,7 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
+import { keywords, keywordsWithoutAtSymbol } from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -94,8 +95,6 @@ connection.onInitialized(() => {
 const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
-let snippets: CompletionItem[] = [];
-const snippetsWithoutAtSymbol: CompletionItem[] = [];
 
 function refreshNamespaceFiles() {
 	readdir('.', (err, files) => {
@@ -695,13 +694,13 @@ connection.onCompletion(
 				character: textDocumentPosition.position.character
 			}
 		});
-		const snippetSuggestionRegExp = /^\s*(@)?[a-z]?$/;
-		const snippetSuggestionRegExpRes = snippetSuggestionRegExp.exec(line);
-		if (snippetSuggestionRegExpRes !== null) {
-			if (snippetSuggestionRegExpRes[1] === undefined)
-				return snippets;
+		const keywordSuggestionRegExp = /^\s*(@)?[a-z]?$/;
+		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
+		if (keywordSuggestionRegExpRes !== null) {
+			if (keywordSuggestionRegExpRes[1] === undefined)
+				return keywords;
 			else
-				return snippetsWithoutAtSymbol;
+				return keywordsWithoutAtSymbol;
 		}
 		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
 		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);
@@ -763,17 +762,6 @@ connection.onCompletion(
 
 connection.onNotification('processDefaultNamespace', (text: string) => {
 	parseNamespaceFile(text, namespaces, classes);
-});
-
-connection.onNotification('addSnippets', (_snippets: CompletionItem[]) => {
-	snippets = _snippets;
-	for (const snippet of snippets) {
-		const modifiedSnippet: CompletionItem = {
-			...snippet
-		};
-		modifiedSnippet.insertText = snippet.insertText?.substring(1);
-		snippetsWithoutAtSymbol.push(modifiedSnippet);
-	}
 });
 
 interface NamespaceFunction {
