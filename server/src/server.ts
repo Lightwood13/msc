@@ -42,6 +42,7 @@ import {
 	parseDocument
 } from './parser';
 import { keywords, keywordsWithoutAtSymbol } from './keywords';
+import { parseDefinitionLine } from './parserMC';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -682,6 +683,9 @@ connection.onCompletion(
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 		
+		// debug
+		parseDefinitionLine('</setblock> <!coord> <!coord> <!coord>');
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return [];
