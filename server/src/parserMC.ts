@@ -1,3 +1,6 @@
+import { CompletionItem } from 'vscode-languageserver/node';
+import { newLineRegExp } from './parser';
+
 /**
  * A single token representing one word or value in a command
  */
@@ -61,7 +64,7 @@ class AlternativeToken implements Token {
 		this.suggestions = [];
 		const hashStrings: string[] = [];
 		for (const token of tokens) {
-			for (const suggestion in token.suggestions) {
+			for (const suggestion of token.suggestions) {
 				if (this.suggestions.findIndex((s) => s === suggestion) === -1)
 					this.suggestions.push(suggestion);
 			}
@@ -231,7 +234,7 @@ function parseNodeDefinition(definition: string): Node {
 	}
 }
 
-export function parseDefinitionLine(line: string) {
+function parseDefinitionLine(line: string) {
 	let curNode: Node = head;
 	
 	let pos = 0;
@@ -274,6 +277,67 @@ export function parseDefinitionLine(line: string) {
 			break;
 		}
 	}
+}
+
+export function initMCCommandParser() {
+	const commands = [
+		'</item> <replace> <entity> <#entityselector>',
+		'</item> <replace> <block> <!coord> <!coord> <!coord>'
+	].join('\n');
+	for (const line of commands.split(newLineRegExp)) {
+		parseDefinitionLine(line);
+	}
 
 	console.log(head);
-} 
+}
+
+export function getMCCommandSuggestions(line: string): CompletionItem[] {
+	let pos = line.indexOf('@bypass');
+	if (pos === -1)
+		return [];
+	pos += 7;
+
+	let curNode: Node = head;
+
+	while (pos < line.length) {
+		while (pos < line.length && /\s/.test(line[pos]))
+			pos++;
+		if (pos === line.length)
+			break;
+		
+		let matchFound = false;
+		for (const nextNode of curNode.children) {
+			const newPos = nextNode.token.match(line, pos);
+			if (newPos === pos)
+				continue;
+			
+			pos = newPos;
+			matchFound = true;
+			curNode = nextNode;
+			console.log(curNode.token.hashString);
+		}
+		if (!matchFound)
+			break;
+	}
+
+	while (pos < line.length && /[^\s]/.test(line[pos]))
+		pos++;
+
+	const containsSlash = line.indexOf('/') !== -1;
+	
+	return curNode.children.flatMap((node: Node) => node.token.suggestions.map(
+		(suggestion: string) => {
+			let insertText = suggestion + ' ';
+			if (insertText.startsWith('/') && containsSlash)
+				insertText = insertText.substring(1);
+			return {
+				label: suggestion,
+				insertText: insertText,
+				command: {
+					title: 'Trigger Suggest',
+					command: 'editor.action.triggerSuggest'
+				}
+			};
+		}
+	));
+}

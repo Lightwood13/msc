@@ -42,7 +42,7 @@ import {
 	parseDocument
 } from './parser';
 import { keywords, keywordsWithoutAtSymbol } from './keywords';
-import { parseDefinitionLine } from './parserMC';
+import { getMCCommandSuggestions, initMCCommandParser } from './parserMC';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -91,6 +91,7 @@ connection.onInitialized(() => {
 	}
 	connection.sendNotification('getDefaultNamespace');
 	refreshNamespaceFiles();
+	initMCCommandParser();
 });
 
 const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
@@ -682,9 +683,6 @@ connection.onCompletion(
 	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-		
-		// debug
-		parseDefinitionLine('</setblock> <!coord> <!coord> <!coord>');
 
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
@@ -705,6 +703,11 @@ connection.onCompletion(
 				return keywords;
 			else
 				return keywordsWithoutAtSymbol;
+		}
+		const mcCommandSuggestionRegExp = /^\s*@bypass\s+.*$/;
+		const mcCommandSuggestionRegExpRes = mcCommandSuggestionRegExp.exec(line);
+		if (mcCommandSuggestionRegExpRes != null) {
+			return getMCCommandSuggestions(line);
 		}
 		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
 		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);
