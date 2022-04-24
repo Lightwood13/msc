@@ -844,3 +844,51 @@
 		text::ComponentBuilder underline(Boolean underline)
 	@endclass
 @endnamespace
+
+@namespace scoreboard
+	addObjective(String name, String type, String displayName)
+	clearDisplaySlot(String slot)
+	String getObjectiveDisplaySlot(String objective)
+	String getObjectiveInDisplaySlot(String slot)
+	Int getScore(String player, String objective)
+	Boolean objectiveExists(String objective)
+	removeObjective(String objective)
+	resetObjectiveDisplaySlot(String objectvie)
+	setObjectiveDisplaySlot(String objective, String displaySlot)
+	setScore(String player, String objective, Int score)
+@endnamespace
+
+@namespace timer
+	String formatTime(Long time)
+	timer::Timer getChallengeTimer(Player player, String tag)
+	timer::Timer getCustomTimer(Player player, String tag)
+	timer::Timer getMapTimer(Player player, String tag)
+	timer::Timer getSpecialTimer(Player player, String tag)
+	removeCustomTimer(Player player, String tag)
+
+	@class Timer
+		Timer(Player player, String tag, String name)
+		Timer(Player player, String tag, String name, Boolean silent)
+		Timer(Player player, String tag, String name, Boolean silent, Boolean validate)
+
+		deactivate()
+		finish(Boolean silent)
+		Long getDeltaTime()
+		Long getFinishTime()
+		String getName()
+		Long getStartTime()
+		String getTag()
+		String getTimerType()
+		invalidate()
+		Boolean isActive()
+		Boolean isInvalidated()
+		Boolean isNullified()
+		nullify()
+		setFinishTime(Long milli)
+		setInvalidState(Boolean state)
+		setNullifiedState(Boolean state)
+		setStartTime(Long milli)
+		start()
+		String string()
+	@endclass
+@endnamespace
