@@ -178,7 +178,7 @@ export function activate(context: ExtensionContext) {
 	client.start();
 
 	client.onReady().then(() => {
-		client.onNotification('getDefaultNamespace', () => {
+		client.onNotification('getDefaultNamespaces', () => {
 			axios({
 				httpsAgent: new https.Agent({
 					rejectUnauthorized: false
@@ -187,14 +187,14 @@ export function activate(context: ExtensionContext) {
 				method: 'GET',
 			})
 			.then(async data => {
-				console.log('Successfully fetched default namespace file from github');
-				client.sendNotification('processDefaultNamespace', data.data);
+				console.log('Successfully fetched default namespaces file from github');
+				client.sendNotification('processDefaultNamespaces', data.data);
 			})
 			.catch(_err => {
 				console.log('Couldn\'t connect to github');
-				const defaultNamespaceUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
-				workspace.fs.readFile(defaultNamespaceUri).then((result) => {
-					client.sendNotification('processDefaultNamespace', result.toString());
+				const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
+				workspace.fs.readFile(defaultNamespacesUri).then((result) => {
+					client.sendNotification('processDefaultNamespaces', result.toString());
 				});
 			});
 		});

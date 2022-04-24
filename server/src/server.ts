@@ -88,11 +88,12 @@ connection.onInitialized(() => {
 			connection.console.log('Workspace folder change event received.');
 		});
 	}
-	connection.sendNotification('getDefaultNamespace');
+	connection.sendNotification('getDefaultNamespaces');
 	refreshNamespaceFiles();
 });
 
 const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
+const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
 
@@ -100,6 +101,10 @@ function refreshNamespaceFiles() {
 	readdir('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
+		namespaces.clear();
+		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
+			namespaces.set(key, value);
+		});
 		for (const filename of files) {
 			const filenamesSplit = filename.split('.');
 			if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
@@ -760,8 +765,11 @@ connection.onCompletion(
 	}
 );
 
-connection.onNotification('processDefaultNamespace', (text: string) => {
-	parseNamespaceFile(text, namespaces, classes);
+connection.onNotification('processDefaultNamespaces', (text: string) => {
+	parseNamespaceFile(text, defaultNamespaces, classes);
+	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
+		namespaces.set(key, value);
+	});
 });
 
 interface NamespaceFunction {
