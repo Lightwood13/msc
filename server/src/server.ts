@@ -694,7 +694,7 @@ connection.onCompletion(
 				character: textDocumentPosition.position.character
 			}
 		});
-		const keywordSuggestionRegExp = /^\s*(@)?[a-z]?$/;
+		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
 		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
 		if (keywordSuggestionRegExpRes !== null) {
 			if (keywordSuggestionRegExpRes[1] === undefined)

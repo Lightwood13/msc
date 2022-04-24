@@ -1,4 +1,11 @@
-import { CompletionItem, CompletionItemKind, InsertTextFormat, MarkupKind, ParameterInformation, SignatureInformation } from 'vscode-languageserver/node';
+import {
+	CompletionItem,
+	CompletionItemKind,
+	InsertTextFormat,
+	MarkupKind,
+	ParameterInformation,
+	SignatureInformation
+} from 'vscode-languageserver/node';
 
 export interface VariableInfo {
 	name: string
