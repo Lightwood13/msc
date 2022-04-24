@@ -1,5 +1,6 @@
 import { CompletionItem } from 'vscode-languageserver/node';
 import { newLineRegExp } from './parser';
+import { blocks } from './parseMCvars';
 
 /**
  * A single token representing one word or value in a command
@@ -187,20 +188,65 @@ const coordToken: Token = {
 	}
 };
 
+class numberToken implements Token {
+	defaultValue: number
+	suggestions: string[]
+	hashString: string
+
+	constructor(defaultValue: number) {
+		this.defaultValue = defaultValue;
+		this.suggestions = [defaultValue.toString()];
+		this.hashString = `number (default: ${defaultValue})`;
+	}
+
+	match = (line: string, pos: number): number => {
+		if (pos === line.length)
+			return pos;
+
+		const startPos = pos;
+		
+		if (line[pos] === '-')
+			pos++;
+		if (pos === line.length)
+			return startPos;
+		
+		while (pos < line.length) {
+			if (line[pos] === ' ') {
+				break;
+			} else if (/[0-9]/.test(line[pos])) {
+				pos++;
+				continue;
+			} else {
+				return startPos;
+			}
+		}
+
+		return pos;
+	}
+}
+
+const blocksToken: Token = new TextToken(blocks, blocks);
+
 
 const head: Node = new Node(headToken);
 const errorNode: Node = new Node(errorToken);
 
 function parseVariableToken(definition: string): Token {
-	if (definition === "#entityselector")
+	if (definition === '#entityselector')
 		return entitySelectorToken;
+	else if (definition === '#block')
+		return blocksToken;
 	console.log('Parsing error');
 	return errorToken;
 }
 
 function parseValueToken(definition: string): Token {
-	if (definition === "!coord")
+	if (definition === '!coord')
 		return coordToken;
+	if (definition.startsWith('!number')) {
+		const defaultValue: number = (definition === '!number') ? 0 : parseInt(definition.slice(8, -1));
+		return new numberToken(defaultValue);
+	}
 	return errorToken;
 }
 
@@ -282,7 +328,10 @@ function parseDefinitionLine(line: string) {
 export function initMCCommandParser() {
 	const commands = [
 		'</item> <replace> <entity> <#entityselector>',
-		'</item> <replace> <block> <!coord> <!coord> <!coord>'
+		'</item> <replace> <block> <!coord> <!coord> <!coord>',
+		'</setblock> <!coord> <!coord> <!coord> <#block>',
+		'</title> <#entityselector> <clear|reset>',
+		'</title> <#entityselector> <times> <!number(10)> <!number(70)> <!number(20)>'
 	].join('\n');
 	for (const line of commands.split(newLineRegExp)) {
 		parseDefinitionLine(line);
@@ -314,7 +363,6 @@ export function getMCCommandSuggestions(line: string): CompletionItem[] {
 			pos = newPos;
 			matchFound = true;
 			curNode = nextNode;
-			console.log(curNode.token.hashString);
 		}
 		if (!matchFound)
 			break;
