@@ -38,7 +38,7 @@
 			"patterns": [
 				{
 					"name": "constant.character.escape.nms",
-					"match": "\\\\[\\\"\\{\\}]"
+					"match": "\\\\."
 				},
 				{
 					"name": "punctuation.nms",
