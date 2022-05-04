@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr Scripts VS Code extension",
-	"version": "2.1.15",
+	"version": "2.1.16",
 	"icon": "images/minr.png",
 	"repository": {
 		"type": "git",

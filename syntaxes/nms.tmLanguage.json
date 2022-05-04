@@ -3,6 +3,9 @@
 	"name": "nms",
 	"patterns": [
 		{
+			"include": "#declaration_keywords"
+		},
+		{
 			"include": "#keywords"
 		},
 		{
@@ -25,10 +28,16 @@
 		}
 	],
 	"repository": {
-		"keywords": {
+		"declaration_keywords": {
 			"patterns": [{
 				"name": "keyword.control.nms",
 				"match": "(?<=^\\s*)@(namespace|class|endnamespace|endclass)(?=\\s)"
+			}]
+		},
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.nms",
+				"match": "(final|relative)"
 			}]
 		},
 		"strings": {
@@ -43,7 +52,10 @@
 				{
 					"name": "punctuation.nms",
 					"begin": "\\{\\{",
-					"end": "\\}\\}"
+					"end": "\\}\\}",
+					"patterns": [{
+						"include": "source.msc"
+					}]
 				}
 			]
 		},
