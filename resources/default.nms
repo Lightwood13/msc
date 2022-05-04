@@ -426,6 +426,8 @@
 		# Gets the UUID of the entity (in string format).
 		String getUniqueId()
 		teleport(Position destination)
+		Boolean addPassenger(Entity passenger)
+		ejectPassengers()
 	@endclass
 
 	@class Block
