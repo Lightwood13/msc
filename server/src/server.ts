@@ -24,7 +24,8 @@ import {
 	Hover,
 	HoverParams
 } from 'vscode-languageserver-protocol';
-import { readdir, readFile } from 'fs';
+import { readFile } from 'fs';
+import { files } from 'node-dir';
 
 import {
 	VariableInfo,
@@ -98,7 +99,8 @@ const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
 
 function refreshNamespaceFiles() {
-	readdir('.', (err, files) => {
+	// search for .nms files in all subfolders
+	files('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
 		namespaces.clear();
@@ -109,8 +111,7 @@ function refreshNamespaceFiles() {
 			const filenamesSplit = filename.split('.');
 			if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
 				readFile(filename, (err, data) => {
-					if (err)
-						return console.log('Unable to read file: ' + err);
+					if (err) return console.log('Unable to read file: ' + err);
 					parseNamespaceFile(data.toString(), namespaces, classes);
 				});
 			}

@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr Scripts VS Code extension",
-	"version": "2.1.17",
+	"version": "2.1.18",
 	"icon": "images/minr.png",
 	"repository": {
 		"type": "git",
@@ -26,14 +26,22 @@
 		"languages": [
 			{
 				"id": "msc",
-				"aliases": ["msc"],
-				"extensions": [".msc"],
+				"aliases": [
+					"msc"
+				],
+				"extensions": [
+					".msc"
+				],
 				"configuration": "./msc-language-configuration.json"
 			},
 			{
 				"id": "nms",
-				"aliases": ["nms"],
-				"extensions": [".nms"],
+				"aliases": [
+					"nms"
+				],
+				"extensions": [
+					".nms"
+				],
 				"configuration": "./nms-language-configuration.json"
 			}
 		],
@@ -73,9 +81,9 @@
 		],
 		"iconThemes": [
 			{
-			  "id": "msc",
-			  "label": "Minr scripts",
-			  "path": "./fileicons/vs-seti-plus-msc-icon-theme.json"
+				"id": "msc",
+				"label": "Minr scripts",
+				"path": "./fileicons/vs-seti-plus-msc-icon-theme.json"
 			}
 		]
 	},
@@ -88,11 +96,13 @@
 		"test": "sh ./scripts/e2e.sh"
 	},
 	"dependencies": {
-		"axios": "^0.25.0"
+		"axios": "^0.25.0",
+		"node-dir": "^0.1.17"
 	},
 	"devDependencies": {
 		"@types/mocha": "^8.2.2",
 		"@types/node": "^12.12.0",
+		"@types/node-dir": "^0.0.34",
 		"@typescript-eslint/eslint-plugin": "^4.23.0",
 		"@typescript-eslint/parser": "^4.23.0",
 		"eslint": "^7.26.0",
