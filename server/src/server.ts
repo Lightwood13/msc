@@ -788,6 +788,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	name: string,
+	path: string,
 	defineScript: string,
 	initializeScript: string,
 	functions: NamespaceFunction[],
@@ -804,11 +805,16 @@ function getConstructorSignature(className: string, params: string): string {
 	return result;
 }
 
-connection.onNotification('Export namespace', (text: string) => {
+interface FileInfo {
+	path: string,
+	content: string
+}
+
+connection.onNotification('Export namespace', (fileInfo: FileInfo) => {
 
 	const result: NamespaceUploadResult[] = [];
 
-	const lines = text.split(newLineRegExp);
+	const lines = fileInfo.content.split(newLineRegExp);
 	
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
@@ -923,8 +929,13 @@ connection.onNotification('Export namespace', (text: string) => {
 			.concat(memberDefinitionsLines)
 			.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
+		let namespacePath = '';
+		if (fileInfo.path.endsWith('.nms')) {
+			namespacePath = fileInfo.path.substring(0, fileInfo.path.lastIndexOf('/') + 1);
+		}
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
+			path: namespacePath,
 			defineScript: defineScript,
 			initializeScript: initializeScript,
 			functions: functions, 

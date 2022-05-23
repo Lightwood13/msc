@@ -26,6 +26,11 @@ import {
 
 let client: LanguageClient;
 
+interface FileInfo {
+	path: string,
+	content: string
+}
+
 interface NamespaceFunction {
 	namespaceName: string,
 	functionName: string
@@ -42,6 +47,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	name: string,
+	path: string,
 	defineScript: string,
 	initializeScript: string,
 	functions: NamespaceFunction[],
@@ -61,8 +67,12 @@ async function uploadFile(text: string): Promise<string> {
 	return 'https://paste.minr.org/' + data.data.key;
 }
 
-async function findAndUploadFile(fileName: string): Promise<string | Error> {
-	const files: Uri[] = await workspace.findFiles(escapeArrayAccess(fileName));
+async function findAndUploadFile(folder: string, fileName: string): Promise<string | Error> {
+	const workspacePath = workspace.workspaceFolders[0].uri.path;
+	const fullFileName = (folder === '' || !folder.startsWith(workspacePath)) ?
+			'**/' + fileName :
+			folder.substring(workspacePath.length + 1) + fileName;
+	const files: Uri[] = await workspace.findFiles('**/' + escapeArrayAccess(fullFileName));
 	if (files.length === 0)
 		return Error('File not found');
 	const fileContents: string = (await workspace.fs.readFile(files[0])).toString();
@@ -91,7 +101,11 @@ export function activate(context: ExtensionContext) {
 		}
 
 		if (textEditor.document.languageId === 'nms') {
-			client.sendNotification('Export namespace', textEditor.document.getText());
+			const fileInfo: FileInfo = {
+				path: textEditor.document.uri.path,
+				content: textEditor.document.getText()
+			};
+			client.sendNotification('Export namespace', fileInfo);
 		}
 		else {
 			const text: string = textEditor.document.getText();
@@ -223,7 +237,7 @@ export function activate(context: ExtensionContext) {
 		
 						for (const functionInfo of namespaceInfo.functions) {
 							const fileName = `${functionInfo.namespaceName}/${functionInfo.functionName}.msc`;
-							const functionLink: string | Error = await findAndUploadFile(fileName);
+							const functionLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
 							if (typeof functionLink === 'string') {
 								importLines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
 							} else if ((functionLink instanceof Error) && (functionLink.message === 'Empty file')) {
@@ -236,7 +250,7 @@ export function activate(context: ExtensionContext) {
 						}
 						for (const constructorInfo of namespaceInfo.constructors) {
 							const fileName = `${constructorInfo.namespaceName}/${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`;
-							const constructorLink: string | Error = await findAndUploadFile(fileName);
+							const constructorLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
 							if (typeof constructorLink === 'string') {
 								importLines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
 							} else if ((constructorLink instanceof Error) && (constructorLink.message === 'Empty file')) {
@@ -249,7 +263,7 @@ export function activate(context: ExtensionContext) {
 						}
 						for (const methodInfo of namespaceInfo.methods) {
 							const fileName = `${methodInfo.namespaceName}/${methodInfo.className}/${methodInfo.methodName}.msc`;
-							const methodLink: string | Error = await findAndUploadFile(fileName);
+							const methodLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
 							if (typeof methodLink === 'string') {
 								importLines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
 							} else if ((methodLink instanceof Error) && (methodLink.message === 'Empty file')) {
@@ -261,7 +275,7 @@ export function activate(context: ExtensionContext) {
 							progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
 						}
 		
-						const initLink: string | Error = await findAndUploadFile(`${namespaceInfo.name}/__init__.msc`);
+						const initLink: string | Error = await findAndUploadFile(namespaceInfo.path, `${namespaceInfo.name}/__init__.msc`);
 						if (typeof initLink === 'string') {
 							namespaceInfo.defineScript
 								+= '\n' + '# namespace init function'

@@ -1,6 +1,6 @@
 {
 	"name": "msc-server",
-	"version": "2.1.14",
+	"version": "2.1.17",
 	"engines": {
 		"node": "*"
 	},
