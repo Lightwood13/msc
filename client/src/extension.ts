@@ -26,9 +26,10 @@ import {
 
 let client: LanguageClient;
 
-interface FileInfo {
+interface UploadFileInfo {
 	path: string,
-	content: string
+	content: string,
+	update: boolean // only update or do full upload (for .nms files)
 }
 
 interface NamespaceFunction {
@@ -101,9 +102,10 @@ export function activate(context: ExtensionContext) {
 		}
 
 		if (textEditor.document.languageId === 'nms') {
-			const fileInfo: FileInfo = {
+			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
-				content: textEditor.document.getText()
+				content: textEditor.document.getText(),
+				update: false
 			};
 			client.sendNotification('Export namespace', fileInfo);
 		}
@@ -117,6 +119,30 @@ export function activate(context: ExtensionContext) {
 				env.clipboard.writeText(result);
 				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
 			}
+		}
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = commands.registerCommand('msc.update_nms', async () => {
+
+		const textEditor = window.activeTextEditor;
+		
+		if (textEditor === undefined)
+		{
+			window.showErrorMessage('No file open to upload');
+			return;
+		}
+
+		if (textEditor.document.languageId === 'nms') {
+			const fileInfo: UploadFileInfo = {
+				path: textEditor.document.uri.path,
+				content: textEditor.document.getText(),
+				update: true
+			};
+			client.sendNotification('Export namespace', fileInfo);
+		}
+		else {
+			window.showErrorMessage('Can only update .nms files');
 		}
 	});
 	context.subscriptions.push(disposable);
@@ -297,8 +323,10 @@ export function activate(context: ExtensionContext) {
 							window.showWarningMessage('Failed to find or upload files: ' + failedUploads.join(', '));
 						}
 						
-						let script: string = `@player &aImporting namespace ${namespaceInfo.name}`
-							+ '\n\n' + namespaceInfo.defineScript;
+						let script: string = (namespaceInfo.defineScript !== '') ? 
+							`@player &aImporting namespace ${namespaceInfo.name}` 
+							+ '\n\n' + namespaceInfo.defineScript : 
+							`@player &aUpdating namespace ${namespaceInfo.name}`;
 						if (importLines.length !== 0) {
 							script += '\n\n' + importLines.join('\n');
 						}
@@ -320,7 +348,12 @@ export function activate(context: ExtensionContext) {
 				finalScript += '\n' + '@player &aNamespace import finished';
 				const finalLink: string = await uploadFile(finalScript);
 				env.clipboard.writeText(finalLink);
-				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				if (namespaceInfo.defineScript !== '') {
+					window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				}
+				else {
+					window.showInformationMessage('Finished uploading namespace update. Script url was copied to clipboard');
+				}
 			}
 		});
 	});

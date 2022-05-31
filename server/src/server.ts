@@ -806,12 +806,13 @@ function getConstructorSignature(className: string, params: string): string {
 	return result;
 }
 
-interface FileInfo {
+interface UploadFileInfo {
 	path: string,
-	content: string
+	content: string,
+	update: boolean // only update or do full upload (for .nms files)
 }
 
-connection.onNotification('Export namespace', (fileInfo: FileInfo) => {
+connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 	const result: NamespaceUploadResult[] = [];
 
@@ -924,7 +925,7 @@ connection.onNotification('Export namespace', (fileInfo: FileInfo) => {
 
 		i = namespaceEndLine;
 
-		const defineScript: string =
+		const defineScript: string = (fileInfo.update) ? '' :
 			namespaceDefinitionsLines.concat([''])
 			.concat(classDefinitionsLines)
 			.concat(memberDefinitionsLines)
