@@ -22,6 +22,9 @@
 		},
 		{
 			"include": "#types"
+		},
+		{
+			"include": "#includes"
 		}
 	],
 	"repository": {
@@ -47,12 +50,21 @@
 					"patterns": [{
 						"include": "source.msc"
 					}]
+				},
+				{
+					"include": "#includes"
 				}
 			]
 		},
 		"comments": {
 			"name": "comment.msc",
-			"match": "^\\s*\\#\\s.*$"
+			"begin": "^\\s*\\#\\s",
+			"end": "$",
+			"patterns": [
+				{
+					"include": "#includes"
+				}
+			]
 		},
 		"numeric_literals": {
 			"patterns": [
@@ -89,7 +101,7 @@
 		},
 		"operators": {
 			"patterns": [{
-				"name": "keyword.operator",
+				"name": "keyword.operator.msc",
 				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|\\%\\^]"
 			}]
 		},
@@ -103,6 +115,12 @@
 			"patterns": [{
 				"name": "storage.type.msc",
 				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|String|Player|Entity|Block|Item|Location|BlockLocation|Position|Vector2|BlockVector2|Vector3|BlockVector3|Region)(?!\\w)"
+			}]
+		},
+		"includes": {
+			"patterns": [{
+				"name": "storage.type.msc",
+				"match": "<#[^#][^\n]*?>"
 			}]
 		}
 	},

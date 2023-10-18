@@ -1,16 +1,17 @@
 {
 	"compilerOptions": {
 		"module": "commonjs",
-		"target": "es2019",
+		"target": "es2020",
 		"lib": [
-			"ES2019",
+			"ES2020",
 			"DOM"
 		],
 		"outDir": "out",
 		"rootDir": "src",
 		"sourceMap": true,
 		"noUnusedLocals": true,
-		"noUnusedParameters": true
+		"noUnusedParameters": true,
+		"strictNullChecks": true
 	},
 	"include": ["src"],
 	"exclude": ["node_modules", ".vscode-test"]

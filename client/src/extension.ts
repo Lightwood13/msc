@@ -32,6 +32,12 @@ interface UploadFileInfo {
 	update: boolean // only update or do full upload (for .nms files)
 }
 
+interface IncludedFileInfo {
+	fileName: string,
+	startIndex: number,
+	endIndexInclusive: number
+}
+
 interface NamespaceFunction {
 	namespaceName: string,
 	functionName: string
@@ -48,7 +54,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	name: string,
-	path: string,
+	namespaceDefinitionPath: string,
 	defineScript: string,
 	initializeScript: string,
 	functions: NamespaceFunction[],
@@ -56,35 +62,217 @@ interface NamespaceUploadResult {
 	methods: ClassMethod[]
 }
 
-async function uploadFile(text: string): Promise<string> {
-	const data = await axios({
-		httpsAgent: new https.Agent({
-			rejectUnauthorized: false
-		}),
-		url: 'https://paste.minr.org/documents',
-		method: 'POST',
-		data: text
+class ProcessedFileCache {
+	// map path to link
+	// uploads without include substitution, so should be looked up only for included files
+	uploadedFiles: Map<string, string> = new Map();
+	// map path to filenames or include names
+	notFoundFiles: Map<string, Set<string>> = new Map();
+	emptyFiles: Map<string, Set<string>> = new Map();
+	failedUploads: Map<string, Set<string>> = new Map();
+
+	contains(uri: Uri): boolean {
+		return this.uploadedFiles.has(uri.path) || this.notFoundFiles.has(uri.path) || this.emptyFiles.has(uri.path) || this.failedUploads.has(uri.path);
+	}
+
+	addNewFileName(uri: Uri, fileName: string) {
+		if (this.notFoundFiles.has(uri.path)) {
+			this.notFoundFiles.get(uri.path)?.add(fileName);
+		}
+
+		if (this.emptyFiles.has(uri.path)) {
+			this.emptyFiles.get(uri.path)?.add(fileName);
+		}
+
+		if (this.failedUploads.has(uri.path)) {
+			this.failedUploads.get(uri.path)?.add(fileName);
+		}
+	}
+}
+
+function getOrDefault<K, V>(map: Map<K, V>, key: K, def: V): V {
+	const value = map.get(key);
+	if (value !== undefined) {
+		return value;
+	} else {
+		map.set(key, def);
+		return def;
+	}
+}
+
+function replaceAt(str: string, startIndex: number, endIndexInclusive: number, replacement: string): string {
+    return str.substring(0, startIndex) + replacement + str.substring(endIndexInclusive + 1);
+}
+
+function getFileNameFromPath(path: string): string {
+	return path.substring(path.lastIndexOf('/') + 1);
+}
+
+function escapeFunctionName(name: string): string {
+	return name.replace(/::/g, '__');
+}
+
+function getIncludedFileUri(baseFileUri: Uri, includedFile: IncludedFileInfo): Uri {
+	return Uri.joinPath(baseFileUri, '..', includedFile.fileName);
+}
+
+function getFileNameList(cache: Map<string, Set<string>>) {
+	return [...cache.values()].flatMap(s => [...s.values()]).join(", ");
+}
+
+const includeRegExp = /<#([^#][^\n]*?)>/g;
+
+function collectIncludedFilesInfo(text: string): IncludedFileInfo[] {
+	return [...text.matchAll(includeRegExp)].map((match) => {
+		return {
+			fileName: match[1],
+			startIndex: match.index as number,
+			endIndexInclusive: (match.index as number) + match[0].length - 1
+		};
 	});
-	return 'https://paste.minr.org/' + data.data.key;
 }
 
-async function findAndUploadFile(folder: string, fileName: string): Promise<string | Error> {
-	const workspacePath = workspace.workspaceFolders[0].uri.path;
-	const fullFileName = (folder === '' || !folder.startsWith(workspacePath)) ?
-			'**/' + fileName :
-			folder.substring(workspacePath.length + 1) + fileName;
-	const files: Uri[] = await workspace.findFiles('**/' + escapeArrayAccess(fullFileName));
-	if (files.length === 0)
-		return Error('File not found');
-	const fileContents: string = (await workspace.fs.readFile(files[0])).toString();
-	if (fileContents.trim().length === 0)
-		return Error('Empty file');
-	return await uploadFile(fileContents);
+async function uploadFile(contents: string): Promise<string | null> {
+	try {
+		contents = contents.replace(/<##/g, '<#');
+		const data = await axios({
+			httpsAgent: new https.Agent({
+				rejectUnauthorized: false
+			}),
+			url: 'https://paste.minr.org/documents',
+			method: 'POST',
+			data: contents
+		});
+		return 'https://paste.minr.org/' + data.data.key;
+	} catch (error) {
+		return null;
+	}
+	
 }
 
-function escapeArrayAccess(text: string): string {
-	const temp = text.replace(/\[\]/g, '[[][]]');
-	return temp.replace(/::/g, '__');
+// uploads file contents and stores result in cache
+// doesn't check if file is already in cache:
+// - for included files check should be done before this function
+// - non-included files should not be looked up in cache because they need include substitution, and only non-substituted version is cached
+async function uploadFileWithCache(uri: Uri, fileName: string, contents: string, cache: ProcessedFileCache): Promise<string | null> {
+	const result = await uploadFile(contents);
+
+	if (result === null) {
+		getOrDefault(cache.failedUploads, uri.path, new Set()).add(fileName);
+	} else {
+		cache.uploadedFiles.set(uri.path, result);
+	}
+
+	return result;
+}
+
+async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, optionalFile = false): Promise<string | null> {
+	let fileContents: string;
+	try {
+		fileContents = (await workspace.fs.readFile(uri)).toString();
+	} catch (error) {
+		if (!optionalFile) {
+			getOrDefault(cache.notFoundFiles, uri.path, new Set()).add(fileName);
+		}
+		return null;
+	}
+
+	if (fileContents.trim().length === 0) {
+		getOrDefault(cache.emptyFiles, uri.path, new Set()).add(fileName);
+		return null;
+	}
+
+	return fileContents;
+}
+
+// doesn't do include substitutions
+async function findAndUploadFile(uri: Uri, fileName: string, cache: ProcessedFileCache): Promise<string | null> {
+	if (cache.contains(uri)) {
+		cache.addNewFileName(uri, fileName);
+		return cache.uploadedFiles.get(uri.path) || null;
+	}
+
+	const fileContents = await findFile(uri, fileName, cache);
+
+	if (fileContents === null) {
+		return null;
+	}
+
+	return await uploadFileWithCache(uri, fileName, fileContents, cache);
+}
+
+async function uploadIncludedFiles(
+	baseFileUri: Uri,
+	includedFiles: IncludedFileInfo[],
+	cache: ProcessedFileCache,
+	// eslint-disable-next-line @typescript-eslint/no-empty-function
+	incrementProgress: () => void = () => {}
+) {
+	for (const includedFile of includedFiles) {
+		const uri = getIncludedFileUri(baseFileUri, includedFile);
+		await findAndUploadFile(uri, includedFile.fileName, cache);
+		incrementProgress();
+	}
+}
+
+function replaceIncludedFiles(baseFileUri: Uri, contents: string, includedFiles: IncludedFileInfo[], cache: ProcessedFileCache): string {
+	let indexDiff = 0;
+	for (const includedFile of includedFiles) {
+		const link = cache.uploadedFiles.get(getIncludedFileUri(baseFileUri, includedFile).path);
+		if (link === undefined)
+			continue;
+
+		contents = replaceAt(contents, includedFile.startIndex + indexDiff, includedFile.endIndexInclusive + indexDiff, link);
+		indexDiff += link.length - (includedFile.endIndexInclusive - includedFile.startIndex + 1);
+	}
+
+	return contents;
+}
+
+async function uploadNamespaceChildFile(
+	namespaceFolderUri: Uri,
+	fileName: string,
+	cache: ProcessedFileCache,
+	onSuccess: (link: string) => void,
+	incrementProgress: () => void,
+	optionalFile = false
+) {
+	const escapedFileName = escapeFunctionName(fileName);
+	const fileUri = Uri.joinPath(namespaceFolderUri, escapedFileName);
+
+	const fileContents: string | null = await findFile(fileUri, escapedFileName, cache, optionalFile);
+	if (fileContents === null) {
+		incrementProgress();
+		return;
+	}
+
+	const includedFiles = collectIncludedFilesInfo(fileContents);
+	await uploadIncludedFiles(fileUri, includedFiles, cache);
+	const replacedFileContents = replaceIncludedFiles(fileUri, fileContents, includedFiles, cache);
+
+	const functionLink: string | null = await uploadFileWithCache(fileUri, escapedFileName, replacedFileContents, cache);
+	if (functionLink !== null) {
+		onSuccess(functionLink);
+	}
+	incrementProgress();
+}
+
+// returns true if any errors are found
+function showErrors(cache: ProcessedFileCache): boolean {
+	let errorsFound = false;
+	if (cache.notFoundFiles.size !== 0) {
+		window.showErrorMessage('Failed to find files: ' + getFileNameList(cache.notFoundFiles));
+		errorsFound = true;
+	}
+	if (cache.emptyFiles.size !== 0) {
+		window.showErrorMessage('Cannot upload empty files: ' + getFileNameList(cache.emptyFiles));
+		errorsFound = true;
+	}
+	if (cache.failedUploads.size !== 0) {
+		window.showErrorMessage('Failed to upload files: ' + getFileNameList(cache.failedUploads));
+		errorsFound = true;
+	}	
+	return errorsFound;
 }
 
 export function activate(context: ExtensionContext) {
@@ -113,17 +301,64 @@ export function activate(context: ExtensionContext) {
 			const text: string = textEditor.document.getText();
 			if (text.trim().length === 0) {
 				window.showErrorMessage('Cannot upload empty file');
+				return;
 			}
-			else {
-				const result: string = await uploadFile(text);
-				env.clipboard.writeText(result);
+
+			const includedFilesInfo = collectIncludedFilesInfo(text);
+
+			let link: string | null = null;
+
+			if (includedFilesInfo.length === 0) {
+				link = await uploadFile(text);
+				if (link === null) {
+					window.showErrorMessage('Failed to upload file');
+				}
+			} 
+			else {	
+				link = await window.withProgress<string | null>({
+					title: `Uploading ${getFileNameFromPath(textEditor.document.uri.path)}`,
+					cancellable: false,
+					location: ProgressLocation.Notification
+				}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<string | null> => {
+					
+					const fileCount = includedFilesInfo.length + 1;
+
+					const cache = new ProcessedFileCache();
+
+					progress.report({increment: 0, message: '0%'});
+
+					let index = 0;
+					await uploadIncludedFiles(textEditor.document.uri, includedFilesInfo, cache, () => {
+						index++;
+						progress.report({increment: 100/fileCount, message: (index/fileCount*100).toFixed(0) + '%'});
+					});
+
+					if (showErrors(cache)) {
+						return null;
+					}
+
+					const replacedText = replaceIncludedFiles(textEditor.document.uri, text, includedFilesInfo, cache);
+					const result = await uploadFile(replacedText);
+
+					progress.report({increment: 100/fileCount, message: '100%'});
+	
+					if (result === null) {
+						window.showErrorMessage('Failed to upload file');
+					}
+
+					return result;
+				});
+			}
+			
+			if (link !== null) {
+				env.clipboard.writeText(link);
 				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
 			}
 		}
 	});
 	context.subscriptions.push(disposable);
 
-	disposable = commands.registerCommand('msc.update_nms', async () => {
+	disposable = commands.registerCommand('msc.update_nms', () => {
 
 		const textEditor = window.activeTextEditor;
 		
@@ -226,7 +461,7 @@ export function activate(context: ExtensionContext) {
 				url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
 				method: 'GET',
 			})
-			.then(async data => {
+			.then(data => {
 				console.log('Successfully fetched default namespaces file from github');
 				client.sendNotification('processDefaultNamespaces', data.data);
 			})
@@ -243,66 +478,60 @@ export function activate(context: ExtensionContext) {
 				window.showErrorMessage("Couldn't parse any namespaces");
 				return;
 			}
-			const scripts: Thenable<string>[] = [];
+			let finalScript: string | null = '';
 			for (const namespaceInfo of namespaces) {
-				scripts.push(
-					window.withProgress<string>({
-						title: `Uploading namespace ${namespaceInfo.name}`,
-						cancellable: false,
-						location: ProgressLocation.Notification
-					}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<string> => {	
-						const importLines: string[] = [];
-		
-						const totalUploadNumber = namespaceInfo.functions.length + namespaceInfo.constructors.length + namespaceInfo.methods.length;
-						let currentUploadNumber = 0;
-						const failedUploads: string[] = [];
-						const emptyFiles: string[] = [];
-		
-						if (totalUploadNumber !== 0)
-							progress.report({increment: 0, message: '0%'});
-		
-						for (const functionInfo of namespaceInfo.functions) {
-							const fileName = `${functionInfo.namespaceName}/${functionInfo.functionName}.msc`;
-							const functionLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
-							if (typeof functionLink === 'string') {
+				const script = await window.withProgress<string | null>({
+					title: `Uploading namespace ${namespaceInfo.name}`,
+					cancellable: false,
+					location: ProgressLocation.Notification
+				}, async (progress: Progress<{increment?: number, message?: string}>, _token: CancellationToken): Promise<string | null> => {	
+					
+					const importLines: string[] = [];
+	
+					// +1 for __init__.msc
+					const totalUploadNumber = namespaceInfo.functions.length + namespaceInfo.constructors.length + namespaceInfo.methods.length + 1;
+					let currentUploadNumber = 0;
+
+					const namespaceFolderUri: Uri = Uri.joinPath(Uri.file(namespaceInfo.namespaceDefinitionPath), '..', namespaceInfo.name);
+
+					const cache = new ProcessedFileCache();	
+	
+					if (totalUploadNumber !== 0)
+						progress.report({increment: 0, message: '0%'});
+
+					const incrementProgress = () => {
+						currentUploadNumber += 1;
+						progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});	
+					};
+	
+					for (const functionInfo of namespaceInfo.functions) {
+						await uploadNamespaceChildFile(
+							namespaceFolderUri, `${functionInfo.functionName}.msc`, cache,
+							functionLink => {
 								importLines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
-							} else if ((functionLink instanceof Error) && (functionLink.message === 'Empty file')) {
-								emptyFiles.push(fileName);
-							} else {
-								failedUploads.push(fileName);
-							}
-							currentUploadNumber += 1;
-							progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
-						}
-						for (const constructorInfo of namespaceInfo.constructors) {
-							const fileName = `${constructorInfo.namespaceName}/${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`;
-							const constructorLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
-							if (typeof constructorLink === 'string') {
+							}, incrementProgress
+						);	
+					}
+					for (const constructorInfo of namespaceInfo.constructors) {
+						await uploadNamespaceChildFile(
+							namespaceFolderUri, `${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`, cache,
+							constructorLink => {
 								importLines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
-							} else if ((constructorLink instanceof Error) && (constructorLink.message === 'Empty file')) {
-								emptyFiles.push(fileName);
-							} else {
-								failedUploads.push(fileName);
-							}
-							currentUploadNumber += 1;
-							progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
-						}
-						for (const methodInfo of namespaceInfo.methods) {
-							const fileName = `${methodInfo.namespaceName}/${methodInfo.className}/${methodInfo.methodName}.msc`;
-							const methodLink: string | Error = await findAndUploadFile(namespaceInfo.path, fileName);
-							if (typeof methodLink === 'string') {
+							}, incrementProgress
+						);
+					}
+					for (const methodInfo of namespaceInfo.methods) {
+						await uploadNamespaceChildFile(
+							namespaceFolderUri, `${methodInfo.className}/${methodInfo.methodName}.msc`, cache,
+							methodLink => {
 								importLines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
-							} else if ((methodLink instanceof Error) && (methodLink.message === 'Empty file')) {
-								emptyFiles.push(fileName);
-							} else {
-								failedUploads.push(fileName);
-							}
-							currentUploadNumber += 1;
-							progress.report({increment: 100/totalUploadNumber, message: (currentUploadNumber/totalUploadNumber*100).toFixed(0) + '%'});
-						}
-		
-						const initLink: string | Error = await findAndUploadFile(namespaceInfo.path, `${namespaceInfo.name}/__init__.msc`);
-						if (typeof initLink === 'string') {
+							}, incrementProgress
+						);
+					}
+
+					await uploadNamespaceChildFile(
+						namespaceFolderUri, `__init__.msc`, cache,
+						initLink => {
 							namespaceInfo.defineScript
 								+= '\n' + '# namespace init function'
 								+ '\n' + `@bypass /function define ${namespaceInfo.name} wilexafixu()`;
@@ -311,49 +540,54 @@ export function activate(context: ExtensionContext) {
 								+= '\n\n' + '@player &aExecuting namespace init function'
 								+ '\n' + `@bypass /function execute ${namespaceInfo.name}::wilexafixu()`
 								+ '\n' + `@bypass /function remove ${namespaceInfo.name} wilexafixu`;
-						}
-						else if ((initLink instanceof Error) && (initLink.message === 'Empty file')) {
-							emptyFiles.push(`${namespaceInfo.name}/__init__.msc`);
-						}
-		
-						if (emptyFiles.length !== 0) {
-							window.showWarningMessage('Cannot upload empty files: ' + emptyFiles.join(', '));
-						}
-						if (failedUploads.length !== 0) {
-							window.showWarningMessage('Failed to find or upload files: ' + failedUploads.join(', '));
-						}
-						
-						let script: string = (namespaceInfo.defineScript !== '') ? 
-							`@player &aImporting namespace ${namespaceInfo.name}` 
-							+ '\n\n' + namespaceInfo.defineScript : 
-							`@player &aUpdating namespace ${namespaceInfo.name}`;
-						if (importLines.length !== 0) {
-							script += '\n\n' + importLines.join('\n');
-						}
-						if (namespaceInfo.initializeScript.length !== 0) {
-							script
-								+= '\n\n'
-								+ (namespaceInfo.initializeScript.indexOf('(') !== -1 ? '@delay 3s\n' : '')
-								+ namespaceInfo.initializeScript;
-						}
-						return script;
-					})
-				);
-				let finalScript = '';
-				for (const script of scripts) {
-					finalScript += await script;
-					finalScript += '\n\n\n';
+						}, incrementProgress, true
+					);
+
+					if (showErrors(cache)) {
+						return null;
+					}
+					
+					let script: string = (namespaceInfo.defineScript !== '') ? 
+						`@player &aImporting namespace ${namespaceInfo.name}` 
+						+ '\n\n' + namespaceInfo.defineScript : 
+						`@player &aUpdating namespace ${namespaceInfo.name}`;
+					if (importLines.length !== 0) {
+						script += '\n\n' + importLines.join('\n');
+					}
+					if (namespaceInfo.initializeScript !== '') {
+						script
+							+= '\n\n'
+							+ (namespaceInfo.initializeScript.indexOf('(') !== -1 ? '@delay 3s\n' : '')
+							+ namespaceInfo.initializeScript;
+					}
+					return script;
+				});
+
+				if (script === null) {
+					finalScript = null;
+					break;
 				}
-				finalScript += '@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}';
-				finalScript += '\n' + '@player &aNamespace import finished';
-				const finalLink: string = await uploadFile(finalScript);
-				env.clipboard.writeText(finalLink);
-				if (namespaceInfo.defineScript !== '') {
-					window.showInformationMessage('Upload finished. Script url was copied to clipboard');
-				}
-				else {
-					window.showInformationMessage('Finished uploading namespace update. Script url was copied to clipboard');
-				}
+
+				finalScript += script;
+				finalScript += '\n\n\n';
+			}
+
+			if (finalScript === null) return;
+
+			finalScript += '@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}';
+			finalScript += '\n' + '@player &aNamespace import finished';
+			const finalLink: string | null = await uploadFile(finalScript);
+			if (finalLink === null) {
+				window.showErrorMessage('Failed to upload script');
+				return;
+			}
+
+			env.clipboard.writeText(finalLink);
+			if (namespaces[0].defineScript !== '') {
+				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+			}
+			else {
+				window.showInformationMessage('Finished uploading namespace update. Script url was copied to clipboard');
 			}
 		});
 	});

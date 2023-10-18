@@ -789,7 +789,7 @@ interface ClassMethod {
 }
 interface NamespaceUploadResult {
 	name: string,
-	path: string,
+	namespaceDefinitionPath: string,
 	defineScript: string,
 	initializeScript: string,
 	functions: NamespaceFunction[],
@@ -931,13 +931,9 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 			.concat(memberDefinitionsLines)
 			.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
-		let namespacePath = '';
-		if (fileInfo.path.endsWith('.nms')) {
-			namespacePath = fileInfo.path.substring(0, fileInfo.path.lastIndexOf('/') + 1);
-		}
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
-			path: namespacePath,
+			namespaceDefinitionPath: fileInfo.path,
 			defineScript: defineScript,
 			initializeScript: initializeScript,
 			functions: functions, 
