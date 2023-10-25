@@ -144,12 +144,6 @@
 		Float getYaw()
 		# Gets the entity's current rotation around the x axis.
 		Float getPitch()
-		# Gets the entity's current velocity in the x direction.
-		Double getVelocityX()
-		# Gets the entity's current velocity in the y direction.
-		Double getVelocityY()
-		# Gets the entity's current velocity in the z direction.
-		Double getVelocityZ()
 		# Gets the current world this entity resides in.
 		String getWorld()
 		# Returns true if this entity has been marked for removal.
