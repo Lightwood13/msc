@@ -389,11 +389,11 @@
 		Double getDirectionX()
 		Double getDirectionY()
 		Double getDirectionZ()
-		# Gets the entity's current velocity in the x direction.
+		# Gets the entity's current acceleration (yes, acceleration) in the x direction.
 		Double getVelocityX()
-		# Gets the entity's current velocity in the y direction.
+		# Gets the entity's current acceleration (yes, acceleration) in the y direction.
 		Double getVelocityY()
-		# Gets the entity's current velocity in the z direction.
+		# Gets the entity's current acceleration (yes, acceleration) in the z direction.
 		Double getVelocityZ()
 		# Gets the current world this entity resides in.
 		String getWorld()
