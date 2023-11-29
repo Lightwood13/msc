@@ -143,13 +143,7 @@
 		# Gets the entity's current rotation around the y axis.
 		Float getYaw()
 		# Gets the entity's current rotation around the x axis.
-		Float getPitch()
-		# Gets the entity's current velocity in the x direction.
-		Double getVelocityX()
-		# Gets the entity's current velocity in the y direction.
-		Double getVelocityY()
-		# Gets the entity's current velocity in the z direction.
-		Double getVelocityZ()
+		Float getPitch()	
 		# Gets the current world this entity resides in.
 		String getWorld()
 		# Returns true if this entity has been marked for removal.
@@ -395,11 +389,11 @@
 		Double getDirectionX()
 		Double getDirectionY()
 		Double getDirectionZ()
-		# Gets the entity's current velocity in the x direction.
+		# Gets the entity's current velocity in the x direction. Works unreliably if the entity is a player.
 		Double getVelocityX()
-		# Gets the entity's current velocity in the y direction.
+		# Gets the entity's current velocity in the y direction. Works unreliably if the entity is a player.
 		Double getVelocityY()
-		# Gets the entity's current velocity in the z direction.
+		# Gets the entity's current velocity in the z direction. Works unreliably if the entity is a player.
 		Double getVelocityZ()
 		# Gets the current world this entity resides in.
 		String getWorld()
