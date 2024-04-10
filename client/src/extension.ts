@@ -246,16 +246,42 @@ async function uploadNamespaceChildFile(
 		return;
 	}
 
-	const includedFiles = collectIncludedFilesInfo(fileContents);
-	await uploadIncludedFiles(fileUri, includedFiles, cache);
-	const replacedFileContents = replaceIncludedFiles(fileUri, fileContents, includedFiles, cache);
+	const processedFileContents = await processInitScriptImports(fileContents, fileUri, cache);
+	const functionLink: string | null = await uploadFileWithCache(fileUri, escapedFileName, processedFileContents, cache);
 
-	const functionLink: string | null = await uploadFileWithCache(fileUri, escapedFileName, replacedFileContents, cache);
 	if (functionLink !== null) {
 		onSuccess(functionLink);
 	}
 	incrementProgress();
 }
+
+async function processInitScriptImports(fileContents: string, baseFileUri: Uri, cache: ProcessedFileCache): Promise<string> {
+	const filenameRegex = /%{(.+\.msc)}$/gm;
+	const matches = fileContents.matchAll(filenameRegex);
+
+	const processedLines: string[] = [];
+
+	for (const match of matches) {
+		const line = match[0];
+		const filePath = match[1];
+
+		const fileUri = Uri.joinPath(baseFileUri, '..', filePath);
+		const escapedFileName = escapeFunctionName(filePath);
+
+		const uploadedLink = await findAndUploadFile(fileUri, escapedFileName, cache);
+		const processedLine = line.replace(`%{${filePath}}`, uploadedLink || '');
+
+		processedLines.push(processedLine);
+	}
+  
+	let processedFileContents = fileContents;
+  
+	for (const processedLine of processedLines) {
+		processedFileContents = processedFileContents.replace(/%{.+\.msc}$/m, processedLine);
+	}
+
+	return processedFileContents;
+  }
 
 // returns true if any errors are found
 function showErrors(cache: ProcessedFileCache): boolean {
