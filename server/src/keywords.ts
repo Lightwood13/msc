@@ -246,8 +246,25 @@ export const keywords: CompletionItem[] =
 	];
 
 export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion =>
-	({
-		...suggestion,
-		insertText: suggestion.insertText?.substring(1)
-	})
+({
+	...suggestion,
+	insertText: suggestion.insertText?.substring(1)
+})
 );
+
+
+export const keywordCommands: CompletionItem[] =
+	[
+		{
+			"label": "setblock",
+			"detail": "Changes a block",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "setblock",
+			"insertText": "execute in ${1:minecraft:theta} run setblock ${2:x} ${3:y} ${4:z} minecraft:{5:blocktype}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "execute in minecraft:theta run setblock 123 45 678 minecraft:air"
+			}
+		}
+	];

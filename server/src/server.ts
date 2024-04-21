@@ -42,7 +42,7 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
-import { keywords, keywordsWithoutAtSymbol } from './keywords';
+import { keywords, keywordsWithoutAtSymbol, keywordCommands } from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -699,6 +699,12 @@ connection.onCompletion(
 				character: textDocumentPosition.position.character
 			}
 		});
+		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
+		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`, 'i');
+		const commandSuggestionRegExpRes = commandSuggestionRegExp.exec(line);
+		if (commandSuggestionRegExpRes !== null) {
+			return keywordCommands;
+		}
 		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
 		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
 		if (keywordSuggestionRegExpRes !== null) {
