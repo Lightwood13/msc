@@ -272,11 +272,11 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Gives the player an item",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "give",
-			"insertText": "give ${1:{{player}}} minecraft:${2:apple} ${3:1}",
+			"insertText": "give ${1:@s} minecraft:${2:apple} ${3:1}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/give {{player}} apple 1"
+				"value": "/give @s apple 1"
 			}
 		}
 	];
