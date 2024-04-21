@@ -260,11 +260,23 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Changes a block",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "setblock",
-			"insertText": "execute in ${1:minecraft:theta} run setblock ${2:x} ${3:y} ${4:z} minecraft:{5:blocktype}",
+			"insertText": "execute in ${1:minecraft:theta} run setblock ${2:x} ${3:y} ${4:z} minecraft:${5:air}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "execute in minecraft:theta run setblock 123 45 678 minecraft:air"
+				"value": "/execute in minecraft:theta run setblock 123 45 678 minecraft:air"
+			}
+		},
+		{
+			"label": "give",
+			"detail": "Gives the player an item",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "give",
+			"insertText": "give ${1:{{player}}} minecraft:${2:apple} ${3:1}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/give {{player}} apple 1"
 			}
 		}
 	];
