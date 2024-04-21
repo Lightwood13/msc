@@ -209,3 +209,9 @@ export const keywords: CompletionItem[] =
 		}
 	];
 
+export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion =>
+	({
+		...suggestion,
+		insertText: suggestion.insertText?.substring(1)
+	})
+);

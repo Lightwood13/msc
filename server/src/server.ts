@@ -42,7 +42,7 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
-import { keywords } from './keywords';
+import { keywords, keywordsWithoutAtSymbol } from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -158,7 +158,7 @@ connection.onDidChangeWatchedFiles(_ => {
 
 function skipStringBackward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
-	for(; pos >= 0; pos--) {
+	for (; pos >= 0; pos--) {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
@@ -180,20 +180,20 @@ function skipStringBackward(line: string, pos: number): number | undefined {
 		}
 		else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
 			(pos === 1 || line[pos - 2] !== '\\')) {
-				if (stack.length !== 0 && stack[stack.length - 1] === '}') {
-					stack.pop();
-				}
-				else {
-					return undefined;
-				}
+			if (stack.length !== 0 && stack[stack.length - 1] === '}') {
+				stack.pop();
 			}
+			else {
+				return undefined;
+			}
+		}
 	}
 	return undefined;
 }
 
 function skipStringForward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
-	for(; pos < line.length; pos++) {
+	for (; pos < line.length; pos++) {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
@@ -215,13 +215,13 @@ function skipStringForward(line: string, pos: number): number | undefined {
 		}
 		else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
 			(pos === 0 || line[pos - 1] !== '\\')) {
-				if (stack.length !== 0 && stack[stack.length - 1] === '{') {
-					stack.pop();
-				}
-				else {
-					return undefined;
-				}
+			if (stack.length !== 0 && stack[stack.length - 1] === '{') {
+				stack.pop();
 			}
+			else {
+				return undefined;
+			}
+		}
 	}
 	return undefined;
 }
@@ -370,7 +370,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 	activeNamespaceName: string | undefined, lineNumber: number): NameAndType | undefined {
 	if (callChain.length === 0)
 		return undefined;
-	
+
 	let currentClass = '';
 	let currentName = '';
 	let startingI = 1;
@@ -408,7 +408,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 				for (const variable of currentVariables)
 					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined
 						|| variable.lineUndeclared > lineNumber))
-							currentVariable = variable;
+						currentVariable = variable;
 			if (currentVariable !== undefined) {
 				currentClass = currentVariable.type;
 			}
@@ -424,7 +424,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 				currentName = activeNamespaceName + '::' + callChain[0];
 				currentClass = currentMember.returnType;
 			}
-			
+
 		}
 	}
 
@@ -510,13 +510,13 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			return {
 				name: lastNameAndType.name,
 				paramNumber: paramNumber
-			};			
+			};
 		}
 	}
 	return undefined;
 }
 
-function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number) : string | undefined {
+function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number): string | undefined {
 	let closestUsingLine = -1;
 	let result: string | undefined = undefined;
 	for (const usingDeclaration of usingDeclarations) {
@@ -538,7 +538,7 @@ connection.onSignatureHelp(
 			activeSignature: 0,
 			activeParameter: 0
 		};
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return result;
@@ -551,7 +551,7 @@ connection.onSignatureHelp(
 				character: textDocumentPosition.position.character
 			}
 		});
-		
+
 		const info = parseFunctionCall(line, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (info === undefined)
 			return result;
@@ -563,9 +563,9 @@ connection.onSignatureHelp(
 			const scopeOperatorPosition = name.indexOf('::');
 			const dotPosition = name.indexOf('.');
 			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2
-				&& /[a-z]/.test(name[scopeOperatorPosition + 2]) ) {
+				&& /[a-z]/.test(name[scopeOperatorPosition + 2])) {
 				// namespace function call
-				const namespaceName = name.substring(0, scopeOperatorPosition);			
+				const namespaceName = name.substring(0, scopeOperatorPosition);
 				const functionName = name.substring(scopeOperatorPosition + 2);
 				const currentNamespace = namespaces.get(namespaceName);
 				if (currentNamespace === undefined)
@@ -575,8 +575,7 @@ connection.onSignatureHelp(
 					result.signatures = signatures;
 				break;
 			}
-			else if (dotPosition !== -1)
-			{
+			else if (dotPosition !== -1) {
 				// class method call
 				const className = name.substring(0, dotPosition);
 				const methodName = name.substring(dotPosition + 1);
@@ -615,7 +614,7 @@ connection.onHover(
 	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return undefined;
@@ -632,7 +631,7 @@ connection.onHover(
 		let i = textDocumentPosition.position.character;
 		if (!/[a-zA-Z0-9_]/.test(line[i]))
 			return undefined;
-		for(; i < line.length; i++) {
+		for (; i < line.length; i++) {
 			if (!/[a-zA-Z0-9_]/.test(line[i]))
 				break;
 		}
@@ -643,14 +642,14 @@ connection.onHover(
 			parseString += '().a';
 		else
 			parseString += '.a';
-		
+
 		const callChain = parseCallChain(parseString);
 		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (nameAndType === undefined)
 			return undefined;
 
 		let documentation: string | undefined = undefined;
-		
+
 		const dotPosition = nameAndType.name.indexOf('.');
 		const scopeOperatorPosition = nameAndType.name.indexOf('::');
 		if (dotPosition !== -1) {
@@ -687,7 +686,7 @@ connection.onCompletion(
 	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return [];
@@ -703,8 +702,11 @@ connection.onCompletion(
 		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
 		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
 		if (keywordSuggestionRegExpRes !== null) {
-			if (keywordSuggestionRegExpRes[1] === undefined)
+			if (keywordSuggestionRegExpRes[1] === '@') {
+				return keywordsWithoutAtSymbol;
+			} else {
 				return keywords;
+			}
 		}
 		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
 		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);
@@ -754,7 +756,7 @@ connection.onCompletion(
 			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 			if (lastNameAndType === undefined)
 				return [];
-			
+
 			const currentClassInfo = classes.get(lastNameAndType.type);
 			if (currentClassInfo === undefined)
 				return [];
@@ -815,7 +817,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 	const result: NamespaceUploadResult[] = [];
 
 	const lines = fileInfo.content.split(newLineRegExp);
-	
+
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
 		if (regExpRes === null)
@@ -839,7 +841,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		namespaceDefinitionsLines.push(`@bypass /namespace remove ${namespaceName}`);
 		namespaceDefinitionsLines.push(`@bypass /namespace define ${namespaceName}`);
-		
+
 		for (let j = i + 1; j < namespaceEndLine; j++) {
 			const classRegExpRes = classSignatureRegExp.exec(lines[j]);
 			if (classRegExpRes !== null) {
@@ -852,7 +854,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 					break;
 				const className = classRegExpRes[1];
 				classDefinitionsLines.push(`@bypass /type define ${namespaceName} ${className}`);
-				
+
 				for (let k = j + 1; k < classEndLine; k++) {
 					const functionRegExpRes = functionSignatureRegExp.exec(lines[k]);
 					const constructorRegExpRes = constructorSignatureRegExp.exec(lines[k]);
@@ -877,20 +879,20 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 						const fieldDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, k, classEndLine);
 						if (fieldDeclarationEndLine === undefined)
 							continue;
-							
+
 						if (variableRegExpRes[7] !== undefined) {
 							const fieldIntialization: string = variableRegExpRes[7] + ' ' + lines.slice(k + 1, fieldDeclarationEndLine + 1)
-								.map((value:string):string => value.trim())
+								.map((value: string): string => value.trim())
 								.join(' ');
 							variableInitializationsLines.push(`@bypass /type field set ${namespaceName} ${className} ${variableRegExpRes[6]} ${fieldIntialization}`);
 						}
-						
+
 						k = fieldDeclarationEndLine;
 						memberDefinitionsLines.push(`@bypass /type field define ${namespaceName} ${className} ${variableRegExpRes[1]}`);
-						
+
 					}
 				}
-				
+
 				j = classEndLine;
 				continue;
 			}
@@ -910,14 +912,14 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 				if (variableRegExpRes[7] !== undefined) {
 					const variableInitialization: string = variableRegExpRes[7] + ' ' + lines.slice(j + 1, variableDeclarationEndLine + 1)
-						.map((value:string):string => value.trim())
+						.map((value: string): string => value.trim())
 						.join(' ');
 					variableInitializationsLines.push(`@bypass /variable set ${namespaceName} ${variableRegExpRes[6]} ${variableInitialization}`);
 				}
-					
+
 				j = variableDeclarationEndLine;
 				variableDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${variableRegExpRes[1]}`);
-				
+
 			}
 		}
 
@@ -925,22 +927,22 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		const defineScript: string = (fileInfo.update) ? '' :
 			namespaceDefinitionsLines.concat([''])
-			.concat(classDefinitionsLines)
-			.concat(memberDefinitionsLines)
-			.concat(variableDefinitionsLines).join('\n');
+				.concat(classDefinitionsLines)
+				.concat(memberDefinitionsLines)
+				.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
 			namespaceDefinitionPath: fileInfo.path,
 			defineScript: defineScript,
 			initializeScript: initializeScript,
-			functions: functions, 
+			functions: functions,
 			constructors: constructors,
 			methods: methods
 		};
 		result.push(currentNamespace);
 	}
-	
+
 	connection.sendNotification('Upload namespace script', result);
 });
 
