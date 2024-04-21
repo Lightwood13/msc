@@ -9,29 +9,29 @@ export const keywords: CompletionItem[] =
 	[
 		{
 			"label": "if",
-			"detail": "If statement",
+			"detail": "Conditional (if) statement",
 			"kind": CompletionItemKind.Snippet,
-			"insertText": "@if $1\n\t$0\n@fi",
+			"insertText": "@if (${1:condition})\n\t$2\n@fi",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "@if condition\n\tdo stuff\n@fi"
+				"value": "@if (condition)\n\tdo stuff\n@fi"
 			}
 		},
 		{
-			"label": "if else",
-			"detail": "If-else statement",
+			"label": "if elseif else",
+			"detail": "Branch (if/elseif/else) statement",
 			"kind": CompletionItemKind.Snippet,
-			"insertText": "@if $1\n\t$0\n@else\n\t\n@fi",
+			"insertText": "@if (${1:condition})\n\t$2\n@elseif (${3:condition})\n\t$4\n@else\n\t$5\n@fi",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "@if condition\n\tdo stuff\n@else\n\tdo other stuff\n@fi"
+				"value": "@if (condition)\n\tdo stuff\n@elseif (other condition)\n\tdo other stuff\n@else\n\tdo this otherwise\n@fi"
 			}
 		},
 		{
 			"label": "for",
-			"detail": "For loop",
+			"detail": "For loop (iteration)",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@for ${1:Int} ${2:i} in ${3:list::range(0, 10)}\n\t$0\n@done",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -42,7 +42,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "define",
-			"detail": "Define variable",
+			"detail": "Define a variable",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@define ${1:Int} ${2:myVar} = ${3:0}",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -53,29 +53,29 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "player",
-			"detail": "Say message to player",
+			"detail": "Display a chat message to the player",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@player ${1:hello}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "@player hello"
+				"value": "@player text to display"
 			}
 		},
 		{
 			"label": "print",
-			"detail": "Say message to player",
+			"detail": "Display a chat message to the player",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@player ${1:hello}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "@player hello"
+				"value": "@player text to display"
 			}
 		},
 		{
 			"label": "chatscript",
-			"detail": "Add script to the last chat message",
+			"detail": "Add a script to the last chat message",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@chatscript ${1:10s} ${2:groupname} ${3:do_stuff()}",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -97,7 +97,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "delay",
-			"detail": "Delay script execution",
+			"detail": "Delay continued script execution",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@delay ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -108,7 +108,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "cooldown",
-			"detail": "Add cooldown to this script",
+			"detail": "Add a cooldown to this script",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@cooldown ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -119,7 +119,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "global cooldown",
-			"detail": "Add global cooldown to this script",
+			"detail": "Add a global cooldown to this script",
 			"kind": CompletionItemKind.Snippet,
 			"insertText": "@global_cooldown ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
@@ -245,9 +245,9 @@ export const keywords: CompletionItem[] =
 	];
 
 
-export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map( suggestion =>
-	({
-		...suggestion,
-		insertText: suggestion.insertText?.substring(1)
-	})
+export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion =>
+({
+	...suggestion,
+	insertText: suggestion.insertText?.substring(1)
+})
 );
