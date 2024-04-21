@@ -116,6 +116,42 @@ export const keywords: CompletionItem[] =
 			}
 		},
 		{
+			"label": "bypass",
+			"detail": "Run a command",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "bypass command",
+			"insertText": "@bypass /${1:command}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@bypass /command"
+			}
+		},
+		{
+			"label": "command",
+			"detail": "Run a command as the player",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "command",
+			"insertText": "@command /${1:command}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@command /command"
+			}
+		},
+		{
+			"label": "console",
+			"detail": "Run a command as the console",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "console command",
+			"insertText": "@console /${1:command}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@console /command"
+			}
+		},
+		{
 			"label": "cooldown",
 			"detail": "Add a cooldown to this script",
 			"kind": CompletionItemKind.Snippet,
