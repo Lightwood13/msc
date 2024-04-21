@@ -42,7 +42,7 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
-import { keywords, keywordsWithoutAtSymbol } from './keywords';
+import { keywords } from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -705,8 +705,6 @@ connection.onCompletion(
 		if (keywordSuggestionRegExpRes !== null) {
 			if (keywordSuggestionRegExpRes[1] === undefined)
 				return keywords;
-			else
-				return keywordsWithoutAtSymbol;
 		}
 		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
 		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);

@@ -8,9 +8,10 @@ import {
 export const keywords: CompletionItem[] =
 	[
 		{
-			"label": "if",
+			"label": "if else",
 			"detail": "Conditional (if) statement",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "if condition",
 			"insertText": "@if (${1:condition})\n\t$2\n@fi",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -22,6 +23,7 @@ export const keywords: CompletionItem[] =
 			"label": "if elseif else",
 			"detail": "Branch (if/elseif/else) statement",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "if branch",
 			"insertText": "@if (${1:condition})\n\t$2\n@elseif (${3:condition})\n\t$4\n@else\n\t$5\n@fi",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -30,9 +32,22 @@ export const keywords: CompletionItem[] =
 			}
 		},
 		{
+			"label": "elseif",
+			"detail": "Alternate condition",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "elseif elif",
+			"insertText": "@elseif (${1:condition})",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@elseif (${1:condition})"
+			}
+		},
+		{
 			"label": "for",
 			"detail": "For loop (iteration)",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "for repeat",
 			"insertText": "@for ${1:Int} ${2:i} in ${3:list::range(0, 10)}\n\t$0\n@done",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -44,6 +59,7 @@ export const keywords: CompletionItem[] =
 			"label": "define",
 			"detail": "Define a variable",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "define def let",
 			"insertText": "@define ${1:Int} ${2:myVar} = ${3:0}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -55,17 +71,7 @@ export const keywords: CompletionItem[] =
 			"label": "player",
 			"detail": "Display a chat message to the player",
 			"kind": CompletionItemKind.Snippet,
-			"insertText": "@player ${1:hello}",
-			"insertTextFormat": InsertTextFormat.Snippet,
-			"documentation": {
-				"kind": "plaintext",
-				"value": "@player text to display"
-			}
-		},
-		{
-			"label": "print",
-			"detail": "Display a chat message to the player",
-			"kind": CompletionItemKind.Snippet,
+			"filterText": "player print display output",
 			"insertText": "@player ${1:hello}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -77,7 +83,8 @@ export const keywords: CompletionItem[] =
 			"label": "chatscript",
 			"detail": "Add a script to the last chat message",
 			"kind": CompletionItemKind.Snippet,
-			"insertText": "@chatscript ${1:10s} ${2:groupname} ${3:do_stuff()}",
+			"filterText": "chatscript cs onclick",
+			"insertText": "@chatscript ${1:10s} ${2:group-name} ${3:function()}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
@@ -88,6 +95,7 @@ export const keywords: CompletionItem[] =
 			"label": "prompt",
 			"detail": "Prompt the player",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "prompt input",
 			"insertText": "@prompt ${1:10s} ${2:myStringVar} ${3:Prompt expired}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -99,6 +107,7 @@ export const keywords: CompletionItem[] =
 			"label": "delay",
 			"detail": "Delay continued script execution",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "delay wait pause",
 			"insertText": "@delay ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -110,6 +119,7 @@ export const keywords: CompletionItem[] =
 			"label": "cooldown",
 			"detail": "Add a cooldown to this script",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "cooldown",
 			"insertText": "@cooldown ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -121,6 +131,7 @@ export const keywords: CompletionItem[] =
 			"label": "global cooldown",
 			"detail": "Add a global cooldown to this script",
 			"kind": CompletionItemKind.Snippet,
+			"filterText": "global_cooldown",
 			"insertText": "@global_cooldown ${1:1s}",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
@@ -129,125 +140,72 @@ export const keywords: CompletionItem[] =
 			}
 		},
 		{
-			"label": "bypass",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@bypass ",
-			command: {
-				title: 'Trigger Suggest',
-				command: 'editor.action.triggerSuggest'
+			"label": "using",
+			"detail": "Changes default namespace",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "using namespace",
+			"insertText": "@using ${1:namespace}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@using namespace"
 			}
 		},
 		{
 			"label": "cancel",
+			"detail": "Terminates a player's interaction",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "cancel",
 			"insertText": "@cancel"
 		},
 		{
-			"label": "chatscript",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@chatscript"
-		},
-		{
-			"label": "command",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@command"
-		},
-		{
-			"label": "console",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@console"
-		},
-		{
-			"label": "cooldown",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@cooldown"
-		},
-		{
-			"label": "define",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@define"
-		},
-		{
-			"label": "delay",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@delay"
-		},
-		{
 			"label": "done",
+			"detail": "Ends an @for loop",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "done endfor",
 			"insertText": "@done"
 		},
 		{
 			"label": "else",
+			"detail": "Runs if no other conditions have been met",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "else",
 			"insertText": "@else"
 		},
 		{
-			"label": "elseif",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@elseif"
-		},
-		{
 			"label": "fast",
+			"detail": "Removes the 1-tick delay from commands",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "fast",
 			"insertText": "@fast"
 		},
 		{
 			"label": "fi",
+			"detail": "Ends a conditional branch",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "fi endif",
 			"insertText": "@fi"
 		},
 		{
-			"label": "for",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@for"
-		},
-		{
-			"label": "global_cooldown",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@global_cooldown"
-		},
-		{
-			"label": "if",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@if"
-		},
-		{
-			"label": "player",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@player"
-		},
-		{
-			"label": "prompt",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@prompt"
-		},
-		{
 			"label": "return",
+			"detail": "Ends execution, optionally returning an argument",
 			"kind": CompletionItemKind.Keyword,
-			"insertText": "@return"
+			"filterText": "return",
+			"insertText": "@return "
 		},
 		{
 			"label": "slow",
+			"detail": "Nullifies a previous @fast",
 			"kind": CompletionItemKind.Keyword,
+			"filterText": "slow",
 			"insertText": "@slow"
 		},
 		{
-			"label": "using",
-			"kind": CompletionItemKind.Keyword,
-			"insertText": "@using"
-		},
-		{
 			"label": "var",
+			"detail": "Runs a function or assigns a variable",
 			"kind": CompletionItemKind.Keyword,
-			"insertText": "@var"
+			"filterText": "var run set",
+			"insertText": "@var "
 		}
 	];
 
-
-export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion =>
-({
-	...suggestion,
-	insertText: suggestion.insertText?.substring(1)
-})
-);
