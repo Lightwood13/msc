@@ -146,19 +146,6 @@ function refreshDocument(documentUri: string): Promise<SourceFileData> {
 	return result;
 }
 
-documents.onDidChangeContent(e => {
-	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
-});
-
-documents.onDidClose(e => {
-	sourceFileData.delete(e.document.uri);
-});
-
-
-connection.onDidChangeWatchedFiles(_ => {
-	refreshNamespaceFiles();
-});
-
 function skipStringBackward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
 	for (; pos >= 0; pos--) {
@@ -964,26 +951,36 @@ function validateTextDocument(textDocument: TextDocument): void {
 	// Split the text into lines
 	const lines = text.split('\n');
 
+	// Define the valid line starters
+	const validStarters = [
+		'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
+		'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
+		'@console', '@cooldown', '@global_cooldown', '@using', '@cancel',
+		'@fast', '@slow', '@return', '# '
+	];
+
 	// Iterate through each line
 	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
+		const line = lines[i].trim();
 
-		// Check if the line is invalid (you can replace this with your own validation logic)
-		if (line.includes('invalid')) {
-			// Create a diagnostic for the invalid line
-			const diagnostic: Diagnostic = {
-				severity: DiagnosticSeverity.Error,
-				range: {
-					start: { line: i, character: 0 },
-					end: { line: i, character: line.length }
-				},
-				message: 'Invalid line',
-				source: 'ex'
-			};
-
-			// Add the diagnostic to the array
-			diagnostics.push(diagnostic);
+		// Skip empty lines or lines starting with valid starters or comments
+		if (line === '' || validStarters.some(starter => line.startsWith(starter))) {
+			continue;
 		}
+
+		// Create a diagnostic for the invalid line
+		const diagnostic: Diagnostic = {
+			severity: DiagnosticSeverity.Error,
+			range: {
+				start: { line: i, character: 0 },
+				end: { line: i, character: line.length }
+			},
+			message: 'Invalid script option',
+			source: 'msc-error'
+		};
+
+		// Add the diagnostic to the array
+		diagnostics.push(diagnostic);
 	}
 
 	// Send the diagnostics to the client
@@ -997,14 +994,27 @@ function validateTextDocument(textDocument: TextDocument): void {
 documents.listen(connection);
 
 // Register the text document validation function
-documents.onDidChangeContent(change => {
+documents.onDidSave(change => {
 	validateTextDocument(change.document);
-  });
-  
-  // Validate the text document when it is opened
-  documents.onDidOpen(event => {
-	validateTextDocument(event.document);
-  });
+});
+
+// Register the text document validation function
+documents.onDidOpen(change => {
+	validateTextDocument(change.document);
+});
+
+documents.onDidChangeContent(e => {
+	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
+	validateTextDocument(e.document);
+});
+
+documents.onDidClose(e => {
+	sourceFileData.delete(e.document.uri);
+});
+
+connection.onDidChangeWatchedFiles(_ => {
+	refreshNamespaceFiles();
+});
 
 // Listen on the connection
 connection.listen();
