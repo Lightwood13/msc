@@ -5,8 +5,11 @@
 import {
 	createConnection,
 	TextDocuments,
+	Diagnostic,
+	DiagnosticSeverity,
 	ProposedFeatures,
 	InitializeParams,
+	// DidChangeConfigurationNotification,
 	CompletionItem,
 	CompletionItemKind,
 	TextDocumentPositionParams,
@@ -952,9 +955,56 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 	connection.sendNotification('Upload namespace script', result);
 });
 
+function validateTextDocument(textDocument: TextDocument): void {
+	const diagnostics: Diagnostic[] = [];
+
+	// Get the text content of the document
+	const text = textDocument.getText();
+
+	// Split the text into lines
+	const lines = text.split('\n');
+
+	// Iterate through each line
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
+		// Check if the line is invalid (you can replace this with your own validation logic)
+		if (line.includes('invalid')) {
+			// Create a diagnostic for the invalid line
+			const diagnostic: Diagnostic = {
+				severity: DiagnosticSeverity.Error,
+				range: {
+					start: { line: i, character: 0 },
+					end: { line: i, character: line.length }
+				},
+				message: 'Invalid line',
+				source: 'ex'
+			};
+
+			// Add the diagnostic to the array
+			diagnostics.push(diagnostic);
+		}
+	}
+
+	// Send the diagnostics to the client
+	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+}
+
+
+
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 documents.listen(connection);
+
+// Register the text document validation function
+documents.onDidChangeContent(change => {
+	validateTextDocument(change.document);
+  });
+  
+  // Validate the text document when it is opened
+  documents.onDidOpen(event => {
+	validateTextDocument(event.document);
+  });
 
 // Listen on the connection
 connection.listen();
