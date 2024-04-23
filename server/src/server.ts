@@ -956,15 +956,16 @@ function validateTextDocument(textDocument: TextDocument): void {
 		'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
 		'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
 		'@console', '@cooldown', '@global_cooldown', '@using', '@cancel',
-		'@fast', '@slow', '@return', '# '
+		'@fast', '@slow', '@return'
 	];
 
 	// Iterate through each line
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i].trim();
+		const firstWord = line.split(" ")[0];
 
 		// Skip empty lines or lines starting with valid starters or comments
-		if (line === '' || validStarters.some(starter => line.startsWith(starter))) {
+		if (line === '' || line.startsWith("# ") || validStarters.includes(firstWord)) {
 			continue;
 		}
 
@@ -973,9 +974,9 @@ function validateTextDocument(textDocument: TextDocument): void {
 			severity: DiagnosticSeverity.Error,
 			range: {
 				start: { line: i, character: 0 },
-				end: { line: i, character: line.length }
+				end: { line: i, character: firstWord.length }
 			},
-			message: 'Invalid script option',
+			message: 'Invalid script option ' + firstWord,
 			source: 'msc-error'
 		};
 
@@ -984,6 +985,7 @@ function validateTextDocument(textDocument: TextDocument): void {
 	}
 
 	// Send the diagnostics to the client
+	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
 	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
 }
 
