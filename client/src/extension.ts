@@ -443,7 +443,7 @@ export function activate(context: ExtensionContext) {
 			handleDiagnostics: (uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature) => {
 				if (uri.fsPath.endsWith('.msc')) {
 					// Display the diagnostics in the editor for '.msc' files
-					languages.createDiagnosticCollection('msc').set(uri, diagnostics);
+					languages.createDiagnosticCollection('msc').set(uri, []);
 				}
 				next(uri, diagnostics);
 			}

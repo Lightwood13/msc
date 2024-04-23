@@ -973,8 +973,8 @@ function validateTextDocument(textDocument: TextDocument): void {
 		const diagnostic: Diagnostic = {
 			severity: DiagnosticSeverity.Error,
 			range: {
-				start: { line: i, character: 0 },
-				end: { line: i, character: firstWord.length }
+				start: { line: i, character: lines[i].indexOf(firstWord) },
+				end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
 			},
 			message: 'Invalid script option ' + firstWord,
 			source: 'msc-error'
