@@ -591,7 +591,7 @@ export function activate(context: ExtensionContext) {
 			})
 				// success: let user know that we've fetched and processed the default namespaces
 				.then(data => {
-					console.log('Successfully fetched default namespaces file from github');
+					console.log('Successfully fetched default namespaces file from GitHub');
 					client.sendNotification('processDefaultNamespaces', data.data);
 				})
 				// if this fails, send an error notification

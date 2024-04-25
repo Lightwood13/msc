@@ -7,6 +7,9 @@ import {
 	TextDocuments,
 	Diagnostic,
 	DiagnosticSeverity,
+	CodeAction,
+	CodeActionKind,
+	CodeActionParams,
 	ProposedFeatures,
 	InitializeParams,
 	// DidChangeConfigurationNotification,
@@ -73,7 +76,8 @@ connection.onInitialize((params: InitializeParams) => {
 			signatureHelpProvider: {
 				triggerCharacters: ['(', ',']
 			},
-			hoverProvider: true
+			hoverProvider: true,
+			codeActionProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -942,6 +946,45 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 	connection.sendNotification('Upload namespace script', result);
 });
 
+connection.onCodeAction((params: CodeActionParams) => {
+	const textDocument = documents.get(params.textDocument.uri);
+	if (!textDocument) {
+		return [];
+	}
+
+	const diagnostics: Diagnostic[] = params.context.diagnostics;
+
+	const codeActions: CodeAction[] = diagnostics.map(diagnostic => {
+		const quickFix: CodeAction = {
+			title: 'Ignore errors in this file',
+			kind: CodeActionKind.QuickFix,
+			diagnostics: [diagnostic],
+			edit: {
+				documentChanges: [
+					{
+						textDocument: {
+							uri: textDocument.uri,
+							version: textDocument.version
+						},
+						edits: [
+							{
+								range: {
+									start: { line: 0, character: 0 },
+									end: { line: 0, character: 0 }
+								},
+								newText: '# msc-ignore-errors\n'
+							}
+						]
+					}
+				]
+			}
+		};
+		return quickFix;
+	});
+
+	return codeActions;
+});
+
 function validateTextDocument(textDocument: TextDocument): void {
 
 	const diagnostics: Diagnostic[] = [];
@@ -1170,6 +1213,34 @@ function validateTextDocument(textDocument: TextDocument): void {
 						};
 						diagnostics.push(diagnostic);
 					}
+				}
+			} else if (firstWord === '@delay') {
+				const delayRegex = /^@delay\s+(\d+[tshmd]?)$/;
+				const match = line.match(delayRegex);
+				if (!match) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: 'Invalid @delay syntax. Expected: @delay time',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				}
+			} else if (firstWord === '@slow' || firstWord === '@fast') {
+				if (line !== '@slow' && line !== '@fast') {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
+							end: { line: i, character: lines[i].length }
+						},
+						message: `${firstWord} should be on its own line`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
 				}
 			}
 			continue;
