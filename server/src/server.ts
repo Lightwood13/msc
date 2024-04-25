@@ -943,6 +943,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 });
 
 function validateTextDocument(textDocument: TextDocument): void {
+
 	const diagnostics: Diagnostic[] = [];
 
 	// Get the text content of the document
@@ -952,6 +953,11 @@ function validateTextDocument(textDocument: TextDocument): void {
 		connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
 		return;
 	}
+
+	let hasCooldown = false;
+	let hasGlobalCooldown = false;
+	let hasCancel = false;
+	let scriptStarted = false;
 
 	// Split the text into lines
 	const lines = text.split('\n');
@@ -969,8 +975,17 @@ function validateTextDocument(textDocument: TextDocument): void {
 		const line = lines[i].trim();
 		const firstWord = line.split(" ")[0];
 
+		// Skip empty lines or lines starting with comments
+		if (line === '' || line.startsWith("# ")) {
+			continue;
+		}
+
+		if (!scriptStarted && !validStarters.includes(firstWord)) {
+			scriptStarted = true;
+		}
+
 		// Skip empty lines or lines starting with valid starters or comments
-		if (line === '' || line.startsWith("# ") || validStarters.includes(firstWord)) {
+		if (validStarters.includes(firstWord)) {
 			// Additional checks for specific options
 			if (firstWord === '@else' || firstWord === '@fi' || firstWord === '@done') {
 				if (line !== firstWord) {
@@ -1074,22 +1089,119 @@ function validateTextDocument(textDocument: TextDocument): void {
 						diagnostics.push(diagnostic);
 					}
 				}
+			} else if (firstWord === '@cooldown' || firstWord === '@global_cooldown') {
+				if (scriptStarted) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: `${firstWord} must appear at the beginning of the script`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else if ((firstWord === '@cooldown' && hasCooldown) || (firstWord === '@global_cooldown' && hasGlobalCooldown)) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: `${firstWord} can only appear once in the script`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else {
+					if (firstWord === '@cooldown') {
+						hasCooldown = true;
+					} else {
+						hasGlobalCooldown = true;
+					}
+					const cooldownRegex = /^@(cooldown|global_cooldown)\s+(\d+[tshmd]?)$/;
+					const match = line.match(cooldownRegex);
+					if (!match) {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(firstWord) },
+								end: { line: i, character: lines[i].length }
+							},
+							message: `Invalid ${firstWord} syntax. Expected: ${firstWord} time`,
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
+			} else if (firstWord === '@cancel') {
+				if (scriptStarted) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: '@cancel must appear at the beginning of the script',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else if (hasCancel) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: '@cancel can only appear once in the script',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else {
+					hasCancel = true;
+					if (line !== '@cancel') {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
+								end: { line: i, character: lines[i].length }
+							},
+							message: '@cancel should not have anything else on the line',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
 			}
 			continue;
-		}
+		} else {
 
-		// Create a diagnostic for the invalid line
+			// Create a diagnostic for the invalid line
+			const diagnostic: Diagnostic = {
+				severity: DiagnosticSeverity.Error,
+				range: {
+					start: { line: i, character: lines[i].indexOf(firstWord) },
+					end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+				},
+				message: 'Invalid script option ' + firstWord,
+				source: 'msc-error'
+			};
+
+			// Add the diagnostic to the array
+			diagnostics.push(diagnostic);
+		}
+	}
+
+	// Check for mutually exclusive options
+	if ((+hasCooldown + +hasGlobalCooldown + +hasCancel) > 1) {
 		const diagnostic: Diagnostic = {
 			severity: DiagnosticSeverity.Error,
 			range: {
-				start: { line: i, character: lines[i].indexOf(firstWord) },
-				end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+				start: { line: 0, character: 0 },
+				end: { line: 0, character: 0 }
 			},
-			message: 'Invalid script option ' + firstWord,
+			message: '@cooldown, @global_cooldown, and @cancel are mutually exclusive',
 			source: 'msc-error'
 		};
-
-		// Add the diagnostic to the array
 		diagnostics.push(diagnostic);
 	}
 
