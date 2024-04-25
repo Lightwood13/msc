@@ -948,6 +948,11 @@ function validateTextDocument(textDocument: TextDocument): void {
 	// Get the text content of the document
 	const text = textDocument.getText();
 
+	if (text.includes("# msc-ignore-errors")) {
+		connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+		return;
+	}
+
 	// Split the text into lines
 	const lines = text.split('\n');
 
@@ -966,6 +971,110 @@ function validateTextDocument(textDocument: TextDocument): void {
 
 		// Skip empty lines or lines starting with valid starters or comments
 		if (line === '' || line.startsWith("# ") || validStarters.includes(firstWord)) {
+			// Additional checks for specific options
+			if (firstWord === '@else' || firstWord === '@fi' || firstWord === '@done') {
+				if (line !== firstWord) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
+							end: { line: i, character: lines[i].length }
+						},
+						message: `${firstWord} should be on its own line.`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				}
+			} else if (firstWord === '@for') {
+				const forRegex = /^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/;
+				const match = line.match(forRegex);
+				if (!match) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: 'Invalid @for syntax: expected @for <type> <variable> in <list>',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				}
+			} else if (firstWord === '@define') {
+				const defineRegex = /^@define\s+([\w:]+)\s+([a-z][\w]*)\s*(?:=\s*(.+))?$/;
+				const match = line.match(defineRegex);
+				if (!match) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: 'Invalid @define syntax. Expected: @define type variable [= expression]',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else {
+					const [, _, __, expression] = match;
+					if (expression === undefined && line.includes('=')) {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf('=') },
+								end: { line: i, character: lines[i].length }
+							},
+							message: 'Invalid @define syntax. Expression cannot be empty',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
+			} else if (firstWord === '@chatscript') {
+				const chatscriptRegex = /^@chatscript\s+(\d+[tshmd]?)\s+(\S+)\s+(\S+)$/;
+				const match = line.match(chatscriptRegex);
+				if (!match) {
+					const timeRegex = /^@chatscript\s+(\S+)/;
+					const timeMatch = line.match(timeRegex);
+					if (timeMatch) {
+						const [, invalidTime] = timeMatch;
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(invalidTime) },
+								end: { line: i, character: lines[i].indexOf(invalidTime) + invalidTime.length }
+							},
+							message: 'Invalid time syntax in @chatscript. Expected: number with t/s/h/m/d',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					} else {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(firstWord) },
+								end: { line: i, character: lines[i].length }
+							},
+							message: 'Invalid @chatscript syntax. Expected: @chatscript time group-name function',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				} else {
+					const [, _, __, func] = match;
+					if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(func) },
+								end: { line: i, character: lines[i].indexOf(func) + func.length }
+							},
+							message: 'Invalid function syntax in @chatscript. Expected: function()',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
+			}
 			continue;
 		}
 
