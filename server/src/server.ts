@@ -30,8 +30,12 @@ import {
 	Hover,
 	HoverParams
 } from 'vscode-languageserver-protocol';
-import { readFile } from 'fs';
-import { files } from 'node-dir';
+import {
+	readFile
+} from 'fs';
+import {
+	files
+} from 'node-dir';
 
 import {
 	VariableInfo,
@@ -48,14 +52,18 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
-import { keywords, keywordsWithoutAtSymbol, keywordCommands } from './keywords';
+import {
+	keywords,
+	keywordsWithoutAtSymbol,
+	keywordCommands
+} from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
-const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+const documents: TextDocuments < TextDocument > = new TextDocuments(TextDocument);
 
 let hasWorkspaceFolderCapability = false;
 
@@ -100,10 +108,10 @@ connection.onInitialized(() => {
 	refreshNamespaceFiles();
 });
 
-const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
-const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
-const namespaces: Map<string, NamespaceInfo> = new Map();
-const classes: Map<string, ClassInfo> = new Map();
+const sourceFileData: Map < string, Thenable < SourceFileData >> = new Map();
+const defaultNamespaces: Map < string, NamespaceInfo > = new Map();
+const namespaces: Map < string, NamespaceInfo > = new Map();
+const classes: Map < string, ClassInfo > = new Map();
 
 function refreshNamespaceFiles() {
 	// search for .nms files in all subfolders
@@ -126,15 +134,15 @@ function refreshNamespaceFiles() {
 	});
 }
 
-function getDocumentData(documentUri: string): Thenable<SourceFileData> {
+function getDocumentData(documentUri: string): Thenable < SourceFileData > {
 	let result = sourceFileData.get(documentUri);
 	if (!result)
 		result = refreshDocument(documentUri);
 	return result;
 }
 
-function refreshDocument(documentUri: string): Promise<SourceFileData> {
-	const result = new Promise<SourceFileData>((resolve) => {
+function refreshDocument(documentUri: string): Promise < SourceFileData > {
+	const result = new Promise < SourceFileData > ((resolve) => {
 		const document = documents.get(documentUri);
 		if (document === undefined) {
 			console.log('Couldn\'t read file ' + documentUri);
@@ -142,8 +150,7 @@ function refreshDocument(documentUri: string): Promise<SourceFileData> {
 				variables: new Map(),
 				usingDeclarations: []
 			});
-		}
-		else
+		} else
 			resolve(parseDocument(document.getText()));
 	});
 	sourceFileData.set(documentUri, result);
@@ -156,28 +163,23 @@ function skipStringBackward(line: string, pos: number): number | undefined {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
-			}
-			else if (pos === 0 || line[pos - 1] !== '\\') {
+			} else if (pos === 0 || line[pos - 1] !== '\\') {
 				stack.pop();
 				if (stack.length === 0)
 					return pos;
 			}
-		}
-		else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
+		} else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
 			(pos === 1 || line[pos - 2] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
 				stack.push('}');
-			}
-			else {
+			} else {
 				return undefined;
 			}
-		}
-		else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
+		} else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
 			(pos === 1 || line[pos - 2] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '}') {
 				stack.pop();
-			}
-			else {
+			} else {
 				return undefined;
 			}
 		}
@@ -191,28 +193,23 @@ function skipStringForward(line: string, pos: number): number | undefined {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
-			}
-			else if (pos === 0 || line[pos - 1] !== '\\') {
+			} else if (pos === 0 || line[pos - 1] !== '\\') {
 				stack.pop();
 				if (stack.length === 0)
 					return pos;
 			}
-		}
-		else if (line[pos] === '{' && pos + 1 < line.length && line[pos + 1] === '{' &&
+		} else if (line[pos] === '{' && pos + 1 < line.length && line[pos + 1] === '{' &&
 			(pos === 0 || line[pos - 1] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
 				stack.push('{');
-			}
-			else {
+			} else {
 				return undefined;
 			}
-		}
-		else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
+		} else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
 			(pos === 0 || line[pos - 1] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '{') {
 				stack.pop();
-			}
-			else {
+			} else {
 				return undefined;
 			}
 		}
@@ -233,8 +230,7 @@ function skipParenthesizedExpression(line: string, pos: number, closingParenthes
 			if (newPos === undefined)
 				return undefined;
 			pos = newPos;
-		}
-		else if (c === closingParentheses)
+		} else if (c === closingParentheses)
 			openParenthesesCount++;
 		else if (c === openingParentheses) {
 			openParenthesesCount--;
@@ -256,15 +252,13 @@ function skipParenthesizedExpressionToEnd(lines: string[], startLine: number, en
 				if (newPos === undefined)
 					return undefined;
 				pos = newPos;
-			}
-			else if (c === '(' || c === '[')
+			} else if (c === '(' || c === '[')
 				parenthesesStack.push(c);
 			else if (c === ')') {
 				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '(')
 					return undefined;
 				parenthesesStack.pop();
-			}
-			else if (c === ']') {
+			} else if (c === ']') {
 				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '[')
 					return undefined;
 				parenthesesStack.pop();
@@ -330,8 +324,7 @@ function parseCallChain(line: string): string[] {
 				result.push('[]');
 			result.push(line.substring(k + 1, i) + (isFunction ? '()' : ''));
 			i = k;
-		}
-		else if (line[i] === ':') {
+		} else if (line[i] === ':') {
 			if (scopeOperatorUsed || i < 2 || line[i - 1] !== ':')
 				return [];
 			scopeOperatorUsed = true;
@@ -346,8 +339,7 @@ function parseCallChain(line: string): string[] {
 				return [];
 			result.push(line.substring(k + 1, i + 1));
 			i = k;
-		}
-		else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
+		} else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
 			return result.reverse();
 		else
 			return [];
@@ -377,8 +369,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 			if (!callChain[1].endsWith('()'))
 				return undefined;
 			currentClass = currentName.substring(0, currentName.length - 2);
-		}
-		else {
+		} else {
 			const currentNamespaceInfo = namespaces.get(callChain[0].substring(0, callChain[0].length - 2));
 			if (currentNamespaceInfo === undefined)
 				return undefined;
@@ -387,26 +378,23 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 				return undefined;
 			currentClass = currentNamespaceMember.returnType;
 		}
-	}
-	else {
+	} else {
 		currentName = callChain[0];
 		if (/[A-Z]/.test(callChain[0][0])) {
 			if (!callChain[0].endsWith('()'))
 				return undefined;
 			currentClass = callChain[0].substring(0, callChain[0].length - 2);
-		}
-		else {
+		} else {
 			const currentVariables = currentDocumentData.variables.get(callChain[0]);
 			let currentVariable: VariableInfo | undefined = undefined;
 			if (currentVariables !== undefined)
 				for (const variable of currentVariables)
-					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined
-						|| variable.lineUndeclared > lineNumber))
+					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
+							variable.lineUndeclared > lineNumber))
 						currentVariable = variable;
 			if (currentVariable !== undefined) {
 				currentClass = currentVariable.type;
-			}
-			else {
+			} else {
 				if (activeNamespaceName === undefined)
 					return undefined;
 				const activeNamespace = namespaces.get(activeNamespaceName);
@@ -477,14 +465,12 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			if (j === undefined)
 				return undefined;
 			i = j;
-		}
-		else if (line[i] === ')' || line[i] === ']') {
+		} else if (line[i] === ')' || line[i] === ']') {
 			const j = skipParenthesizedExpression(line, i, line[i]);
 			if (j === undefined)
 				return undefined;
 			i = j;
-		}
-		else if (line[i] === '[')
+		} else if (line[i] === '[')
 			return undefined;
 		else if (line[i] === ',')
 			paramNumber++;
@@ -523,7 +509,7 @@ function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number
 }
 
 connection.onSignatureHelp(
-	async (textDocumentPosition: SignatureHelpParams): Promise<SignatureHelp> => {
+	async (textDocumentPosition: SignatureHelpParams): Promise < SignatureHelp > => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -540,7 +526,8 @@ connection.onSignatureHelp(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line,
 				character: textDocumentPosition.position.character
 			}
@@ -556,8 +543,8 @@ connection.onSignatureHelp(
 				name = activeNamespace + '::' + name;
 			const scopeOperatorPosition = name.indexOf('::');
 			const dotPosition = name.indexOf('.');
-			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2
-				&& /[a-z]/.test(name[scopeOperatorPosition + 2])) {
+			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2 &&
+				/[a-z]/.test(name[scopeOperatorPosition + 2])) {
 				// namespace function call
 				const namespaceName = name.substring(0, scopeOperatorPosition);
 				const functionName = name.substring(scopeOperatorPosition + 2);
@@ -568,8 +555,7 @@ connection.onSignatureHelp(
 				if (signatures !== undefined)
 					result.signatures = signatures;
 				break;
-			}
-			else if (dotPosition !== -1) {
+			} else if (dotPosition !== -1) {
 				// class method call
 				const className = name.substring(0, dotPosition);
 				const methodName = name.substring(dotPosition + 1);
@@ -580,8 +566,7 @@ connection.onSignatureHelp(
 				if (signatures !== undefined)
 					result.signatures = signatures;
 				break;
-			}
-			else {
+			} else {
 				// class constructor call
 				const className = name.substring(0, name.length - 2);
 				const currentClass = classes.get(className);
@@ -605,7 +590,7 @@ connection.onSignatureHelp(
 );
 
 connection.onHover(
-	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
+	async (textDocumentPosition: HoverParams): Promise < Hover | undefined > => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -616,7 +601,8 @@ connection.onHover(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line + 1,
 				character: 0
 			}
@@ -653,8 +639,7 @@ connection.onHover(
 			const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
 			if (currentMember !== undefined)
 				documentation = currentMember.documentation;
-		}
-		else if (scopeOperatorPosition !== -1) {
+		} else if (scopeOperatorPosition !== -1) {
 			const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
 			if (currentNamespace === undefined)
 				return undefined;
@@ -677,7 +662,7 @@ connection.onHover(
 );
 
 connection.onCompletion(
-	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
+	async (textDocumentPosition: TextDocumentPositionParams): Promise < CompletionItem[] > => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -688,7 +673,8 @@ connection.onCompletion(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line,
 				character: textDocumentPosition.position.character
 			}
@@ -722,8 +708,8 @@ connection.onCompletion(
 			let result: CompletionItem[] = [];
 			for (const [_variableName, variableArray] of documentData.variables.entries())
 				for (const variable of variableArray)
-					if (variable.lineDeclared < textDocumentPosition.position.line
-						&& (variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
+					if (variable.lineDeclared < textDocumentPosition.position.line &&
+						(variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
 						result.push(variable.suggestion);
 			if (activeNamespace !== undefined) {
 				const currentNamespace = namespaces.get(activeNamespace);
@@ -866,16 +852,14 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 							className: className,
 							methodName: functionRegExpRes[2]
 						});
-					}
-					else if (constructorRegExpRes !== null) {
+					} else if (constructorRegExpRes !== null) {
 						memberDefinitionsLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
 						constructors.push({
 							namespaceName: namespaceName,
 							className: className,
 							constructorSignature: getConstructorSignature(constructorRegExpRes[1], constructorRegExpRes[2])
 						});
-					}
-					else if (variableRegExpRes !== null) {
+					} else if (variableRegExpRes !== null) {
 						const fieldDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, k, classEndLine);
 						if (fieldDeclarationEndLine === undefined)
 							continue;
@@ -904,8 +888,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 					namespaceName: namespaceName,
 					functionName: functionRegExpRes[2]
 				});
-			}
-			else if (variableRegExpRes !== null) {
+			} else if (variableRegExpRes !== null) {
 				const variableDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, j, namespaceEndLine);
 				if (variableDeclarationEndLine === undefined)
 					continue;
@@ -927,9 +910,9 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		const defineScript: string = (fileInfo.update) ? '' :
 			namespaceDefinitionsLines.concat([''])
-				.concat(classDefinitionsLines)
-				.concat(memberDefinitionsLines)
-				.concat(variableDefinitionsLines).join('\n');
+			.concat(classDefinitionsLines)
+			.concat(memberDefinitionsLines)
+			.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
@@ -960,23 +943,25 @@ connection.onCodeAction((params: CodeActionParams) => {
 			kind: CodeActionKind.QuickFix,
 			diagnostics: [diagnostic],
 			edit: {
-				documentChanges: [
-					{
-						textDocument: {
-							uri: textDocument.uri,
-							version: textDocument.version
-						},
-						edits: [
-							{
-								range: {
-									start: { line: 0, character: 0 },
-									end: { line: 0, character: 0 }
-								},
-								newText: '# msc-ignore-errors\n'
+				documentChanges: [{
+					textDocument: {
+						uri: textDocument.uri,
+						version: textDocument.version
+					},
+					edits: [{
+						range: {
+							start: {
+								line: 0,
+								character: 0
+							},
+							end: {
+								line: 0,
+								character: 0
 							}
-						]
-					}
-				]
+						},
+						newText: '# msc-ignore-errors\n'
+					}]
+				}]
 			}
 		};
 		return quickFix;
@@ -999,7 +984,10 @@ function validateTextDocument(textDocument: TextDocument): void {
 	const text = textDocument.getText();
 
 	if (text.includes("# msc-ignore-errors")) {
-		connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+		connection.sendDiagnostics({
+			uri: textDocument.uri,
+			diagnostics: []
+		});
 		return;
 	}
 
@@ -1041,8 +1029,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord) + firstWord.length
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: `${firstWord} should be on its own line.`,
 						source: 'msc-error'
@@ -1056,8 +1050,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: 'Invalid @for syntax: expected @for <type> <variable> in <list>',
 						source: 'msc-error'
@@ -1071,8 +1071,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: 'Invalid @define syntax. Expected: @define type variable [= expression]',
 						source: 'msc-error'
@@ -1084,8 +1090,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf('=') },
-								end: { line: i, character: lines[i].length }
+								start: {
+									line: i,
+									character: lines[i].indexOf('=')
+								},
+								end: {
+									line: i,
+									character: lines[i].length
+								}
 							},
 							message: 'Invalid @define syntax. Expression cannot be empty',
 							source: 'msc-error'
@@ -1104,8 +1116,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(invalidTime) },
-								end: { line: i, character: lines[i].indexOf(invalidTime) + invalidTime.length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(invalidTime)
+								},
+								end: {
+									line: i,
+									character: lines[i].indexOf(invalidTime) + invalidTime.length
+								}
 							},
 							message: 'Invalid time syntax in @chatscript. Expected: number with t/s/h/m/d',
 							source: 'msc-error'
@@ -1115,8 +1133,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(firstWord) },
-								end: { line: i, character: lines[i].length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(firstWord)
+								},
+								end: {
+									line: i,
+									character: lines[i].length
+								}
 							},
 							message: 'Invalid @chatscript syntax. Expected: @chatscript time group-name function',
 							source: 'msc-error'
@@ -1129,8 +1153,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(func) },
-								end: { line: i, character: lines[i].indexOf(func) + func.length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(func)
+								},
+								end: {
+									line: i,
+									character: lines[i].indexOf(func) + func.length
+								}
 							},
 							message: 'Invalid function syntax in @chatscript. Expected: function()',
 							source: 'msc-error'
@@ -1143,8 +1173,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: `${firstWord} must appear at the beginning of the script`,
 						source: 'msc-error'
@@ -1154,8 +1190,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: `${firstWord} can only appear once in the script`,
 						source: 'msc-error'
@@ -1173,8 +1215,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(firstWord) },
-								end: { line: i, character: lines[i].length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(firstWord)
+								},
+								end: {
+									line: i,
+									character: lines[i].length
+								}
 							},
 							message: `Invalid ${firstWord} syntax. Expected: ${firstWord} time`,
 							source: 'msc-error'
@@ -1187,8 +1235,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: '@cancel must appear at the beginning of the script',
 						source: 'msc-error'
@@ -1198,8 +1252,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: '@cancel can only appear once in the script',
 						source: 'msc-error'
@@ -1211,8 +1271,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
-								end: { line: i, character: lines[i].length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(firstWord) + firstWord.length
+								},
+								end: {
+									line: i,
+									character: lines[i].length
+								}
 							},
 							message: '@cancel should not have anything else on the line',
 							source: 'msc-error'
@@ -1227,8 +1293,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: 'Invalid @delay syntax. Expected: @delay time',
 						source: 'msc-error'
@@ -1240,8 +1312,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord) + firstWord.length
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: `${firstWord} should be on its own line`,
 						source: 'msc-error'
@@ -1255,8 +1333,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: 'Invalid @using syntax. Expected: @using namespace',
 						source: 'msc-error'
@@ -1270,8 +1354,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].length
+							}
 						},
 						message: `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`,
 						source: 'msc-error'
@@ -1281,14 +1371,23 @@ function validateTextDocument(textDocument: TextDocument): void {
 			}
 
 			if (firstWord === '@if' || firstWord === '@for') {
-				blockStack.push({ type: firstWord === '@if' ? 'if' : 'for', line: i });
+				blockStack.push({
+					type: firstWord === '@if' ? 'if' : 'for',
+					line: i
+				});
 			} else if (firstWord === '@fi' || firstWord === '@done') {
 				if (blockStack.length === 0) {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].indexOf(firstWord) + firstWord.length
+							}
 						},
 						message: `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`,
 						source: 'msc-error'
@@ -1304,8 +1403,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(firstWord) },
-								end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(firstWord)
+								},
+								end: {
+									line: i,
+									character: lines[i].indexOf(firstWord) + firstWord.length
+								}
 							},
 							message: `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`,
 							source: 'msc-error'
@@ -1318,8 +1423,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 					const diagnostic: Diagnostic = {
 						severity: DiagnosticSeverity.Error,
 						range: {
-							start: { line: i, character: lines[i].indexOf(firstWord) },
-							end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+							start: {
+								line: i,
+								character: lines[i].indexOf(firstWord)
+							},
+							end: {
+								line: i,
+								character: lines[i].indexOf(firstWord) + firstWord.length
+							}
 						},
 						message: `${firstWord} without matching @if`,
 						source: 'msc-error'
@@ -1340,8 +1451,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 						const diagnostic: Diagnostic = {
 							severity: DiagnosticSeverity.Error,
 							range: {
-								start: { line: i, character: lines[i].indexOf(firstWord) },
-								end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+								start: {
+									line: i,
+									character: lines[i].indexOf(firstWord)
+								},
+								end: {
+									line: i,
+									character: lines[i].indexOf(firstWord) + firstWord.length
+								}
 							},
 							message: 'Multiple @else in @if-@fi block',
 							source: 'msc-error'
@@ -1350,16 +1467,25 @@ function validateTextDocument(textDocument: TextDocument): void {
 					}
 				}
 			} else if (firstWord === '@return') {
-				blockStack.push({ type: 'return', line: i });
+				blockStack.push({
+					type: 'return',
+					line: i
+				});
 			}
-		
+
 			// Check for unreachable code after @return
 			if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'return' && firstWord != '@return') {
 				const diagnostic: Diagnostic = {
 					severity: DiagnosticSeverity.Warning,
 					range: {
-						start: { line: i, character: 0 },
-						end: { line: i, character: lines[i].length }
+						start: {
+							line: i,
+							character: 0
+						},
+						end: {
+							line: i,
+							character: lines[i].length
+						}
 					},
 					message: 'Unreachable code after @return',
 					source: 'msc-warning',
@@ -1373,8 +1499,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 			const diagnostic: Diagnostic = {
 				severity: DiagnosticSeverity.Error,
 				range: {
-					start: { line: i, character: lines[i].indexOf(firstWord) },
-					end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+					start: {
+						line: i,
+						character: lines[i].indexOf(firstWord)
+					},
+					end: {
+						line: i,
+						character: lines[i].indexOf(firstWord) + firstWord.length
+					}
 				},
 				message: 'Invalid script option ' + firstWord,
 				source: 'msc-error'
@@ -1391,8 +1523,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 			const diagnostic: Diagnostic = {
 				severity: DiagnosticSeverity.Error,
 				range: {
-					start: { line: block.line, character: lines[block.line].indexOf(`@${block.type}`) },
-					end: { line: block.line, character: lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length }
+					start: {
+						line: block.line,
+						character: lines[block.line].indexOf(`@${block.type}`)
+					},
+					end: {
+						line: block.line,
+						character: lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length
+					}
 				},
 				message: `Unclosed @${block.type} block`,
 				source: 'msc-error'
@@ -1406,8 +1544,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 		const diagnostic: Diagnostic = {
 			severity: DiagnosticSeverity.Error,
 			range: {
-				start: { line: 0, character: 0 },
-				end: { line: 0, character: 0 }
+				start: {
+					line: 0,
+					character: 0
+				},
+				end: {
+					line: 0,
+					character: 0
+				}
 			},
 			message: '@cooldown, @global_cooldown, and @cancel are mutually exclusive',
 			source: 'msc-error'
@@ -1416,11 +1560,15 @@ function validateTextDocument(textDocument: TextDocument): void {
 	}
 
 	// Send the diagnostics to the client
-	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+	connection.sendDiagnostics({
+		uri: textDocument.uri,
+		diagnostics: []
+	});
+	connection.sendDiagnostics({
+		uri: textDocument.uri,
+		diagnostics
+	});
 }
-
-
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
