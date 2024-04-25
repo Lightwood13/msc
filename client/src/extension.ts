@@ -16,7 +16,9 @@ import {
 	ProgressLocation,
 	CancellationToken,
 	Diagnostic,
-	languages
+	languages,
+	TextEdit,
+	TextDocument
 } from 'vscode';
 import axios from 'axios';
 import * as https from 'https';
@@ -77,15 +79,15 @@ interface NamespaceUploadResult {
 class ProcessedFileCache {
 
 	// uploads without include substitution, so should be looked up only for included files
-	uploadedFiles: Map < string,
-	string > = new Map();
+	uploadedFiles: Map<string,
+		string> = new Map();
 	// map path to filenames or include names
-	notFoundFiles: Map < string,
-	Set < string >> = new Map();
-	emptyFiles: Map < string,
-	Set < string >> = new Map();
-	failedUploads: Map < string,
-	Set < string >> = new Map();
+	notFoundFiles: Map<string,
+		Set<string>> = new Map();
+	emptyFiles: Map<string,
+		Set<string>> = new Map();
+	failedUploads: Map<string,
+		Set<string>> = new Map();
 
 	// if the cache contains a file (by URI): only if it's in one of the four maps
 	contains(uri: Uri): boolean {
@@ -109,7 +111,7 @@ class ProcessedFileCache {
 }
 
 // gets a value from a map, returning & setting its value if it doesn't exist
-function getOrDefault < K, V > (map: Map < K, V > , key: K, def: V): V {
+function getOrDefault<K, V>(map: Map<K, V>, key: K, def: V): V {
 
 	// if it exists, return the value
 	const value = map.get(key);
@@ -144,7 +146,7 @@ function getIncludedFileUri(baseFileUri: Uri, includedFile: IncludedFileInfo): U
 }
 
 // gets the full list of filenames from a map (ie. our cache)
-function getFileNameList(cache: Map < string, Set < string >> ) {
+function getFileNameList(cache: Map<string, Set<string>>) {
 	return [...cache.values()].flatMap(s => [...s.values()]).join(", ");
 }
 
@@ -165,7 +167,7 @@ function collectIncludedFilesInfo(text: string): IncludedFileInfo[] {
 }
 
 // uploads a file to paste.minr.org and returns the link if successful
-async function uploadFile(contents: string): Promise < string | null > {
+async function uploadFile(contents: string): Promise<string | null> {
 	try {
 		contents = contents.replace(/<##/g, '<#');
 
@@ -191,7 +193,7 @@ async function uploadFile(contents: string): Promise < string | null > {
 // doesn't check if file is already in cache:
 // - for included files check should be done before this function
 // - non-included files should not be looked up in cache because they need include substitution, and only non-substituted version is cached
-async function uploadFileWithCache(uri: Uri, fileName: string, contents: string, cache: ProcessedFileCache): Promise < string | null > {
+async function uploadFileWithCache(uri: Uri, fileName: string, contents: string, cache: ProcessedFileCache): Promise<string | null> {
 	const result = await uploadFile(contents);
 
 	// if we failed, add to the failed uploads cache, otherwise add to the uploaded files cache
@@ -206,7 +208,7 @@ async function uploadFileWithCache(uri: Uri, fileName: string, contents: string,
 }
 
 // gets the content of a file given its data
-async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, optionalFile = false): Promise < string | null > {
+async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, optionalFile = false): Promise<string | null> {
 	let fileContents: string;
 
 	// if it's open in the workspace, get it from there
@@ -232,7 +234,7 @@ async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, o
 }
 
 // doesn't do include substitutions
-async function findAndUploadFile(uri: Uri, fileName: string, cache: ProcessedFileCache): Promise < string | null > {
+async function findAndUploadFile(uri: Uri, fileName: string, cache: ProcessedFileCache): Promise<string | null> {
 
 	// add it to the cache if needed
 	if (cache.contains(uri)) {
@@ -256,7 +258,7 @@ async function uploadIncludedFiles(
 	includedFiles: IncludedFileInfo[],
 	cache: ProcessedFileCache,
 	// eslint-disable-next-line @typescript-eslint/no-empty-function
-	incrementProgress: () => void = () => {}
+	incrementProgress: () => void = () => { }
 ) {
 	// for each file, upload it and increment the task progress (notification)
 	for (const includedFile of includedFiles) {
@@ -337,6 +339,58 @@ function showErrors(cache: ProcessedFileCache): boolean {
 	return errorsFound;
 }
 
+function formatDocument(document: TextDocument): TextEdit[] {
+	const edits: TextEdit[] = [];
+
+	let indentLevel = 0;
+	let inBypassBlock = false;
+
+	for (let i = 0; i < document.lineCount; i++) {
+		const line = document.lineAt(i);
+		const lineText = line.text.trim();
+
+		if (lineText.startsWith("# ")) {
+			continue;
+		}
+
+		// Check if the line starts with @bypass, @command, or @console
+		if (lineText.startsWith('@bypass') || lineText.startsWith('@command') || lineText.startsWith('@console')) {
+			inBypassBlock = true;
+		} else {
+			inBypassBlock = false;
+		}
+
+		let indentingHere = false;
+
+		// Adjust indentation based on control structures
+		if (lineText.startsWith('@if')) {
+			indentLevel++;
+			indentingHere = true;
+		} else if (lineText.startsWith('@elseif') || lineText.startsWith('@else')) {
+			indentingHere = true;
+		} else if (lineText.startsWith('@fi')) {
+			indentLevel--;
+		} else if (lineText.startsWith('@for')) {
+			indentLevel++;
+			indentingHere = true;
+		} else if (lineText.startsWith('@done')) {
+			indentLevel--;
+		}
+
+		const thisLineIndent = 4 * (indentLevel - +(indentingHere));
+		// Format commas and operators if not in a bypass block and doesn't contain 'util'
+		if (!inBypassBlock && !lineText.includes('util')) {
+			const formattedLine = lineText.replace(/,\s*/g, ', ');
+			// formattedLine = formattedLine.replace(/\s*([!^*%+\-<>=&|])\s*/g, ' $1 ');
+			edits.push(TextEdit.replace(line.range, ' '.repeat(thisLineIndent) + formattedLine));
+		} else {
+			edits.push(TextEdit.replace(line.range, ' '.repeat(thisLineIndent) + lineText));
+		}
+	}
+
+	return edits;
+}
+
 // triggers on client activation
 export function activate(context: ExtensionContext) {
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -385,14 +439,14 @@ export function activate(context: ExtensionContext) {
 			} else {
 
 				// send the progress notification for uploads
-				link = await window.withProgress < string | null > ({
+				link = await window.withProgress<string | null>({
 					title: `Uploading ${getFileNameFromPath(textEditor.document.uri.path)}`,
 					cancellable: false,
 					location: ProgressLocation.Notification
-				}, async (progress: Progress < {
-					increment ? : number,
-					message ? : string
-				} > , _token: CancellationToken): Promise < string | null > => {
+				}, async (progress: Progress<{
+					increment?: number,
+					message?: string
+				}>, _token: CancellationToken): Promise<string | null> => {
 
 					// must upload some number of manually included files, plus this file itself
 					const fileCount = includedFilesInfo.length + 1;
@@ -472,9 +526,7 @@ export function activate(context: ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
-	// eslint-disable-next-line @typescript-eslint/no-empty-function
-	disposable = commands.registerCommand('extension.formatDocument', () => {});
-	context.subscriptions.push(disposable);
+
 
 	// download a document from the clipboard
 	disposable = commands.registerCommand('msc.download', async () => {
@@ -501,12 +553,12 @@ export function activate(context: ExtensionContext) {
 
 		// get the script from paste.minr.org
 		axios({
-				httpsAgent: new https.Agent({
-					rejectUnauthorized: false
-				}),
-				url: 'https://paste.minr.org/documents/' + scriptName,
-				method: 'GET',
-			})
+			httpsAgent: new https.Agent({
+				rejectUnauthorized: false
+			}),
+			url: 'https://paste.minr.org/documents/' + scriptName,
+			method: 'GET',
+		})
 
 			// then make a new editor window with this text
 			.then(async data => {
@@ -583,12 +635,12 @@ export function activate(context: ExtensionContext) {
 	client.onReady().then(() => {
 		client.onNotification('getDefaultNamespaces', () => {
 			axios({
-					httpsAgent: new https.Agent({
-						rejectUnauthorized: false
-					}),
-					url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
-					method: 'GET',
-				})
+				httpsAgent: new https.Agent({
+					rejectUnauthorized: false
+				}),
+				url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
+				method: 'GET',
+			})
 				// success: let user know that we've fetched and processed the default namespaces
 				.then(data => {
 					console.log('Successfully fetched default namespaces file from GitHub');
@@ -618,14 +670,14 @@ export function activate(context: ExtensionContext) {
 			for (const namespaceInfo of namespaces) {
 
 				// send the user a notification tracking the upload progress
-				const script = await window.withProgress < string | null > ({
+				const script = await window.withProgress<string | null>({
 					title: `Uploading namespace ${namespaceInfo.name}`,
 					cancellable: false,
 					location: ProgressLocation.Notification
-				}, async (progress: Progress < {
-					increment ? : number,
-					message ? : string
-				} > , _token: CancellationToken): Promise < string | null > => {
+				}, async (progress: Progress<{
+					increment?: number,
+					message?: string
+				}>, _token: CancellationToken): Promise<string | null> => {
 
 					// lines needed to import and their count: +1 for __init__.msc
 					const importLines: string[] = [];
@@ -754,10 +806,22 @@ export function activate(context: ExtensionContext) {
 			}
 		});
 	});
+
+	// register the formatter
+	context.subscriptions.push(
+		languages.registerDocumentFormattingEditProvider(
+			'msc',
+			{
+				provideDocumentFormattingEdits(document: TextDocument): TextEdit[] {
+					return formatDocument(document);
+				}
+			}
+		)
+	);
 }
 
 // when we finish, deactivate and stop the client
-export function deactivate(): Thenable < void > | undefined {
+export function deactivate(): Thenable<void> | undefined {
 	if (!client) {
 		return undefined;
 	}
