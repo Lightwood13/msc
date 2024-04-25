@@ -987,6 +987,12 @@ connection.onCodeAction((params: CodeActionParams) => {
 
 function validateTextDocument(textDocument: TextDocument): void {
 
+	interface NestedScriptBlock {
+		type: 'if' | 'for' | 'return';
+		line: number;
+	}
+	const blockStack: NestedScriptBlock[] = [];
+
 	const diagnostics: Diagnostic[] = [];
 
 	// Get the text content of the document
@@ -1242,8 +1248,125 @@ function validateTextDocument(textDocument: TextDocument): void {
 					};
 					diagnostics.push(diagnostic);
 				}
+			} else if (firstWord === '@using') {
+				const usingRegex = /^@using\s+([\w]+)$/;
+				const match = line.match(usingRegex);
+				if (!match) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: 'Invalid @using syntax. Expected: @using namespace',
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				}
+			} else if (firstWord === '@bypass' || firstWord === '@command' || firstWord === '@console') {
+				const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
+				const match = line.match(bypassCommandConsoleRegex);
+				if (!match) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].length }
+						},
+						message: `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				}
 			}
-			continue;
+
+			if (firstWord === '@if' || firstWord === '@for') {
+				blockStack.push({ type: firstWord === '@if' ? 'if' : 'for', line: i });
+			} else if (firstWord === '@fi' || firstWord === '@done') {
+				if (blockStack.length === 0) {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+						},
+						message: `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else {
+					let lastBlock = blockStack.pop();
+					while (lastBlock && lastBlock.type === 'return') {
+						lastBlock = blockStack.pop();
+					}
+					if ((firstWord === '@fi' && lastBlock?.type !== 'if') ||
+						(firstWord === '@done' && lastBlock?.type !== 'for')) {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(firstWord) },
+								end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+							},
+							message: `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`,
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
+			} else if (firstWord === '@elseif' || firstWord === '@else') {
+				if (blockStack.length === 0 || blockStack[blockStack.length - 1].type !== 'if') {
+					const diagnostic: Diagnostic = {
+						severity: DiagnosticSeverity.Error,
+						range: {
+							start: { line: i, character: lines[i].indexOf(firstWord) },
+							end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+						},
+						message: `${firstWord} without matching @if`,
+						source: 'msc-error'
+					};
+					diagnostics.push(diagnostic);
+				} else {
+					const lastIf = blockStack[blockStack.length - 1].line;
+					let hasElse = false;
+					for (let j = lastIf + 1; j < i; j++) {
+						const prevLine = lines[j].trim();
+						const prevFirstWord = prevLine.split(" ")[0];
+						if (prevFirstWord === '@else') {
+							hasElse = true;
+							break;
+						}
+					}
+					if (hasElse && firstWord === '@else') {
+						const diagnostic: Diagnostic = {
+							severity: DiagnosticSeverity.Error,
+							range: {
+								start: { line: i, character: lines[i].indexOf(firstWord) },
+								end: { line: i, character: lines[i].indexOf(firstWord) + firstWord.length }
+							},
+							message: 'Multiple @else in @if-@fi block',
+							source: 'msc-error'
+						};
+						diagnostics.push(diagnostic);
+					}
+				}
+			} else if (firstWord === '@return') {
+				blockStack.push({ type: 'return', line: i });
+			}
+		
+			// Check for unreachable code after @return
+			if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'return' && firstWord != '@return') {
+				const diagnostic: Diagnostic = {
+					severity: DiagnosticSeverity.Warning,
+					range: {
+						start: { line: i, character: 0 },
+						end: { line: i, character: lines[i].length }
+					},
+					message: 'Unreachable code after @return',
+					source: 'msc-warning',
+					tags: [DiagnosticSeverity.Warning]
+				};
+				diagnostics.push(diagnostic);
+			}
 		} else {
 
 			// Create a diagnostic for the invalid line
@@ -1258,6 +1381,22 @@ function validateTextDocument(textDocument: TextDocument): void {
 			};
 
 			// Add the diagnostic to the array
+			diagnostics.push(diagnostic);
+		}
+	}
+
+	// Check for unclosed blocks
+	if (blockStack.length > 0) {
+		for (const block of blockStack) {
+			const diagnostic: Diagnostic = {
+				severity: DiagnosticSeverity.Error,
+				range: {
+					start: { line: block.line, character: lines[block.line].indexOf(`@${block.type}`) },
+					end: { line: block.line, character: lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length }
+				},
+				message: `Unclosed @${block.type} block`,
+				source: 'msc-error'
+			};
 			diagnostics.push(diagnostic);
 		}
 	}
