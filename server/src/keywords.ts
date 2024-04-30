@@ -5,6 +5,9 @@ import {
 	InsertTextFormat
 } from 'vscode-languageserver/node';
 
+import * as minecraftBlocksData from './data/minecraftBlocks.json';
+import * as minecraftItemsData from './data/minecraftItems.json';
+
 export const keywords: CompletionItem[] =
 	[
 		{
@@ -252,6 +255,10 @@ export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion
 })
 );
 
+const commandSelectors = "{{player}},@s,@p,@a,@e";
+const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end";
+const allMinecraftBlocks = minecraftBlocksData.map(block => `${block}`).join(',');
+const allMinecraftItems = minecraftItemsData.map(block => `${block}`).join(',');
 
 export const keywordCommands: CompletionItem[] =
 	[
@@ -260,11 +267,11 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Changes a block",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "setblock",
-			"insertText": "execute in ${1:minecraft:theta} run setblock ${2:x} ${3:y} ${4:z} minecraft:${5:air}",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run setblock \${2:x} \${3:y} \${4:z} minecraft:\${5|${allMinecraftBlocks}|} \${6|replace,destroy,keep|} `,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/execute in minecraft:theta run setblock 123 45 678 minecraft:air"
+				"value": "/execute in <worldname> run setblock <coordinates> minecraft:<block>"
 			}
 		},
 		{
@@ -272,11 +279,46 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Gives the player an item",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "give",
-			"insertText": "give ${1:@s} minecraft:${2:apple} ${3:1}",
+			"insertText": `give \${1|${commandSelectors}|} minecraft:\${2|${allMinecraftItems}|} \${3:1} `,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/give @s apple 1"
+				"value": "/give <selector> minecraft:<item> <quantity>"
 			}
-		}
+		},
+
 	];
+
+
+// /clear <#player> [#item]
+// /clone <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> [filtered|masked|replace] [#block|#blocktag] [force|move|normal]
+// /data <get|merge|modify|remove> <block> [#blockselector]
+// /data <get|merge|modify|remove> <entity> [#entityselector]
+// /effect <clear> <#entityselector> [#effect]
+// /effect <give> <#entityselector> <#effect>
+// /enchant <#entityselector> <#enchantment> [#integer]
+// /execute <align|anchored|as|at|facing|in|positioned|rotated|run>
+// /experience <add|set> <#playerselector> <!integer> <points|levels>
+// /fill <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <#block> [destroy|hollow|keep|outline]
+// /fill <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <#block> [replace] [#block|#blocktag]
+// /gamemode <adventure|creative|survival> [#playerselector]
+// /give <#playerselector> <#item> [!integer]
+// /item <replace> <entity> <#entityselector> <#slot> <with> <#item>
+// /item <replace> <entity> <#entityselector> <#slot> <from> <entity> <#entityselector>
+// /item <replace> <entity> <#entityselector> <#slot> <from> <block> <!coord> <!coord> <!coord>
+// /item <replace> <block> <!coord> <!coord> <!coord> <#slot> <with> <#item>
+// /item <replace> <block> <!coord> <!coord> <!coord> <#slot> <from> <entity> <#entityselector>
+// /item <replace> <block> <!coord> <!coord> <!coord> <#slot> <from> <block> <!coord> <!coord> <!coord>
+// /particle <#particle> <!fcoord> <!fcoord> <!fcoord> [!float] [!float] [!float] [!float] [!integer] [force|normal]
+// /playsound <#sound> <master|ambient|block|hostile|music|neutral|player|record|voice|weather> <#playerselector> <!fcoord> <!fcoord> <!fcoord> <!float> <!float>
+// /scoreboard <objectives> <add|modify|remove>
+// /scoreboard <players> <add|enable|get|operation|remove|reset|set>
+// /setblock <!coord> <!coord> <!coord> <#block> [destroy|keep]
+// /setblock <!coord> <!coord> <!coord> <#block> [replace] [#block|#blocktag]
+// /tag <#entityselector> <add|remove> <!string>
+// /teleport <#entityselector> [#entityselector]
+// /teleport [#entityselector] <!fcoord> <!fcoord> <!fcoord>
+// /tellraw [#playerselector] <!json>
+// /title [#playerselector] <title|subtitle|actionbar> <!json>
+// /title [#playerselector] <times> <!float> <!float> <!float>
+// /title [#playerselector] <clear|reset>
