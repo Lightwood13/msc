@@ -1,3 +1,4 @@
+/* eslint-disable no-case-declarations */
 /* --------------------------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
@@ -63,7 +64,7 @@ import {
 const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
-const documents: TextDocuments < TextDocument > = new TextDocuments(TextDocument);
+const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
 let hasWorkspaceFolderCapability = false;
 
@@ -108,10 +109,10 @@ connection.onInitialized(() => {
 	refreshNamespaceFiles();
 });
 
-const sourceFileData: Map < string, Thenable < SourceFileData >> = new Map();
-const defaultNamespaces: Map < string, NamespaceInfo > = new Map();
-const namespaces: Map < string, NamespaceInfo > = new Map();
-const classes: Map < string, ClassInfo > = new Map();
+const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
+const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
+const namespaces: Map<string, NamespaceInfo> = new Map();
+const classes: Map<string, ClassInfo> = new Map();
 
 function refreshNamespaceFiles() {
 	// search for .nms files in all subfolders
@@ -134,15 +135,15 @@ function refreshNamespaceFiles() {
 	});
 }
 
-function getDocumentData(documentUri: string): Thenable < SourceFileData > {
+function getDocumentData(documentUri: string): Thenable<SourceFileData> {
 	let result = sourceFileData.get(documentUri);
 	if (!result)
 		result = refreshDocument(documentUri);
 	return result;
 }
 
-function refreshDocument(documentUri: string): Promise < SourceFileData > {
-	const result = new Promise < SourceFileData > ((resolve) => {
+function refreshDocument(documentUri: string): Promise<SourceFileData> {
+	const result = new Promise<SourceFileData>((resolve) => {
 		const document = documents.get(documentUri);
 		if (document === undefined) {
 			console.log('Couldn\'t read file ' + documentUri);
@@ -390,7 +391,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 			if (currentVariables !== undefined)
 				for (const variable of currentVariables)
 					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
-							variable.lineUndeclared > lineNumber))
+						variable.lineUndeclared > lineNumber))
 						currentVariable = variable;
 			if (currentVariable !== undefined) {
 				currentClass = currentVariable.type;
@@ -509,7 +510,7 @@ function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number
 }
 
 connection.onSignatureHelp(
-	async (textDocumentPosition: SignatureHelpParams): Promise < SignatureHelp > => {
+	async (textDocumentPosition: SignatureHelpParams): Promise<SignatureHelp> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -590,7 +591,7 @@ connection.onSignatureHelp(
 );
 
 connection.onHover(
-	async (textDocumentPosition: HoverParams): Promise < Hover | undefined > => {
+	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -662,7 +663,7 @@ connection.onHover(
 );
 
 connection.onCompletion(
-	async (textDocumentPosition: TextDocumentPositionParams): Promise < CompletionItem[] > => {
+	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
 
@@ -910,9 +911,9 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		const defineScript: string = (fileInfo.update) ? '' :
 			namespaceDefinitionsLines.concat([''])
-			.concat(classDefinitionsLines)
-			.concat(memberDefinitionsLines)
-			.concat(variableDefinitionsLines).join('\n');
+				.concat(classDefinitionsLines)
+				.concat(memberDefinitionsLines)
+				.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
@@ -971,7 +972,6 @@ connection.onCodeAction((params: CodeActionParams) => {
 });
 
 function validateTextDocument(textDocument: TextDocument): void {
-
 	interface NestedScriptBlock {
 		type: 'if' | 'for' | 'return';
 		line: number;
@@ -980,7 +980,6 @@ function validateTextDocument(textDocument: TextDocument): void {
 
 	const diagnostics: Diagnostic[] = [];
 
-	// Get the text content of the document
 	const text = textDocument.getText();
 
 	if (text.includes("# msc-ignore-errors")) {
@@ -996,10 +995,8 @@ function validateTextDocument(textDocument: TextDocument): void {
 	let hasCancel = false;
 	let scriptStarted = false;
 
-	// Split the text into lines
 	const lines = text.split('\n');
 
-	// Define the valid line starters
 	const validStarters = [
 		'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
 		'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
@@ -1007,388 +1004,138 @@ function validateTextDocument(textDocument: TextDocument): void {
 		'@fast', '@slow', '@return'
 	];
 
-	// Iterate through each line
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i].trim();
+	const createDiagnostic = (line: number, start: number, end: number, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error): Diagnostic => ({
+		severity,
+		range: {
+			start: { line, character: start },
+			end: { line, character: end }
+		},
+		message,
+		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
+	});
+
+	const processLine = (line: string, i: number) => {
 		const firstWord = line.split(" ")[0];
 
-		// Skip empty lines or lines starting with comments
 		if (line === '' || line.startsWith("# ")) {
-			continue;
+			return;
 		}
 
-		if (!scriptStarted && !validStarters.includes(firstWord)) {
-			scriptStarted = true;
-		}
-
-		// Skip empty lines or lines starting with valid starters or comments
 		if (validStarters.includes(firstWord)) {
-			
 			if (line.match(/^@(bypass|console|command) \/?gamemode.*/)) {
-				const diagnostic: Diagnostic = {
-					severity: DiagnosticSeverity.Error,
-					range: {
-						start: {
-							line: i,
-							character: lines[i].indexOf(firstWord)
-						},
-						end: {
-							line: i,
-							character: lines[i].length
-						}
-					},
-					message: 'Permission changing commands are banned in scripts.',
-					source: 'msc-error'
-				};
-				diagnostics.push(diagnostic);
+				diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Permission changing commands are banned in scripts.'));
 			}
 
+			switch (firstWord) {
+				case '@else':
+				case '@fi':
+				case '@done':
+					if (line !== firstWord) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, `${firstWord} should be on its own line.`));
+					}
+					break;
 
-			// Additional checks for specific options
-			if (firstWord === '@else' || firstWord === '@fi' || firstWord === '@done') {
-				if (line !== firstWord) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord) + firstWord.length
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: `${firstWord} should be on its own line.`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
-			} else if (firstWord === '@for') {
-				const forRegex = /^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/;
-				const match = line.match(forRegex);
-				if (!match) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: 'Invalid @for syntax: expected @for <type> <variable> in <list>',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
-			} else if (firstWord === '@define') {
-				const defineRegex = /^@define\s+([\w:]+)\s+([a-z][\w]*)\s*(?:=\s*(.+))?$/;
-				const match = line.match(defineRegex);
-				if (!match) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: 'Invalid @define syntax. Expected: @define type variable [= expression]',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				} else {
-					const [, _, __, expression] = match;
-					if (expression === undefined && line.includes('=')) {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf('=')
-								},
-								end: {
-									line: i,
-									character: lines[i].length
-								}
-							},
-							message: 'Invalid @define syntax. Expression cannot be empty',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+				case '@for':
+					const forRegex = /^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/;
+					if (!line.match(forRegex)) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @for syntax: expected @for <type> <variable> in <list>'));
 					}
-				}
-			} else if (firstWord === '@chatscript') {
-				const chatscriptRegex = /^@chatscript\s+(\d+[tshmd]?)\s+(\S+)\s+(\S+)$/;
-				const match = line.match(chatscriptRegex);
-				if (!match) {
-					const timeRegex = /^@chatscript\s+(\S+)/;
-					const timeMatch = line.match(timeRegex);
-					if (timeMatch) {
-						const [, invalidTime] = timeMatch;
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(invalidTime)
-								},
-								end: {
-									line: i,
-									character: lines[i].indexOf(invalidTime) + invalidTime.length
-								}
-							},
-							message: 'Invalid time syntax in @chatscript. Expected: number with t/s/h/m/d',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+					break;
+
+				case '@define':
+					const defineRegex = /^@define\s+([\w:]+)\s+([a-z][\w]*)\s*(?:=\s*(.+))?$/;
+					const defineMatch = line.match(defineRegex);
+					if (!defineMatch) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @define syntax. Expected: @define type variable [= expression]'));
 					} else {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(firstWord)
-								},
-								end: {
-									line: i,
-									character: lines[i].length
-								}
-							},
-							message: 'Invalid @chatscript syntax. Expected: @chatscript time group-name function',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+						const [, _, __, expression] = defineMatch;
+						if (expression === undefined && line.includes('=')) {
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf('='), lines[i].length, 'Invalid @define syntax. Expression cannot be empty'));
+						}
 					}
-				} else {
-					const [, _, __, func] = match;
-					if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(func)
-								},
-								end: {
-									line: i,
-									character: lines[i].indexOf(func) + func.length
-								}
-							},
-							message: 'Invalid function syntax in @chatscript. Expected: function()',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
-					}
-				}
-			} else if (firstWord === '@cooldown' || firstWord === '@global_cooldown') {
-				if (scriptStarted) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: `${firstWord} must appear at the beginning of the script`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				} else if ((firstWord === '@cooldown' && hasCooldown) || (firstWord === '@global_cooldown' && hasGlobalCooldown)) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: `${firstWord} can only appear once in the script`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				} else {
-					if (firstWord === '@cooldown') {
-						hasCooldown = true;
+					break;
+
+				case '@chatscript':
+					const chatscriptRegex = /^@chatscript\s+(\d+[tshmd]?)\s+(\S+)\s+(\S+)$/;
+					const chatscriptMatch = line.match(chatscriptRegex);
+					if (!chatscriptMatch) {
+						const timeRegex = /^@chatscript\s+(\S+)/;
+						const timeMatch = line.match(timeRegex);
+						if (timeMatch) {
+							const [, invalidTime] = timeMatch;
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf(invalidTime), lines[i].indexOf(invalidTime) + invalidTime.length, 'Invalid time syntax in @chatscript. Expected: number with t/s/h/m/d'));
+						} else {
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @chatscript syntax. Expected: @chatscript time group-name function'));
+						}
 					} else {
-						hasGlobalCooldown = true;
+						const [, _, __, func] = chatscriptMatch;
+						if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf(func), lines[i].indexOf(func) + func.length, 'Invalid function syntax in @chatscript. Expected: function()'));
+						}
 					}
-					const cooldownRegex = /^@(cooldown|global_cooldown)\s+(\d+[tshmd]?)$/;
-					const match = line.match(cooldownRegex);
-					if (!match) {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(firstWord)
-								},
-								end: {
-									line: i,
-									character: lines[i].length
-								}
-							},
-							message: `Invalid ${firstWord} syntax. Expected: ${firstWord} time`,
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+					break;
+
+				case '@cooldown':
+				case '@global_cooldown':
+					if (scriptStarted) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `${firstWord} must appear at the beginning of the script`));
+					} else if ((firstWord === '@cooldown' && hasCooldown) || (firstWord === '@global_cooldown' && hasGlobalCooldown)) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `${firstWord} can only appear once in the script`));
+					} else {
+						if (firstWord === '@cooldown') {
+							hasCooldown = true;
+						} else {
+							hasGlobalCooldown = true;
+						}
+						const cooldownRegex = /^@(cooldown|global_cooldown)\s+(\d+[tshmd]?)$/;
+						if (!line.match(cooldownRegex)) {
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `Invalid ${firstWord} syntax. Expected: ${firstWord} time`));
+						}
 					}
-				}
-			} else if (firstWord === '@cancel') {
-				if (scriptStarted) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: '@cancel must appear at the beginning of the script',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				} else if (hasCancel) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: '@cancel can only appear once in the script',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				} else {
-					hasCancel = true;
-					if (line !== '@cancel') {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(firstWord) + firstWord.length
-								},
-								end: {
-									line: i,
-									character: lines[i].length
-								}
-							},
-							message: '@cancel should not have anything else on the line',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+					break;
+
+				case '@cancel':
+					if (scriptStarted) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, '@cancel must appear at the beginning of the script'));
+					} else if (hasCancel) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, '@cancel can only appear once in the script'));
+					} else {
+						hasCancel = true;
+						if (line !== '@cancel') {
+							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, '@cancel should not have anything else on the line'));
+						}
 					}
-				}
-			} else if (firstWord === '@delay') {
-				const delayRegex = /^@delay\s+(\d+[tshmd]?)$/;
-				const match = line.match(delayRegex);
-				if (!match) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: 'Invalid @delay syntax. Expected: @delay time',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
-			} else if (firstWord === '@slow' || firstWord === '@fast') {
-				if (line !== '@slow' && line !== '@fast') {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord) + firstWord.length
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: `${firstWord} should be on its own line`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
-			} else if (firstWord === '@using') {
-				const usingRegex = /^@using\s+([\w]+)$/;
-				const match = line.match(usingRegex);
-				if (!match) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: 'Invalid @using syntax. Expected: @using namespace',
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
-			} else if (firstWord === '@bypass' || firstWord === '@command' || firstWord === '@console') {
-				const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
-				const match = line.match(bypassCommandConsoleRegex);
-				if (!match) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].length
-							}
-						},
-						message: `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
-				}
+					break;
+
+				case '@delay':
+					const delayRegex = /^@delay\s+(\d+[tshmd]?)$/;
+					if (!line.match(delayRegex)) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @delay syntax. Expected: @delay time'));
+					}
+					break;
+
+				case '@slow':
+				case '@fast':
+					if (line !== '@slow' && line !== '@fast') {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, `${firstWord} should be on its own line`));
+					}
+					break;
+
+				case '@using':
+					const usingRegex = /^@using\s+([\w]+)$/;
+					if (!line.match(usingRegex)) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @using syntax. Expected: @using namespace'));
+					}
+					break;
+
+				case '@bypass':
+				case '@command':
+				case '@console':
+					const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
+					if (!line.match(bypassCommandConsoleRegex)) {
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`));
+					}
+					break;
 			}
 
 			if (firstWord === '@if' || firstWord === '@for') {
@@ -1398,22 +1145,7 @@ function validateTextDocument(textDocument: TextDocument): void {
 				});
 			} else if (firstWord === '@fi' || firstWord === '@done') {
 				if (blockStack.length === 0) {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].indexOf(firstWord) + firstWord.length
-							}
-						},
-						message: `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
+					diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`));
 				} else {
 					let lastBlock = blockStack.pop();
 					while (lastBlock && lastBlock.type === 'return') {
@@ -1421,42 +1153,12 @@ function validateTextDocument(textDocument: TextDocument): void {
 					}
 					if ((firstWord === '@fi' && lastBlock?.type !== 'if') ||
 						(firstWord === '@done' && lastBlock?.type !== 'for')) {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(firstWord)
-								},
-								end: {
-									line: i,
-									character: lines[i].indexOf(firstWord) + firstWord.length
-								}
-							},
-							message: `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`,
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
 					}
 				}
 			} else if (firstWord === '@elseif' || firstWord === '@else') {
 				if (blockStack.length === 0 || blockStack[blockStack.length - 1].type !== 'if') {
-					const diagnostic: Diagnostic = {
-						severity: DiagnosticSeverity.Error,
-						range: {
-							start: {
-								line: i,
-								character: lines[i].indexOf(firstWord)
-							},
-							end: {
-								line: i,
-								character: lines[i].indexOf(firstWord) + firstWord.length
-							}
-						},
-						message: `${firstWord} without matching @if`,
-						source: 'msc-error'
-					};
-					diagnostics.push(diagnostic);
+					diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `${firstWord} without matching @if`));
 				} else {
 					const lastIf = blockStack[blockStack.length - 1].line;
 					let hasElse = false;
@@ -1469,22 +1171,7 @@ function validateTextDocument(textDocument: TextDocument): void {
 						}
 					}
 					if (hasElse && firstWord === '@else') {
-						const diagnostic: Diagnostic = {
-							severity: DiagnosticSeverity.Error,
-							range: {
-								start: {
-									line: i,
-									character: lines[i].indexOf(firstWord)
-								},
-								end: {
-									line: i,
-									character: lines[i].indexOf(firstWord) + firstWord.length
-								}
-							},
-							message: 'Multiple @else in @if-@fi block',
-							source: 'msc-error'
-						};
-						diagnostics.push(diagnostic);
+						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, 'Multiple @else in @if-@fi block'));
 					}
 				}
 			} else if (firstWord === '@return') {
@@ -1494,93 +1181,33 @@ function validateTextDocument(textDocument: TextDocument): void {
 				});
 			}
 
-			// Check for unreachable code after @return
 			if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'return' && firstWord != '@return') {
-				const diagnostic: Diagnostic = {
-					severity: DiagnosticSeverity.Hint,
-					range: {
-						start: {
-							line: i,
-							character: 0
-						},
-						end: {
-							line: i,
-							character: lines[i].length
-						}
-					},
-					message: 'Unreachable code after @return',
-					source: 'msc-warning',
-					tags: [DiagnosticSeverity.Warning]
-				};
-				diagnostics.push(diagnostic);
+				diagnostics.push(createDiagnostic(i, 0, lines[i].length, 'Unreachable code after @return', DiagnosticSeverity.Warning));
 			}
+
+			if (!scriptStarted && validStarters.includes(firstWord)) {
+				scriptStarted = true;
+			}
+			
 		} else {
-
-			// Create a diagnostic for the invalid line
-			const diagnostic: Diagnostic = {
-				severity: DiagnosticSeverity.Error,
-				range: {
-					start: {
-						line: i,
-						character: lines[i].indexOf(firstWord)
-					},
-					end: {
-						line: i,
-						character: lines[i].indexOf(firstWord) + firstWord.length
-					}
-				},
-				message: 'Invalid script option ' + firstWord,
-				source: 'msc-error'
-			};
-
-			// Add the diagnostic to the array
-			diagnostics.push(diagnostic);
+			diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, 'Invalid script option ' + firstWord));
 		}
+	};
+
+	for (let i = 0; i < lines.length; i++) {
+		processLine(lines[i].trim(), i);
 	}
 
-	// Check for unclosed blocks
 	if (blockStack.length > 0) {
 		for (const block of blockStack) {
-			const diagnostic: Diagnostic = {
-				severity: DiagnosticSeverity.Error,
-				range: {
-					start: {
-						line: block.line,
-						character: lines[block.line].indexOf(`@${block.type}`)
-					},
-					end: {
-						line: block.line,
-						character: lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length
-					}
-				},
-				message: `Unclosed @${block.type} block`,
-				source: 'msc-error'
-			};
-			diagnostics.push(diagnostic);
+			diagnostics.push(createDiagnostic(block.line, lines[block.line].indexOf(`@${block.type}`), lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length, `Unclosed @${block.type} block`));
 		}
 	}
 
-	// Check for mutually exclusive options
 	if ((+hasCooldown + +hasGlobalCooldown + +hasCancel) > 1) {
-		const diagnostic: Diagnostic = {
-			severity: DiagnosticSeverity.Error,
-			range: {
-				start: {
-					line: 0,
-					character: 0
-				},
-				end: {
-					line: 0,
-					character: 0
-				}
-			},
-			message: '@cooldown, @global_cooldown, and @cancel are mutually exclusive',
-			source: 'msc-error'
-		};
-		diagnostics.push(diagnostic);
+		diagnostics.push(createDiagnostic(0, 0, 0, '@cooldown, @global_cooldown, and @cancel are mutually exclusive'));
 	}
 
-	// Send the diagnostics to the client
 	connection.sendDiagnostics({
 		uri: textDocument.uri,
 		diagnostics: []
