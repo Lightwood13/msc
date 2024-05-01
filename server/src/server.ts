@@ -1023,6 +1023,27 @@ function validateTextDocument(textDocument: TextDocument): void {
 
 		// Skip empty lines or lines starting with valid starters or comments
 		if (validStarters.includes(firstWord)) {
+			
+			if (line.match(/^@(bypass|console|command) \/?gamemode.*/)) {
+				const diagnostic: Diagnostic = {
+					severity: DiagnosticSeverity.Error,
+					range: {
+						start: {
+							line: i,
+							character: lines[i].indexOf(firstWord)
+						},
+						end: {
+							line: i,
+							character: lines[i].length
+						}
+					},
+					message: 'Permission changing commands are banned in scripts.',
+					source: 'msc-error'
+				};
+				diagnostics.push(diagnostic);
+			}
+
+
 			// Additional checks for specific options
 			if (firstWord === '@else' || firstWord === '@fi' || firstWord === '@done') {
 				if (line !== firstWord) {
@@ -1476,7 +1497,7 @@ function validateTextDocument(textDocument: TextDocument): void {
 			// Check for unreachable code after @return
 			if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'return' && firstWord != '@return') {
 				const diagnostic: Diagnostic = {
-					severity: DiagnosticSeverity.Warning,
+					severity: DiagnosticSeverity.Hint,
 					range: {
 						start: {
 							line: i,

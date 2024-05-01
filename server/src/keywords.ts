@@ -275,6 +275,18 @@ export const keywordCommands: CompletionItem[] =
 			}
 		},
 		{
+			"label": "fill",
+			"detail": "Changes a range of blocks",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "setblock",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run fill \${2:startX} \${3:startY} \${4:startZ} \${5:endX} \${6:endY} \${7:endZ} minecraft:\${8|${allMinecraftBlocks}|} \${9|replace,destroy,keep|} `,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/execute in <worldname> run setblock <coordinates> minecraft:<block>"
+			}
+		},
+		{
 			"label": "give",
 			"detail": "Gives the player an item",
 			"kind": CompletionItemKind.Snippet,
@@ -286,7 +298,30 @@ export const keywordCommands: CompletionItem[] =
 				"value": "/give <selector> minecraft:<item> <quantity>"
 			}
 		},
-
+		{
+			"label": "tag",
+			"detail": "Adds/removes a tag from an entity",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "tag",
+			"insertText": `tag \${1|${commandSelectors}|} \${2|add,remove|} \${3:tag_name}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/gamemode <gamemode> [selector]"
+			}
+		},
+		{
+			"label": "teleport",
+			"detail": "Teleports an entity/player to the desired location",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "teleport tp",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run teleport \${2|${commandSelectors}|} \${3:x} \${4:y} \${5:z} \${6:pitch} \${7:yaw}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/execute in <worldname> run setblock <coordinates> minecraft:<block>"
+			}
+		}
 	];
 
 
@@ -301,8 +336,6 @@ export const keywordCommands: CompletionItem[] =
 // /experience <add|set> <#playerselector> <!integer> <points|levels>
 // /fill <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <#block> [destroy|hollow|keep|outline]
 // /fill <!coord> <!coord> <!coord> <!coord> <!coord> <!coord> <#block> [replace] [#block|#blocktag]
-// /gamemode <adventure|creative|survival> [#playerselector]
-// /give <#playerselector> <#item> [!integer]
 // /item <replace> <entity> <#entityselector> <#slot> <with> <#item>
 // /item <replace> <entity> <#entityselector> <#slot> <from> <entity> <#entityselector>
 // /item <replace> <entity> <#entityselector> <#slot> <from> <block> <!coord> <!coord> <!coord>
@@ -315,7 +348,6 @@ export const keywordCommands: CompletionItem[] =
 // /scoreboard <players> <add|enable|get|operation|remove|reset|set>
 // /setblock <!coord> <!coord> <!coord> <#block> [destroy|keep]
 // /setblock <!coord> <!coord> <!coord> <#block> [replace] [#block|#blocktag]
-// /tag <#entityselector> <add|remove> <!string>
 // /teleport <#entityselector> [#entityselector]
 // /teleport [#entityselector] <!fcoord> <!fcoord> <!fcoord>
 // /tellraw [#playerselector] <!json>
