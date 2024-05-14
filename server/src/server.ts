@@ -1058,6 +1058,8 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts.'));
 	}
 
+	let hasCooldown = false;
+
 	switch (firstWord) {
 		case '@else':
 		case '@fi':
@@ -1135,6 +1137,12 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			} else {
 				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
 			}
+
+			if (hasCooldown) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `You can only have one cooldown in a script.`));
+			}
+			hasCooldown = true;
+			
 			break;
 		}
 
