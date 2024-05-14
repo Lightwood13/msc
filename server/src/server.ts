@@ -1054,7 +1054,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		return;
 	}
 
-	if (trimmedLine.match(/^@(bypass|console|command) \/?gamemode.*/)) {
+	if (trimmedLine.match(/^@(bypass|console|command) \/?(op|deop|setrank|lp|luckperms|permission|perms|perm) .*/)) {
 		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts.'));
 	}
 
