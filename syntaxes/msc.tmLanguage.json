@@ -82,7 +82,7 @@
 				"integer_literals": {
 					"patterns": [{
 						"name": "constant.numeric.msc",
-						"match": "(?<!\\w)(\\d+[Lsmhdw]?)(?!\\w)"
+						"match": "(?<!\\w)(\\d+[Ltsmhdwy]?)(?!\\w)"
 					}]
 				},
 				"float_literals": {

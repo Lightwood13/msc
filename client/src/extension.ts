@@ -15,7 +15,6 @@ import {
 	Progress,
 	ProgressLocation,
 	CancellationToken,
-	Diagnostic,
 	languages,
 	TextEdit,
 	TextDocument
@@ -28,9 +27,6 @@ import {
 	ServerOptions,
 	TransportKind
 } from 'vscode-languageclient/node';
-import {
-	HandleDiagnosticsSignature
-} from 'vscode-languageclient';
 
 // creates a client for the extension
 let client: LanguageClient;
@@ -75,19 +71,15 @@ interface NamespaceUploadResult {
 	methods: ClassMethod[]
 }
 
-// map path to link
 class ProcessedFileCache {
 
 	// uploads without include substitution, so should be looked up only for included files
-	uploadedFiles: Map<string,
-		string> = new Map();
+	// map path to link
+	uploadedFiles: Map<string, string> = new Map();
 	// map path to filenames or include names
-	notFoundFiles: Map<string,
-		Set<string>> = new Map();
-	emptyFiles: Map<string,
-		Set<string>> = new Map();
-	failedUploads: Map<string,
-		Set<string>> = new Map();
+	notFoundFiles: Map<string, Set<string>> = new Map();
+	emptyFiles: Map<string, Set<string>> = new Map();
+	failedUploads: Map<string, Set<string>> = new Map();
 
 	// if the cache contains a file (by URI): only if it's in one of the four maps
 	contains(uri: Uri): boolean {
@@ -211,7 +203,6 @@ async function uploadFileWithCache(uri: Uri, fileName: string, contents: string,
 async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, optionalFile = false): Promise<string | null> {
 	let fileContents: string;
 
-	// if it's open in the workspace, get it from there
 	try {
 		fileContents = (await workspace.fs.readFile(uri)).toString();
 	} catch (error) {
@@ -236,7 +227,8 @@ async function findFile(uri: Uri, fileName: string, cache: ProcessedFileCache, o
 // doesn't do include substitutions
 async function findAndUploadFile(uri: Uri, fileName: string, cache: ProcessedFileCache): Promise<string | null> {
 
-	// add it to the cache if needed
+	// if this file is already in cache, get the result from cache
+	// and add its current filename to cache
 	if (cache.contains(uri)) {
 		cache.addNewFileName(uri, fileName);
 		return cache.uploadedFiles.get(uri.path) || null;
@@ -286,7 +278,6 @@ function replaceIncludedFiles(baseFileUri: Uri, contents: string, includedFiles:
 	return contents;
 }
 
-// for a namespace
 async function uploadNamespaceChildFile(
 	namespaceFolderUri: Uri,
 	fileName: string,
@@ -302,18 +293,18 @@ async function uploadNamespaceChildFile(
 	// get the file contents from this URI
 	const fileContents: string | null = await findFile(fileUri, escapedFileName, cache, optionalFile);
 
-	// if the file is nonempty, then increment the counter
+	// if the file is not found or it's empty, exit early and increment the counter
 	if (fileContents === null) {
 		incrementProgress();
 		return;
 	}
 
-	// replace all manually included files in the script with their URLs
+	// replace all included files in the script with their URLs
 	const includedFiles = collectIncludedFilesInfo(fileContents);
 	await uploadIncludedFiles(fileUri, includedFiles, cache);
 	const replacedFileContents = replaceIncludedFiles(fileUri, fileContents, includedFiles, cache);
 
-	// upload this new file, now that all links are in place, and move the counter once more
+	// upload this new file, now that all links are in place, and increment the counter
 	const functionLink: string | null = await uploadFileWithCache(fileUri, escapedFileName, replacedFileContents, cache);
 	if (functionLink !== null) {
 		onSuccess(functionLink);
@@ -343,7 +334,6 @@ function formatDocument(document: TextDocument): TextEdit[] {
 	const edits: TextEdit[] = [];
 
 	let indentLevel = 0;
-	let inBypassBlock = false;
 
 	for (let i = 0; i < document.lineCount; i++) {
 		const line = document.lineAt(i);
@@ -351,13 +341,6 @@ function formatDocument(document: TextDocument): TextEdit[] {
 
 		if (lineText.startsWith("# ")) {
 			continue;
-		}
-
-		// Check if the line starts with @bypass, @command, or @console
-		if (lineText.startsWith('@bypass') || lineText.startsWith('@command') || lineText.startsWith('@console')) {
-			inBypassBlock = true;
-		} else {
-			inBypassBlock = false;
 		}
 
 		let indentingHere = false;
@@ -378,14 +361,8 @@ function formatDocument(document: TextDocument): TextEdit[] {
 		}
 
 		const thisLineIndent = 4 * (indentLevel - +(indentingHere));
-		// Format commas and operators if not in a bypass block and doesn't contain 'util'
-		if (!inBypassBlock && !lineText.includes('util')) {
-			const formattedLine = lineText.replace(/,\s*/g, ', ');
-			// formattedLine = formattedLine.replace(/\s*([!^*%+\-<>=&|])\s*/g, ' $1 ');
-			edits.push(TextEdit.replace(line.range, ' '.repeat(thisLineIndent) + formattedLine));
-		} else {
-			edits.push(TextEdit.replace(line.range, ' '.repeat(thisLineIndent) + lineText));
-		}
+
+		edits.push(TextEdit.replace(line.range, ' '.repeat(thisLineIndent) + lineText));
 	}
 
 	return edits;
@@ -405,7 +382,7 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 
-		// if it's a namespace file, then we're updating the namespace, so notify as such
+		// if it's a namespace file, send notification to server to start namespace export
 		if (textEditor.document.languageId === 'nms') {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
@@ -428,17 +405,16 @@ export function activate(context: ExtensionContext) {
 			const includedFilesInfo = collectIncludedFilesInfo(text);
 			let link: string | null = null;
 
-			// if we have manually included files, try them first
+			// if we don't have manually included files, just upload current file
 			if (includedFilesInfo.length === 0) {
 				link = await uploadFile(text);
 
-				// fail on error of these manually included file
 				if (link === null) {
 					window.showErrorMessage('Failed to upload file');
 				}
 			} else {
 
-				// send the progress notification for uploads
+				// if we have included files, show the progress notification for uploads
 				link = await window.withProgress<string | null>({
 					title: `Uploading ${getFileNameFromPath(textEditor.document.uri.path)}`,
 					cancellable: false,
@@ -448,7 +424,7 @@ export function activate(context: ExtensionContext) {
 					message?: string
 				}>, _token: CancellationToken): Promise<string | null> => {
 
-					// must upload some number of manually included files, plus this file itself
+					// must upload all manually included files, plus current file itself
 					const fileCount = includedFilesInfo.length + 1;
 					const cache = new ProcessedFileCache();
 
@@ -473,7 +449,7 @@ export function activate(context: ExtensionContext) {
 						return null;
 					}
 
-					// otherwise replace all links and upload this file
+					// otherwise replace all links and upload current file
 					const replacedText = replaceIncludedFiles(textEditor.document.uri, text, includedFilesInfo, cache);
 					const result = await uploadFile(replacedText);
 
@@ -539,8 +515,8 @@ export function activate(context: ExtensionContext) {
 		}
 
 		// match paste.minr.org links
-		const regex = /(?:https:\/\/)?(?:paste\.minr\.org\/)?([a-zA-Z]{10})$/;
-		const match = clipboardText.match(regex);
+		const regex = /^(?:(?:https:\/\/)?paste\.minr\.org\/)?([a-zA-Z]{10})$/;
+		const match = clipboardText.trim().match(regex);
 		let scriptName = '';
 
 		// extract the link part of it
@@ -605,18 +581,9 @@ export function activate(context: ExtensionContext) {
 			language: 'msc'
 		}],
 		synchronize: {
-			// notify the server about file changes to '.msc' and '.nms' files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/*.{msc,nms}')
-		},
-		middleware: {
-			// handle diagnostics received from the server for '.msc' files
-			handleDiagnostics: (uri: Uri, diagnostics: Diagnostic[], next: HandleDiagnosticsSignature) => {
-				if (uri.fsPath.endsWith('.msc')) {
-					// display the diagnostics in the editor for '.msc' files
-					languages.createDiagnosticCollection('msc').set(uri, []);
-				}
-				next(uri, diagnostics);
-			}
+			// notify the server about file changes to '.nms' files contained in the workspace
+			// to update code suggestions
+			fileEvents: workspace.createFileSystemWatcher('**/*.nms')
 		}
 	};
 
@@ -641,12 +608,12 @@ export function activate(context: ExtensionContext) {
 				url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
 				method: 'GET',
 			})
-				// success: let user know that we've fetched and processed the default namespaces
+				// success: send notification to server to start processing received default namespaces
 				.then(data => {
 					console.log('Successfully fetched default namespaces file from GitHub');
 					client.sendNotification('processDefaultNamespaces', data.data);
 				})
-				// if this fails, send an error notification
+				// if this fails, get default namespaces from extension resources and send it to server for processing
 				.catch(_err => {
 					console.log('Couldn\'t connect to GitHub');
 					const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
@@ -688,14 +655,12 @@ export function activate(context: ExtensionContext) {
 					const namespaceFolderUri: Uri = Uri.joinPath(Uri.file(namespaceInfo.namespaceDefinitionPath), '..', namespaceInfo.name);
 					const cache = new ProcessedFileCache();
 
-					// if we're uploading more than one file, send a progress report
-					if (totalUploadNumber !== 0)
-						progress.report({
-							increment: 0,
-							message: '0%'
-						});
+					progress.report({
+						increment: 0,
+						message: '0%'
+					});
 
-					// logs process of a certain number of files done, with a eprcentage
+					// function to increment progress notification by one file
 					const incrementProgress = () => {
 						currentUploadNumber += 1;
 						progress.report({
@@ -738,10 +703,10 @@ export function activate(context: ExtensionContext) {
 					await uploadNamespaceChildFile(
 						namespaceFolderUri, `__init__.msc`, cache,
 						initLink => {
-							namespaceInfo.defineScript += '\n' + `# Namespace Initialisation Function from ${namespaceInfo.name}/__init__.msc` +
+							namespaceInfo.defineScript += '\n' + `# Namespace initialisation function from ${namespaceInfo.name}/__init__.msc` +
 								'\n' + `@bypass /function define ${namespaceInfo.name} wilexafixu()`;
 							importLines.push(`@bypass /script import function ${namespaceInfo.name} wilexafixu ${initLink}`);
-							namespaceInfo.initializeScript += '\n\n' + '@player &7[&cVSCode&7] &eExecuting namespace initialisation function.' +
+							namespaceInfo.initializeScript += '\n\n' + '@player &7[&#20a0d0VSCode&7] &eExecuting namespace initialisation function.' +
 								'\n' + `@bypass /function execute ${namespaceInfo.name}::wilexafixu()` +
 								'\n' + `@bypass /function remove ${namespaceInfo.name} wilexafixu`;
 						}, incrementProgress, true
@@ -754,26 +719,27 @@ export function activate(context: ExtensionContext) {
 
 					// let the script be blank, and build it up from scratch
 					let script: string = (namespaceInfo.defineScript !== '') ?
-						`@player &7[&cVSCode&7] &eNow importing namespace ${namespaceInfo.name}.` +
+						`@player &7[&#20a0d0VSCode&7] &eNow importing namespace ${namespaceInfo.name}.` +
 						'\n\n' + namespaceInfo.defineScript :
-						`@player &7[&cVSCode&7] &eNow updating namespace ${namespaceInfo.name}.`;
+						`@player &7[&#20a0d0VSCode&7] &eNow updating namespace ${namespaceInfo.name}.`;
 
 					// if we have at least one import line, add all of them to the script
 					if (importLines.length !== 0) {
 						script += '\n\n' + importLines.join('\n');
 					}
 
-					// if the namespace variables initialiser is not blank, then add the relevant to the script
+					// if the namespace variables initialiser is not blank, then add it to the script
+					// if it has any function calls in it, wait for 3 seconds for all function imports to finish
 					if (namespaceInfo.initializeScript !== '') {
 						script
 							+= '\n\n' +
-							(namespaceInfo.initializeScript.indexOf('(') !== -1 ? '\n@player &7[&cVSCode&7] &eNow setting variables.\n@delay 3s\n' : '') +
+							(namespaceInfo.initializeScript.indexOf('(') !== -1 ? '\n@player &7[&#20a0d0VSCode&7] &eNow setting variables.\n@delay 3s\n' : '') +
 							namespaceInfo.initializeScript;
 					}
 					return script;
 				});
 
-				// final error check: add it to the overall script
+				// if the script upload failed, abort remaining uploads and exit
 				if (script === null) {
 					finalScript = null;
 					break;
@@ -783,12 +749,12 @@ export function activate(context: ExtensionContext) {
 				finalScript += script + '\n\n\n';
 			}
 
-			// if a namespace has gone wrong, exit
+			// if upload failed, exit
 			if (finalScript === null) return;
 
 			// removes the script from the block it was on, and notifies the player in chat
 			finalScript += '@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}}';
-			finalScript += '\n' + '@player &7[&cVSCode&7] &aNamespace import finished!';
+			finalScript += '\n' + '@player &7[&#20a0d0VSCode&7] &aNamespace import finished!';
 
 			// uploads this script
 			const finalLink: string | null = await uploadFile(finalScript);

@@ -5,13 +5,13 @@ import {
 	InsertTextFormat
 } from 'vscode-languageserver/node';
 
-import * as minecraftBlocksData from './data/minecraftBlocks.json';
-import * as minecraftItemsData from './data/minecraftItems.json';
+import * as minecraftBlockData from './data/minecraftBlocks.json';
+import * as minecraftItemData from './data/minecraftItems.json';
 
 export const keywords: CompletionItem[] =
 	[
 		{
-			"label": "if else",
+			"label": "if",
 			"detail": "Conditional (if) statement",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "if condition",
@@ -23,6 +23,18 @@ export const keywords: CompletionItem[] =
 			}
 		},
 		{
+			"label": "if else",
+			"detail": "Conditional (if/else) statement",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "if/else condition",
+			"insertText": "@if (${1:condition})\n\t$2\n@else\n\t$3\n@fi",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "@if (condition)\n\tdo stuff\nelse\n\tdo other stuff\n@fi"
+			}
+		},
+		{
 			"label": "if elseif else",
 			"detail": "Branch (if/elseif/else) statement",
 			"kind": CompletionItemKind.Snippet,
@@ -31,7 +43,7 @@ export const keywords: CompletionItem[] =
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "@if (condition)\n\tdo stuff\n@elseif (other condition)\n\tdo other stuff\n@else\n\tdo this otherwise\n@fi"
+				"value": "@if (condition)\n\tdo stuff\n@elseif (another condition)\n\tdo other stuff\n@else\n\tdo this otherwise\n@fi"
 			}
 		},
 		{
@@ -227,7 +239,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "return",
-			"detail": "Ends execution, optionally returning an argument",
+			"detail": "Ends execution, optionally returning a  value",
 			"kind": CompletionItemKind.Keyword,
 			"filterText": "return",
 			"insertText": "@return "
@@ -255,19 +267,19 @@ export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion
 })
 );
 
-const commandSelectors = "{{player}},@s,@p,@a,@e";
+const entitySelectors = "{{player}},@s,@p,@a,@e";
 const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end";
-const allMinecraftBlocks = minecraftBlocksData.map(block => `${block}`).join(',');
-const allMinecraftItems = minecraftItemsData.map(block => `${block}`).join(',');
+const allMinecraftBlocks = minecraftBlockData.join(',');
+const allMinecraftItems = minecraftItemData.join(',');
 
-export const keywordCommands: CompletionItem[] =
+export const minecraftCommands: CompletionItem[] =
 	[
 		{
 			"label": "setblock",
 			"detail": "Changes a block",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "setblock",
-			"insertText": `execute in minecraft:\${1|${worldNames}|} run setblock \${2:x} \${3:y} \${4:z} minecraft:\${5|${allMinecraftBlocks}|} \${6|replace,destroy,keep|} `,
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run setblock \${2:x} \${3:y} \${4:z} minecraft:\${5|${allMinecraftBlocks}|} \${6|replace,destroy,keep|}`,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
@@ -278,12 +290,12 @@ export const keywordCommands: CompletionItem[] =
 			"label": "fill",
 			"detail": "Changes a range of blocks",
 			"kind": CompletionItemKind.Snippet,
-			"filterText": "setblock",
-			"insertText": `execute in minecraft:\${1|${worldNames}|} run fill \${2:startX} \${3:startY} \${4:startZ} \${5:endX} \${6:endY} \${7:endZ} minecraft:\${8|${allMinecraftBlocks}|} \${9|replace,destroy,keep|} `,
+			"filterText": "fill",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run fill \${2:startX} \${3:startY} \${4:startZ} \${5:endX} \${6:endY} \${7:endZ} minecraft:\${8|${allMinecraftBlocks}|} \${9|replace,destroy,keep|}`,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/execute in <worldname> run setblock <coordinates> minecraft:<block>"
+				"value": "/execute in <worldname> run fill <startCoordinates> <endCoordinates> minecraft:<block>"
 			}
 		},
 		{
@@ -291,11 +303,11 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Gives the player an item",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "give",
-			"insertText": `give \${1|${commandSelectors}|} minecraft:\${2|${allMinecraftItems}|} \${3:1} `,
+			"insertText": `give \${1|${entitySelectors}|} minecraft:\${2|${allMinecraftItems}|} \${3:1}`,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/give <selector> minecraft:<item> <quantity>"
+				"value": "/give <entity> minecraft:<item> <quantity>"
 			}
 		},
 		{
@@ -303,11 +315,11 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Adds/removes a tag from an entity",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "tag",
-			"insertText": `tag \${1|${commandSelectors}|} \${2|add,remove|} \${3:tag_name}`,
+			"insertText": `tag \${1|${entitySelectors}|} \${2|add,remove|} \${3:tag_name}`,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/gamemode <gamemode> [selector]"
+				"value": "/gamemode <gamemode> <entity>"
 			}
 		},
 		{
@@ -315,11 +327,11 @@ export const keywordCommands: CompletionItem[] =
 			"detail": "Teleports an entity/player to the desired location",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "teleport tp",
-			"insertText": `execute in minecraft:\${1|${worldNames}|} run teleport \${2|${commandSelectors}|} \${3:x} \${4:y} \${5:z} \${6:pitch} \${7:yaw}`,
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run teleport \${2|${entitySelectors}|} \${3:x} \${4:y} \${5:z} \${6:pitch} \${7:yaw}`,
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
-				"value": "/execute in <worldname> run setblock <coordinates> minecraft:<block>"
+				"value": "/execute in <worldname> run teleport <entity> <coordinates> <pitch> <yaw>"
 			}
 		}
 	];

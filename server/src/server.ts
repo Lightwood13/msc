@@ -1,4 +1,3 @@
-/* eslint-disable no-case-declarations */
 /* --------------------------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for license information.
@@ -13,7 +12,6 @@ import {
 	CodeActionParams,
 	ProposedFeatures,
 	InitializeParams,
-	// DidChangeConfigurationNotification,
 	CompletionItem,
 	CompletionItemKind,
 	TextDocumentPositionParams,
@@ -56,7 +54,7 @@ import {
 import {
 	keywords,
 	keywordsWithoutAtSymbol,
-	keywordCommands
+	minecraftCommands
 } from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -681,10 +679,10 @@ connection.onCompletion(
 			}
 		});
 		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
-		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`, 'i');
+		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`);
 		const commandSuggestionRegExpRes = commandSuggestionRegExp.exec(line);
 		if (commandSuggestionRegExpRes !== null) {
-			return keywordCommands;
+			return minecraftCommands;
 		}
 		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
 		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
@@ -971,15 +969,299 @@ connection.onCodeAction((params: CodeActionParams) => {
 	return codeActions;
 });
 
-function validateTextDocument(textDocument: TextDocument): void {
-	interface NestedScriptBlock {
-		type: 'if' | 'for' | 'return';
-		line: number;
+interface IfScriptBlock {
+	readonly type: 'if';
+	readonly line: number;
+	hadElse: boolean;
+}
+
+interface ForScriptBlock {
+	readonly type: 'for';
+	readonly line: number;
+}
+
+interface ReturnScriptBlock {
+	readonly type: 'return';
+	readonly line: number;
+}
+
+type NestedScriptBlock = IfScriptBlock | ForScriptBlock | ReturnScriptBlock;
+
+class ScriptParsingContext {
+	readonly blockStack: NestedScriptBlock[] = [];
+	returnCount = 0;
+
+	currentScopeHadReturn(): boolean {
+		return this.returnCount > 0;
 	}
-	const blockStack: NestedScriptBlock[] = [];
 
-	const diagnostics: Diagnostic[] = [];
+	push(block: NestedScriptBlock) {
+		this.blockStack.push(block);
+	}
 
+	pop(): NestedScriptBlock | undefined {
+		return this.blockStack.pop();
+	}
+
+	last(): NestedScriptBlock | undefined {
+		return this.blockStack[this.blockStack.length - 1];
+	}
+
+	pushReturn(line: number) {
+		this.blockStack.push({
+			type: 'return',
+			line: line
+		});
+		this.returnCount++;
+	}
+
+	popReturns() {
+		while (this.last()?.type === 'return') {
+			this.blockStack.pop();
+			this.returnCount--;
+		}
+	}
+}
+
+const validStarters = [
+	'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
+	'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
+	'@console', '@cooldown', '@global_cooldown', '@using', '@cancel',
+	'@fast', '@slow', '@return'
+];
+
+function createDiagnostic(line: number, start: number, end: number, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error): Diagnostic {
+	return {
+		severity,
+		range: {
+			start: { line, character: start },
+			end: { line, character: end }
+		},
+		message,
+		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
+	};	
+}
+
+function validateTime(str: string, lineNumber: number, startIndex: number, endIndex: number, diagnostics: Diagnostic[]) {
+	if (!str.match(/^\d+[tsmhdwy]?$/)) {
+		diagnostics.push(createDiagnostic(lineNumber, startIndex, endIndex, 'Time should be a number, optionally followed by one of:\n - t (ticks)\n - s (seconds)\n - m (minutes)\n - h (hours)\n - d (days)\n - w (weeks)\n - y (years)'));
+	}
+}
+
+function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, diagnostics: Diagnostic[]) {
+	if (!validStarters.includes(firstWord)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Invalid script option ${firstWord}`));
+		return;
+	}
+
+	if (trimmedLine.match(/^@(bypass|console|command) \/?gamemode.*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts.'));
+	}
+
+	switch (firstWord) {
+		case '@else':
+		case '@fi':
+		case '@done': {
+			if (trimmedLine !== firstWord) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line.`));
+			}
+			break;
+		}
+
+		case '@if':
+		case '@elseif': {
+			const ifRegex = /^@(if|elseif)\s+(.+)$/;
+			if (!trimmedLine.match(ifRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `Invalid ${firstWord} syntax. Condition cannot be empty`));
+			}
+			break;
+		}
+
+		case '@for': {
+			const forRegex = RegExp(/^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/, 'd');
+			const forMatch = trimmedLine.match(forRegex);
+			if (!forMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @for syntax: expected @for <type> <variable> in <list>'));
+				break;
+			}
+
+			const [_all, _variableType, variableName, _initializer] = forMatch;
+			if (variableName[0] < 'a' || variableName[0] > 'z') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + forMatch.indices![2][0], lineStartIndex + forMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
+			}
+			break;
+		}
+
+		case '@define': {
+			const defineRegex = RegExp(/^@define\s+([\w:]+)\s+([\w]+)(\s*=(.+)?)?$/, 'd');
+			const defineMatch = trimmedLine.match(defineRegex);
+			if (!defineMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax. Expected: @define type variable [= expression]'));
+				break;
+			}
+			
+			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
+			if (variableName[0] < 'a' || variableName[0] > 'z') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![2][0], lineStartIndex + defineMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
+			}
+			if (intializer !== undefined && initializerExpression === undefined) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![3][1], lineLength, 'Invalid @define syntax. Initializer cannot be empty'));
+			}
+			break;
+		}
+
+		case '@chatscript': {
+			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(\S+)$/, 'd');
+			const chatscriptMatch = trimmedLine.match(chatscriptRegex);
+			if (!chatscriptMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @chatscript syntax. Expected: @chatscript time group-name function'));
+				break;
+			}
+
+			const [_all, time, _group, func] = chatscriptMatch;
+			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
+
+			if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + chatscriptMatch.indices![3][0], lineStartIndex + chatscriptMatch.indices![3][1], 'Invalid function syntax in @chatscript. Expected function call'));
+			}
+			break;
+		}
+
+		case '@cooldown':
+		case '@global_cooldown': {
+			const cooldownMatch = trimmedLine.match(RegExp(/^@(cooldown|global_cooldown)\s+(\S+)$/, 'd'));
+			if (!cooldownMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax. Expected: ${firstWord} time`));
+			} else {
+				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
+			}
+			break;
+		}
+
+		case '@cancel': {
+			if (trimmedLine !== '@cancel') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, '@cancel should be on its own line'));
+			}
+			break;
+		}
+
+		case '@delay': {
+			const delayMatch = trimmedLine.match(RegExp(/^@delay\s+(\S+)$/, 'd'));
+			if (!delayMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @delay syntax. Expected: @delay time'));
+			} else {
+				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
+			}
+			break;
+		}
+
+		case '@slow':
+		case '@fast': {
+			if (trimmedLine !== '@slow' && trimmedLine !== '@fast') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line`));
+			}
+			break;
+		}
+
+		case '@using': {
+			const usingRegex = /^@using\s+(\w+)$/;
+			if (!trimmedLine.match(usingRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @using syntax. Expected: @using namespace'));
+			}
+			break;
+		}
+
+		case '@bypass':
+		case '@command':
+		case '@console': {
+			const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
+			if (!trimmedLine.match(bypassCommandConsoleRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`));
+			}
+			break;
+		}
+	}
+}
+
+function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
+	
+	switch (firstWord) {
+		case '@if': {
+			parsingContext.push({
+				type: 'if',
+				line: lineNumber,
+				hadElse: false
+			});
+			break;
+		}
+
+		case '@for': {
+			parsingContext.push({
+				type: 'for',
+				line: lineNumber,
+			});
+			break;
+		}
+
+		case '@fi':
+		case '@done': {
+			parsingContext.popReturns();
+			const lastBlock: NestedScriptBlock | undefined = parsingContext.pop();
+			if (lastBlock === undefined) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`));
+			} else {
+				if ((firstWord === '@fi' && lastBlock.type !== 'if') ||
+					(firstWord === '@done' && lastBlock.type !== 'for')) {
+					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
+				}
+			}
+			break;
+		}
+		case '@elseif':
+		case '@else': {
+			parsingContext.popReturns();
+			const lastBlock: NestedScriptBlock | undefined = parsingContext.last();
+			if (lastBlock?.type !== 'if') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `${firstWord} without matching @if`));
+			} else {
+				if (lastBlock.hadElse) {
+					const diagnosticMessage = firstWord === '@else' ? 'Multiple @else in @if-@fi block' : '@elseif can\'t occur after @else in @if-fi block';
+					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, diagnosticMessage));
+				}
+				if (firstWord === "@else") {
+					lastBlock.hadElse = true;
+				}
+			}
+			break;
+		}
+
+		case '@return': {
+			parsingContext.pushReturn(lineNumber);
+			break;
+		}
+	}
+
+	if ((firstWord !== '@return' && parsingContext.currentScopeHadReturn()) || (firstWord === '@return' && currentScopeHadReturnBeforeThisLine)) {
+		diagnostics.push(createDiagnostic(lineNumber, 0, lineLength, 'Unreachable code after @return', DiagnosticSeverity.Warning));
+	}
+}
+
+function processLine(line: string, lineNumber: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+	const trimmedLine = line.trim();
+
+	if (trimmedLine === '' || trimmedLine.startsWith("# ")) {
+		return;
+	}
+
+	const firstWord = trimmedLine.split(" ")[0];
+	const lineStartIndex = line.indexOf(firstWord);
+
+	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, diagnostics);
+	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
+}
+
+function validateAndReportDiagnostics(textDocument: TextDocument): void {
 	const text = textDocument.getText();
 
 	if (text.includes("# msc-ignore-errors")) {
@@ -989,229 +1271,23 @@ function validateTextDocument(textDocument: TextDocument): void {
 		});
 		return;
 	}
+	
+	const parsingContext = new ScriptParsingContext();
+	const diagnostics: Diagnostic[] = [];
 
-	let hasCooldown = false;
-	let hasGlobalCooldown = false;
-	let hasCancel = false;
-	let scriptStarted = false;
-
-	const lines = text.split('\n');
-
-	const validStarters = [
-		'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
-		'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
-		'@console', '@cooldown', '@global_cooldown', '@using', '@cancel',
-		'@fast', '@slow', '@return'
-	];
-
-	const createDiagnostic = (line: number, start: number, end: number, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error): Diagnostic => ({
-		severity,
-		range: {
-			start: { line, character: start },
-			end: { line, character: end }
-		},
-		message,
-		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
-	});
-
-	const processLine = (line: string, i: number) => {
-		const firstWord = line.split(" ")[0];
-
-		if (line === '' || line.startsWith("# ")) {
-			return;
-		}
-
-		if (validStarters.includes(firstWord)) {
-			if (line.match(/^@(bypass|console|command) \/?gamemode.*/)) {
-				diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Permission changing commands are banned in scripts.'));
-			}
-
-			switch (firstWord) {
-				case '@else':
-				case '@fi':
-				case '@done':
-					if (line !== firstWord) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, `${firstWord} should be on its own line.`));
-					}
-					break;
-
-				case '@for':
-					const forRegex = /^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/;
-					if (!line.match(forRegex)) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @for syntax: expected @for <type> <variable> in <list>'));
-					}
-					break;
-
-				case '@define':
-					const defineRegex = /^@define\s+([\w:]+)\s+([a-z][\w]*)\s*(?:=\s*(.+))?$/;
-					const defineMatch = line.match(defineRegex);
-					if (!defineMatch) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @define syntax. Expected: @define type variable [= expression]'));
-					} else {
-						const [, _, __, expression] = defineMatch;
-						if (expression === undefined && line.includes('=')) {
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf('='), lines[i].length, 'Invalid @define syntax. Expression cannot be empty'));
-						}
-					}
-					break;
-
-				case '@chatscript':
-					const chatscriptRegex = /^@chatscript\s+(\d+[tshmd]?)\s+(\S+)\s+(\S+)$/;
-					const chatscriptMatch = line.match(chatscriptRegex);
-					if (!chatscriptMatch) {
-						const timeRegex = /^@chatscript\s+(\S+)/;
-						const timeMatch = line.match(timeRegex);
-						if (timeMatch) {
-							const [, invalidTime] = timeMatch;
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf(invalidTime), lines[i].indexOf(invalidTime) + invalidTime.length, 'Invalid time syntax in @chatscript. Expected: number with t/s/h/m/d'));
-						} else {
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @chatscript syntax. Expected: @chatscript time group-name function'));
-						}
-					} else {
-						const [, _, __, func] = chatscriptMatch;
-						if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf(func), lines[i].indexOf(func) + func.length, 'Invalid function syntax in @chatscript. Expected: function()'));
-						}
-					}
-					break;
-
-				case '@cooldown':
-				case '@global_cooldown':
-					if (scriptStarted) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `${firstWord} must appear at the beginning of the script`));
-					} else if ((firstWord === '@cooldown' && hasCooldown) || (firstWord === '@global_cooldown' && hasGlobalCooldown)) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `${firstWord} can only appear once in the script`));
-					} else {
-						if (firstWord === '@cooldown') {
-							hasCooldown = true;
-						} else {
-							hasGlobalCooldown = true;
-						}
-						const cooldownRegex = /^@(cooldown|global_cooldown)\s+(\d+[tshmd]?)$/;
-						if (!line.match(cooldownRegex)) {
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `Invalid ${firstWord} syntax. Expected: ${firstWord} time`));
-						}
-					}
-					break;
-
-				case '@cancel':
-					if (scriptStarted) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, '@cancel must appear at the beginning of the script'));
-					} else if (hasCancel) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, '@cancel can only appear once in the script'));
-					} else {
-						hasCancel = true;
-						if (line !== '@cancel') {
-							diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, '@cancel should not have anything else on the line'));
-						}
-					}
-					break;
-
-				case '@delay':
-					const delayRegex = /^@delay\s+(\d+[tshmd]?)$/;
-					if (!line.match(delayRegex)) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @delay syntax. Expected: @delay time'));
-					}
-					break;
-
-				case '@slow':
-				case '@fast':
-					if (line !== '@slow' && line !== '@fast') {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord) + firstWord.length, lines[i].length, `${firstWord} should be on its own line`));
-					}
-					break;
-
-				case '@using':
-					const usingRegex = /^@using\s+([\w]+)$/;
-					if (!line.match(usingRegex)) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, 'Invalid @using syntax. Expected: @using namespace'));
-					}
-					break;
-
-				case '@bypass':
-				case '@command':
-				case '@console':
-					const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
-					if (!line.match(bypassCommandConsoleRegex)) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].length, `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`));
-					}
-					break;
-			}
-
-			if (firstWord === '@if' || firstWord === '@for') {
-				blockStack.push({
-					type: firstWord === '@if' ? 'if' : 'for',
-					line: i
-				});
-			} else if (firstWord === '@fi' || firstWord === '@done') {
-				if (blockStack.length === 0) {
-					diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`));
-				} else {
-					let lastBlock = blockStack.pop();
-					while (lastBlock && lastBlock.type === 'return') {
-						lastBlock = blockStack.pop();
-					}
-					if ((firstWord === '@fi' && lastBlock?.type !== 'if') ||
-						(firstWord === '@done' && lastBlock?.type !== 'for')) {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
-					}
-				}
-			} else if (firstWord === '@elseif' || firstWord === '@else') {
-				if (blockStack.length === 0 || blockStack[blockStack.length - 1].type !== 'if') {
-					diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, `${firstWord} without matching @if`));
-				} else {
-					const lastIf = blockStack[blockStack.length - 1].line;
-					let hasElse = false;
-					for (let j = lastIf + 1; j < i; j++) {
-						const prevLine = lines[j].trim();
-						const prevFirstWord = prevLine.split(" ")[0];
-						if (prevFirstWord === '@else') {
-							hasElse = true;
-							break;
-						}
-					}
-					if (hasElse && firstWord === '@else') {
-						diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, 'Multiple @else in @if-@fi block'));
-					}
-				}
-			} else if (firstWord === '@return') {
-				blockStack.push({
-					type: 'return',
-					line: i
-				});
-			}
-
-			if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'return' && firstWord != '@return') {
-				diagnostics.push(createDiagnostic(i, 0, lines[i].length, 'Unreachable code after @return', DiagnosticSeverity.Warning));
-			}
-
-			if (!scriptStarted && validStarters.includes(firstWord)) {
-				scriptStarted = true;
-			}
-			
-		} else {
-			diagnostics.push(createDiagnostic(i, lines[i].indexOf(firstWord), lines[i].indexOf(firstWord) + firstWord.length, 'Invalid script option ' + firstWord));
-		}
-	};
-
+	const lines = text.split('\n');	
 	for (let i = 0; i < lines.length; i++) {
-		processLine(lines[i].trim(), i);
+		processLine(lines[i], i, parsingContext, diagnostics);
 	}
 
-	if (blockStack.length > 0) {
-		for (const block of blockStack) {
-			diagnostics.push(createDiagnostic(block.line, lines[block.line].indexOf(`@${block.type}`), lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length, `Unclosed @${block.type} block`));
+	if (parsingContext.blockStack.length > 0) {
+		for (const block of parsingContext.blockStack) {
+			if (block.type === 'if' || block.type === 'for') {
+				diagnostics.push(createDiagnostic(block.line, lines[block.line].indexOf(`@${block.type}`), lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length, `Unclosed @${block.type} block`));
+			}
 		}
 	}
 
-	if ((+hasCooldown + +hasGlobalCooldown + +hasCancel) > 1) {
-		diagnostics.push(createDiagnostic(0, 0, 0, '@cooldown, @global_cooldown, and @cancel are mutually exclusive'));
-	}
-
-	connection.sendDiagnostics({
-		uri: textDocument.uri,
-		diagnostics: []
-	});
 	connection.sendDiagnostics({
 		uri: textDocument.uri,
 		diagnostics
@@ -1224,17 +1300,17 @@ documents.listen(connection);
 
 // Register the text document validation function
 documents.onDidSave(change => {
-	validateTextDocument(change.document);
+	validateAndReportDiagnostics(change.document);
 });
 
 // Register the text document validation function
 documents.onDidOpen(change => {
-	validateTextDocument(change.document);
+	validateAndReportDiagnostics(change.document);
 });
 
 documents.onDidChangeContent(e => {
 	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
-	validateTextDocument(e.document);
+	validateAndReportDiagnostics(e.document);
 });
 
 documents.onDidClose(e => {
