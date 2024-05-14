@@ -1062,6 +1062,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Chat commands executed by the player are prohibited in scripts'));
 	}
 
+	if (trimmedLine.match(/^@(bypass|console|command) \/?{{.*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'General command executors are banned in scripts'));
+	}
+
 	switch (firstWord) {
 		case '@else':
 		case '@fi':
