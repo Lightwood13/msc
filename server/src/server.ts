@@ -1058,6 +1058,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts'));
 	}
 
+	if (trimmedLine.match(/^@(bypass|console|command) \/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t) .*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Chat commands executed by the player are prohibited in scripts'));
+	}
+
 	let hasCooldown = false;
 
 	switch (firstWord) {
