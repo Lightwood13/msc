@@ -1055,7 +1055,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 	}
 
 	if (trimmedLine.match(/^@(bypass|console|command) \/?(op|deop|setrank|lp|luckperms|permission|perms|perm) .*/)) {
-		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts.'));
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts'));
 	}
 
 	let hasCooldown = false;
@@ -1065,7 +1065,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@fi':
 		case '@done': {
 			if (trimmedLine !== firstWord) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line.`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line`));
 			}
 			break;
 		}
@@ -1074,7 +1074,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@elseif': {
 			const ifRegex = /^@(if|elseif)\s+(.+)$/;
 			if (!trimmedLine.match(ifRegex)) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `Invalid ${firstWord} syntax. Condition cannot be empty`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `Invalid ${firstWord} syntax: condition cannot be empty`));
 			}
 			break;
 		}
@@ -1083,7 +1083,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const forRegex = RegExp(/^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/, 'd');
 			const forMatch = trimmedLine.match(forRegex);
 			if (!forMatch) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @for syntax: expected @for <type> <variable> in <list>'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @for syntax: expected\n@for <type> <variable> in <list>'));
 				break;
 			}
 
@@ -1098,7 +1098,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const defineRegex = RegExp(/^@define\s+([\w:]+)\s+([\w]+)(\s*=(.+)?)?$/, 'd');
 			const defineMatch = trimmedLine.match(defineRegex);
 			if (!defineMatch) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax. Expected: @define type variable [= expression]'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax: expected\n@define type variable [= expression]'));
 				break;
 			}
 			
@@ -1107,7 +1107,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![2][0], lineStartIndex + defineMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
 			}
 			if (intializer !== undefined && initializerExpression === undefined) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![3][1], lineLength, 'Invalid @define syntax. Initializer cannot be empty'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![3][1], lineLength, 'Invalid @define syntax: initializer cannot be empty'));
 			}
 			break;
 		}
@@ -1116,7 +1116,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(\S+)$/, 'd');
 			const chatscriptMatch = trimmedLine.match(chatscriptRegex);
 			if (!chatscriptMatch) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @chatscript syntax. Expected: @chatscript time group-name function'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @chatscript syntax: expected\n@chatscript time group-name function'));
 				break;
 			}
 
@@ -1124,7 +1124,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
 
 			if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + chatscriptMatch.indices![3][0], lineStartIndex + chatscriptMatch.indices![3][1], 'Invalid function syntax in @chatscript. Expected function call'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + chatscriptMatch.indices![3][0], lineStartIndex + chatscriptMatch.indices![3][1], 'Invalid function syntax in @chatscript: expected function call'));
 			}
 			break;
 		}
@@ -1133,13 +1133,13 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@global_cooldown': {
 			const cooldownMatch = trimmedLine.match(RegExp(/^@(cooldown|global_cooldown)\s+(\S+)$/, 'd'));
 			if (!cooldownMatch) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax. Expected: ${firstWord} time`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax: expected\n${firstWord} time`));
 			} else {
 				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
 			}
 
 			if (hasCooldown) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `You can only have one cooldown in a script.`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Only one cooldown is allowed in each script`));
 			}
 			hasCooldown = true;
 			
@@ -1156,7 +1156,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@delay': {
 			const delayMatch = trimmedLine.match(RegExp(/^@delay\s+(\S+)$/, 'd'));
 			if (!delayMatch) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @delay syntax. Expected: @delay time'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @delay syntax: expected\n@delay time'));
 			} else {
 				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
 			}
@@ -1174,7 +1174,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@using': {
 			const usingRegex = /^@using\s+(\w+)$/;
 			if (!trimmedLine.match(usingRegex)) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @using syntax. Expected: @using namespace'));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @using syntax: expected\n@using namespace'));
 			}
 			break;
 		}
@@ -1184,7 +1184,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@console': {
 			const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
 			if (!trimmedLine.match(bypassCommandConsoleRegex)) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax. Expected: ${firstWord} /command`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax: expected\n${firstWord} /command`));
 			}
 			break;
 		}
@@ -1221,7 +1221,7 @@ function processControlStatements(firstWord: string, lineNumber: number, lineSta
 			} else {
 				if ((firstWord === '@fi' && lastBlock.type !== 'if') ||
 					(firstWord === '@done' && lastBlock.type !== 'for')) {
-					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}. Expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
+					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}: expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
 				}
 			}
 			break;
@@ -1231,7 +1231,7 @@ function processControlStatements(firstWord: string, lineNumber: number, lineSta
 			parsingContext.popReturns();
 			const lastBlock: NestedScriptBlock | undefined = parsingContext.last();
 			if (lastBlock?.type !== 'if') {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `${firstWord} without matching @if`));
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}: no matching @if`));
 			} else {
 				if (lastBlock.hadElse) {
 					const diagnosticMessage = firstWord === '@else' ? 'Multiple @else in @if-@fi block' : '@elseif can\'t occur after @else in @if-fi block';
