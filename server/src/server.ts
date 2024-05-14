@@ -1039,7 +1039,7 @@ function createDiagnostic(line: number, start: number, end: number, message: str
 		},
 		message,
 		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
-	};	
+	};
 }
 
 function validateTime(str: string, lineNumber: number, startIndex: number, endIndex: number, diagnostics: Diagnostic[]) {
@@ -1061,8 +1061,6 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 	if (trimmedLine.match(/^@(bypass|console|command) \/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t) .*/)) {
 		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Chat commands executed by the player are prohibited in scripts'));
 	}
-
-	let hasCooldown = false;
 
 	switch (firstWord) {
 		case '@else':
@@ -1105,7 +1103,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax: expected\n@define type variable [= expression]'));
 				break;
 			}
-			
+
 			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
 			if (variableName[0] < 'a' || variableName[0] > 'z') {
 				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![2][0], lineStartIndex + defineMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
@@ -1141,12 +1139,6 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			} else {
 				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
 			}
-
-			if (hasCooldown) {
-				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Only one cooldown is allowed in each script`));
-			}
-			hasCooldown = true;
-			
 			break;
 		}
 
@@ -1197,7 +1189,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 
 function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
-	
+
 	switch (firstWord) {
 		case '@if': {
 			parsingContext.push({
@@ -1283,11 +1275,11 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 		});
 		return;
 	}
-	
+
 	const parsingContext = new ScriptParsingContext();
 	const diagnostics: Diagnostic[] = [];
 
-	const lines = text.split('\n');	
+	const lines = text.split('\n');
 	for (let i = 0; i < lines.length; i++) {
 		processLine(lines[i], i, parsingContext, diagnostics);
 	}
