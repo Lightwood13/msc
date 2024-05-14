@@ -5,6 +5,11 @@
 import {
 	createConnection,
 	TextDocuments,
+	Diagnostic,
+	DiagnosticSeverity,
+	CodeAction,
+	CodeActionKind,
+	CodeActionParams,
 	ProposedFeatures,
 	InitializeParams,
 	CompletionItem,
@@ -24,8 +29,12 @@ import {
 	Hover,
 	HoverParams
 } from 'vscode-languageserver-protocol';
-import { readFile } from 'fs';
-import { files } from 'node-dir';
+import {
+	readFile
+} from 'fs';
+import {
+	files
+} from 'node-dir';
 
 import {
 	VariableInfo,
@@ -42,7 +51,11 @@ import {
 	variableSignatureRegExp,
 	parseDocument
 } from './parser';
-import { keywords, keywordsWithoutAtSymbol } from './keywords';
+import {
+	keywords,
+	keywordsWithoutAtSymbol,
+	minecraftCommands
+} from './keywords';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -70,7 +83,8 @@ connection.onInitialize((params: InitializeParams) => {
 			signatureHelpProvider: {
 				triggerCharacters: ['(', ',']
 			},
-			hoverProvider: true
+			hoverProvider: true,
+			codeActionProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -135,93 +149,69 @@ function refreshDocument(documentUri: string): Promise<SourceFileData> {
 				variables: new Map(),
 				usingDeclarations: []
 			});
-		}
-		else
+		} else
 			resolve(parseDocument(document.getText()));
 	});
 	sourceFileData.set(documentUri, result);
 	return result;
 }
 
-documents.onDidChangeContent(e => {
-	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
-});
-
-documents.onDidClose(e => {
-	sourceFileData.delete(e.document.uri);
-});
-
-
-connection.onDidChangeWatchedFiles(_ => {
-	refreshNamespaceFiles();
-});
-
 function skipStringBackward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
-	for(; pos >= 0; pos--) {
+	for (; pos >= 0; pos--) {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
-			}
-			else if (pos === 0 || line[pos - 1] !== '\\') {
+			} else if (pos === 0 || line[pos - 1] !== '\\') {
 				stack.pop();
 				if (stack.length === 0)
 					return pos;
 			}
-		}
-		else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
+		} else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
 			(pos === 1 || line[pos - 2] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
 				stack.push('}');
+			} else {
+				return undefined;
 			}
-			else {
+		} else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
+			(pos === 1 || line[pos - 2] !== '\\')) {
+			if (stack.length !== 0 && stack[stack.length - 1] === '}') {
+				stack.pop();
+			} else {
 				return undefined;
 			}
 		}
-		else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
-			(pos === 1 || line[pos - 2] !== '\\')) {
-				if (stack.length !== 0 && stack[stack.length - 1] === '}') {
-					stack.pop();
-				}
-				else {
-					return undefined;
-				}
-			}
 	}
 	return undefined;
 }
 
 function skipStringForward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
-	for(; pos < line.length; pos++) {
+	for (; pos < line.length; pos++) {
 		if (line[pos] === '"') {
 			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
 				stack.push('"');
-			}
-			else if (pos === 0 || line[pos - 1] !== '\\') {
+			} else if (pos === 0 || line[pos - 1] !== '\\') {
 				stack.pop();
 				if (stack.length === 0)
 					return pos;
 			}
-		}
-		else if (line[pos] === '{' && pos + 1 < line.length && line[pos + 1] === '{' &&
+		} else if (line[pos] === '{' && pos + 1 < line.length && line[pos + 1] === '{' &&
 			(pos === 0 || line[pos - 1] !== '\\')) {
 			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
 				stack.push('{');
+			} else {
+				return undefined;
 			}
-			else {
+		} else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
+			(pos === 0 || line[pos - 1] !== '\\')) {
+			if (stack.length !== 0 && stack[stack.length - 1] === '{') {
+				stack.pop();
+			} else {
 				return undefined;
 			}
 		}
-		else if (line[pos] === '}' && pos + 1 < line.length && line[pos + 1] === '}' &&
-			(pos === 0 || line[pos - 1] !== '\\')) {
-				if (stack.length !== 0 && stack[stack.length - 1] === '{') {
-					stack.pop();
-				}
-				else {
-					return undefined;
-				}
-			}
 	}
 	return undefined;
 }
@@ -239,8 +229,7 @@ function skipParenthesizedExpression(line: string, pos: number, closingParenthes
 			if (newPos === undefined)
 				return undefined;
 			pos = newPos;
-		}
-		else if (c === closingParentheses)
+		} else if (c === closingParentheses)
 			openParenthesesCount++;
 		else if (c === openingParentheses) {
 			openParenthesesCount--;
@@ -262,15 +251,13 @@ function skipParenthesizedExpressionToEnd(lines: string[], startLine: number, en
 				if (newPos === undefined)
 					return undefined;
 				pos = newPos;
-			}
-			else if (c === '(' || c === '[')
+			} else if (c === '(' || c === '[')
 				parenthesesStack.push(c);
 			else if (c === ')') {
 				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '(')
 					return undefined;
 				parenthesesStack.pop();
-			}
-			else if (c === ']') {
+			} else if (c === ']') {
 				if (parenthesesStack.length === 0 || parenthesesStack[parenthesesStack.length - 1] !== '[')
 					return undefined;
 				parenthesesStack.pop();
@@ -336,8 +323,7 @@ function parseCallChain(line: string): string[] {
 				result.push('[]');
 			result.push(line.substring(k + 1, i) + (isFunction ? '()' : ''));
 			i = k;
-		}
-		else if (line[i] === ':') {
+		} else if (line[i] === ':') {
 			if (scopeOperatorUsed || i < 2 || line[i - 1] !== ':')
 				return [];
 			scopeOperatorUsed = true;
@@ -352,8 +338,7 @@ function parseCallChain(line: string): string[] {
 				return [];
 			result.push(line.substring(k + 1, i + 1));
 			i = k;
-		}
-		else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
+		} else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
 			return result.reverse();
 		else
 			return [];
@@ -370,7 +355,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 	activeNamespaceName: string | undefined, lineNumber: number): NameAndType | undefined {
 	if (callChain.length === 0)
 		return undefined;
-	
+
 	let currentClass = '';
 	let currentName = '';
 	let startingI = 1;
@@ -383,8 +368,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 			if (!callChain[1].endsWith('()'))
 				return undefined;
 			currentClass = currentName.substring(0, currentName.length - 2);
-		}
-		else {
+		} else {
 			const currentNamespaceInfo = namespaces.get(callChain[0].substring(0, callChain[0].length - 2));
 			if (currentNamespaceInfo === undefined)
 				return undefined;
@@ -393,26 +377,23 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 				return undefined;
 			currentClass = currentNamespaceMember.returnType;
 		}
-	}
-	else {
+	} else {
 		currentName = callChain[0];
 		if (/[A-Z]/.test(callChain[0][0])) {
 			if (!callChain[0].endsWith('()'))
 				return undefined;
 			currentClass = callChain[0].substring(0, callChain[0].length - 2);
-		}
-		else {
+		} else {
 			const currentVariables = currentDocumentData.variables.get(callChain[0]);
 			let currentVariable: VariableInfo | undefined = undefined;
 			if (currentVariables !== undefined)
 				for (const variable of currentVariables)
-					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined
-						|| variable.lineUndeclared > lineNumber))
-							currentVariable = variable;
+					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
+						variable.lineUndeclared > lineNumber))
+						currentVariable = variable;
 			if (currentVariable !== undefined) {
 				currentClass = currentVariable.type;
-			}
-			else {
+			} else {
 				if (activeNamespaceName === undefined)
 					return undefined;
 				const activeNamespace = namespaces.get(activeNamespaceName);
@@ -424,7 +405,7 @@ function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentDat
 				currentName = activeNamespaceName + '::' + callChain[0];
 				currentClass = currentMember.returnType;
 			}
-			
+
 		}
 	}
 
@@ -483,14 +464,12 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			if (j === undefined)
 				return undefined;
 			i = j;
-		}
-		else if (line[i] === ')' || line[i] === ']') {
+		} else if (line[i] === ')' || line[i] === ']') {
 			const j = skipParenthesizedExpression(line, i, line[i]);
 			if (j === undefined)
 				return undefined;
 			i = j;
-		}
-		else if (line[i] === '[')
+		} else if (line[i] === '[')
 			return undefined;
 		else if (line[i] === ',')
 			paramNumber++;
@@ -510,13 +489,13 @@ function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
 			return {
 				name: lastNameAndType.name,
 				paramNumber: paramNumber
-			};			
+			};
 		}
 	}
 	return undefined;
 }
 
-function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number) : string | undefined {
+function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number): string | undefined {
 	let closestUsingLine = -1;
 	let result: string | undefined = undefined;
 	for (const usingDeclaration of usingDeclarations) {
@@ -538,7 +517,7 @@ connection.onSignatureHelp(
 			activeSignature: 0,
 			activeParameter: 0
 		};
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return result;
@@ -546,12 +525,13 @@ connection.onSignatureHelp(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line,
 				character: textDocumentPosition.position.character
 			}
 		});
-		
+
 		const info = parseFunctionCall(line, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (info === undefined)
 			return result;
@@ -562,10 +542,10 @@ connection.onSignatureHelp(
 				name = activeNamespace + '::' + name;
 			const scopeOperatorPosition = name.indexOf('::');
 			const dotPosition = name.indexOf('.');
-			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2
-				&& /[a-z]/.test(name[scopeOperatorPosition + 2]) ) {
+			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2 &&
+				/[a-z]/.test(name[scopeOperatorPosition + 2])) {
 				// namespace function call
-				const namespaceName = name.substring(0, scopeOperatorPosition);			
+				const namespaceName = name.substring(0, scopeOperatorPosition);
 				const functionName = name.substring(scopeOperatorPosition + 2);
 				const currentNamespace = namespaces.get(namespaceName);
 				if (currentNamespace === undefined)
@@ -574,9 +554,7 @@ connection.onSignatureHelp(
 				if (signatures !== undefined)
 					result.signatures = signatures;
 				break;
-			}
-			else if (dotPosition !== -1)
-			{
+			} else if (dotPosition !== -1) {
 				// class method call
 				const className = name.substring(0, dotPosition);
 				const methodName = name.substring(dotPosition + 1);
@@ -587,8 +565,7 @@ connection.onSignatureHelp(
 				if (signatures !== undefined)
 					result.signatures = signatures;
 				break;
-			}
-			else {
+			} else {
 				// class constructor call
 				const className = name.substring(0, name.length - 2);
 				const currentClass = classes.get(className);
@@ -615,7 +592,7 @@ connection.onHover(
 	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return undefined;
@@ -623,7 +600,8 @@ connection.onHover(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line + 1,
 				character: 0
 			}
@@ -632,7 +610,7 @@ connection.onHover(
 		let i = textDocumentPosition.position.character;
 		if (!/[a-zA-Z0-9_]/.test(line[i]))
 			return undefined;
-		for(; i < line.length; i++) {
+		for (; i < line.length; i++) {
 			if (!/[a-zA-Z0-9_]/.test(line[i]))
 				break;
 		}
@@ -643,14 +621,14 @@ connection.onHover(
 			parseString += '().a';
 		else
 			parseString += '.a';
-		
+
 		const callChain = parseCallChain(parseString);
 		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 		if (nameAndType === undefined)
 			return undefined;
 
 		let documentation: string | undefined = undefined;
-		
+
 		const dotPosition = nameAndType.name.indexOf('.');
 		const scopeOperatorPosition = nameAndType.name.indexOf('::');
 		if (dotPosition !== -1) {
@@ -660,8 +638,7 @@ connection.onHover(
 			const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
 			if (currentMember !== undefined)
 				documentation = currentMember.documentation;
-		}
-		else if (scopeOperatorPosition !== -1) {
+		} else if (scopeOperatorPosition !== -1) {
 			const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
 			if (currentNamespace === undefined)
 				return undefined;
@@ -687,7 +664,7 @@ connection.onCompletion(
 	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
 		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-		
+
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return [];
@@ -695,18 +672,26 @@ connection.onCompletion(
 			start: {
 				line: textDocumentPosition.position.line,
 				character: 0
-			}, end: {
+			},
+			end: {
 				line: textDocumentPosition.position.line,
 				character: textDocumentPosition.position.character
 			}
 		});
+		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
+		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`);
+		const commandSuggestionRegExpRes = commandSuggestionRegExp.exec(line);
+		if (commandSuggestionRegExpRes !== null) {
+			return minecraftCommands;
+		}
 		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
 		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
 		if (keywordSuggestionRegExpRes !== null) {
-			if (keywordSuggestionRegExpRes[1] === undefined)
-				return keywords;
-			else
+			if (keywordSuggestionRegExpRes[1] === '@') {
 				return keywordsWithoutAtSymbol;
+			} else {
+				return keywords;
+			}
 		}
 		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
 		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);
@@ -722,8 +707,8 @@ connection.onCompletion(
 			let result: CompletionItem[] = [];
 			for (const [_variableName, variableArray] of documentData.variables.entries())
 				for (const variable of variableArray)
-					if (variable.lineDeclared < textDocumentPosition.position.line
-						&& (variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
+					if (variable.lineDeclared < textDocumentPosition.position.line &&
+						(variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
 						result.push(variable.suggestion);
 			if (activeNamespace !== undefined) {
 				const currentNamespace = namespaces.get(activeNamespace);
@@ -756,7 +741,7 @@ connection.onCompletion(
 			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
 			if (lastNameAndType === undefined)
 				return [];
-			
+
 			const currentClassInfo = classes.get(lastNameAndType.type);
 			if (currentClassInfo === undefined)
 				return [];
@@ -817,7 +802,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 	const result: NamespaceUploadResult[] = [];
 
 	const lines = fileInfo.content.split(newLineRegExp);
-	
+
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
 		if (regExpRes === null)
@@ -841,7 +826,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		namespaceDefinitionsLines.push(`@bypass /namespace remove ${namespaceName}`);
 		namespaceDefinitionsLines.push(`@bypass /namespace define ${namespaceName}`);
-		
+
 		for (let j = i + 1; j < namespaceEndLine; j++) {
 			const classRegExpRes = classSignatureRegExp.exec(lines[j]);
 			if (classRegExpRes !== null) {
@@ -854,7 +839,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 					break;
 				const className = classRegExpRes[1];
 				classDefinitionsLines.push(`@bypass /type define ${namespaceName} ${className}`);
-				
+
 				for (let k = j + 1; k < classEndLine; k++) {
 					const functionRegExpRes = functionSignatureRegExp.exec(lines[k]);
 					const constructorRegExpRes = constructorSignatureRegExp.exec(lines[k]);
@@ -866,33 +851,31 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 							className: className,
 							methodName: functionRegExpRes[2]
 						});
-					}
-					else if (constructorRegExpRes !== null) {
+					} else if (constructorRegExpRes !== null) {
 						memberDefinitionsLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
 						constructors.push({
 							namespaceName: namespaceName,
 							className: className,
 							constructorSignature: getConstructorSignature(constructorRegExpRes[1], constructorRegExpRes[2])
 						});
-					}
-					else if (variableRegExpRes !== null) {
+					} else if (variableRegExpRes !== null) {
 						const fieldDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, k, classEndLine);
 						if (fieldDeclarationEndLine === undefined)
 							continue;
-							
+
 						if (variableRegExpRes[7] !== undefined) {
 							const fieldIntialization: string = variableRegExpRes[7] + ' ' + lines.slice(k + 1, fieldDeclarationEndLine + 1)
-								.map((value:string):string => value.trim())
+								.map((value: string): string => value.trim())
 								.join(' ');
 							variableInitializationsLines.push(`@bypass /type field set ${namespaceName} ${className} ${variableRegExpRes[6]} ${fieldIntialization}`);
 						}
-						
+
 						k = fieldDeclarationEndLine;
 						memberDefinitionsLines.push(`@bypass /type field define ${namespaceName} ${className} ${variableRegExpRes[1]}`);
-						
+
 					}
 				}
-				
+
 				j = classEndLine;
 				continue;
 			}
@@ -904,22 +887,21 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 					namespaceName: namespaceName,
 					functionName: functionRegExpRes[2]
 				});
-			}
-			else if (variableRegExpRes !== null) {
+			} else if (variableRegExpRes !== null) {
 				const variableDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, j, namespaceEndLine);
 				if (variableDeclarationEndLine === undefined)
 					continue;
 
 				if (variableRegExpRes[7] !== undefined) {
 					const variableInitialization: string = variableRegExpRes[7] + ' ' + lines.slice(j + 1, variableDeclarationEndLine + 1)
-						.map((value:string):string => value.trim())
+						.map((value: string): string => value.trim())
 						.join(' ');
 					variableInitializationsLines.push(`@bypass /variable set ${namespaceName} ${variableRegExpRes[6]} ${variableInitialization}`);
 				}
-					
+
 				j = variableDeclarationEndLine;
 				variableDefinitionsLines.push(`@bypass /variable define ${namespaceName} ${variableRegExpRes[1]}`);
-				
+
 			}
 		}
 
@@ -927,28 +909,425 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 
 		const defineScript: string = (fileInfo.update) ? '' :
 			namespaceDefinitionsLines.concat([''])
-			.concat(classDefinitionsLines)
-			.concat(memberDefinitionsLines)
-			.concat(variableDefinitionsLines).join('\n');
+				.concat(classDefinitionsLines)
+				.concat(memberDefinitionsLines)
+				.concat(variableDefinitionsLines).join('\n');
 		const initializeScript: string = variableInitializationsLines.join('\n');
 		const currentNamespace: NamespaceUploadResult = {
 			name: namespaceName,
 			namespaceDefinitionPath: fileInfo.path,
 			defineScript: defineScript,
 			initializeScript: initializeScript,
-			functions: functions, 
+			functions: functions,
 			constructors: constructors,
 			methods: methods
 		};
 		result.push(currentNamespace);
 	}
-	
+
 	connection.sendNotification('Upload namespace script', result);
 });
+
+connection.onCodeAction((params: CodeActionParams) => {
+	const textDocument = documents.get(params.textDocument.uri);
+	if (!textDocument) {
+		return [];
+	}
+
+	const diagnostics: Diagnostic[] = params.context.diagnostics;
+
+	const codeActions: CodeAction[] = diagnostics.map(diagnostic => {
+		const quickFix: CodeAction = {
+			title: 'Ignore errors in this file',
+			kind: CodeActionKind.QuickFix,
+			diagnostics: [diagnostic],
+			edit: {
+				documentChanges: [{
+					textDocument: {
+						uri: textDocument.uri,
+						version: textDocument.version
+					},
+					edits: [{
+						range: {
+							start: {
+								line: 0,
+								character: 0
+							},
+							end: {
+								line: 0,
+								character: 0
+							}
+						},
+						newText: '# msc-ignore-errors\n'
+					}]
+				}]
+			}
+		};
+		return quickFix;
+	});
+
+	return codeActions;
+});
+
+interface IfScriptBlock {
+	readonly type: 'if';
+	readonly line: number;
+	hadElse: boolean;
+}
+
+interface ForScriptBlock {
+	readonly type: 'for';
+	readonly line: number;
+}
+
+interface ReturnScriptBlock {
+	readonly type: 'return';
+	readonly line: number;
+}
+
+type NestedScriptBlock = IfScriptBlock | ForScriptBlock | ReturnScriptBlock;
+
+class ScriptParsingContext {
+	readonly blockStack: NestedScriptBlock[] = [];
+	returnCount = 0;
+
+	currentScopeHadReturn(): boolean {
+		return this.returnCount > 0;
+	}
+
+	push(block: NestedScriptBlock) {
+		this.blockStack.push(block);
+	}
+
+	pop(): NestedScriptBlock | undefined {
+		return this.blockStack.pop();
+	}
+
+	last(): NestedScriptBlock | undefined {
+		return this.blockStack[this.blockStack.length - 1];
+	}
+
+	pushReturn(line: number) {
+		this.blockStack.push({
+			type: 'return',
+			line: line
+		});
+		this.returnCount++;
+	}
+
+	popReturns() {
+		while (this.last()?.type === 'return') {
+			this.blockStack.pop();
+			this.returnCount--;
+		}
+	}
+}
+
+const validStarters = [
+	'@if', '@elseif', '@else', '@fi', '@for', '@done', '@define', '@var',
+	'@player', '@chatscript', '@prompt', '@delay', '@command', '@bypass',
+	'@console', '@cooldown', '@global_cooldown', '@using', '@cancel',
+	'@fast', '@slow', '@return'
+];
+
+function createDiagnostic(line: number, start: number, end: number, message: string, severity: DiagnosticSeverity = DiagnosticSeverity.Error): Diagnostic {
+	return {
+		severity,
+		range: {
+			start: { line, character: start },
+			end: { line, character: end }
+		},
+		message,
+		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
+	};
+}
+
+function validateTime(str: string, lineNumber: number, startIndex: number, endIndex: number, diagnostics: Diagnostic[]) {
+	if (!str.match(/^\d+[tsmhdwy]?$/)) {
+		diagnostics.push(createDiagnostic(lineNumber, startIndex, endIndex, 'Time should be a number, optionally followed by one of:\n - t (ticks)\n - s (seconds)\n - m (minutes)\n - h (hours)\n - d (days)\n - w (weeks)\n - y (years)'));
+	}
+}
+
+function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, diagnostics: Diagnostic[]) {
+	if (!validStarters.includes(firstWord)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Invalid script option ${firstWord}`));
+		return;
+	}
+
+	if (trimmedLine.match(/^@(bypass|console|command) \/?(op|deop|setrank|lp|luckperms|permission|perms|perm) .*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Permission changing commands are banned in scripts'));
+	}
+
+	if (trimmedLine.match(/^@(bypass|console|command) \/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t) .*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Chat commands executed by the player are prohibited in scripts'));
+	}
+
+	if (trimmedLine.match(/^@(bypass|console|command) \/?{{.*/)) {
+		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'General command executors are banned in scripts'));
+	}
+
+	switch (firstWord) {
+		case '@else':
+		case '@fi':
+		case '@done': {
+			if (trimmedLine !== firstWord) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line`));
+			}
+			break;
+		}
+
+		case '@if':
+		case '@elseif': {
+			const ifRegex = /^@(if|elseif)\s+(.+)$/;
+			if (!trimmedLine.match(ifRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `Invalid ${firstWord} syntax: condition cannot be empty`));
+			}
+			break;
+		}
+
+		case '@for': {
+			const forRegex = RegExp(/^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/, 'd');
+			const forMatch = trimmedLine.match(forRegex);
+			if (!forMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @for syntax: expected\n@for <type> <variable> in <list>'));
+				break;
+			}
+
+			const [_all, _variableType, variableName, _initializer] = forMatch;
+			if (variableName[0] < 'a' || variableName[0] > 'z') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + forMatch.indices![2][0], lineStartIndex + forMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
+			}
+			break;
+		}
+
+		case '@define': {
+			const defineRegex = RegExp(/^@define\s+([\w:]+)\s+([\w]+)(\s*=(.+)?)?$/, 'd');
+			const defineMatch = trimmedLine.match(defineRegex);
+			if (!defineMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax: expected\n@define type variable [= expression]'));
+				break;
+			}
+
+			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
+			if (variableName[0] < 'a' || variableName[0] > 'z') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![2][0], lineStartIndex + defineMatch.indices![2][1], 'Variable names should start with a lowercase letter'));
+			}
+			if (intializer !== undefined && initializerExpression === undefined) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + defineMatch.indices![3][1], lineLength, 'Invalid @define syntax: initializer cannot be empty'));
+			}
+			break;
+		}
+
+		case '@chatscript': {
+			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(\S+)$/, 'd');
+			const chatscriptMatch = trimmedLine.match(chatscriptRegex);
+			if (!chatscriptMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @chatscript syntax: expected\n@chatscript time group-name function'));
+				break;
+			}
+
+			const [_all, time, _group, func] = chatscriptMatch;
+			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
+
+			if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + chatscriptMatch.indices![3][0], lineStartIndex + chatscriptMatch.indices![3][1], 'Invalid function syntax in @chatscript: expected function call'));
+			}
+			break;
+		}
+
+		case '@cooldown':
+		case '@global_cooldown': {
+			const cooldownMatch = trimmedLine.match(RegExp(/^@(cooldown|global_cooldown)\s+(\S+)$/, 'd'));
+			if (!cooldownMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax: expected\n${firstWord} time`));
+			} else {
+				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
+			}
+			break;
+		}
+
+		case '@cancel': {
+			if (trimmedLine !== '@cancel') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, '@cancel should be on its own line'));
+			}
+			break;
+		}
+
+		case '@delay': {
+			const delayMatch = trimmedLine.match(RegExp(/^@delay\s+(\S+)$/, 'd'));
+			if (!delayMatch) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @delay syntax: expected\n@delay time'));
+			} else {
+				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
+			}
+			break;
+		}
+
+		case '@slow':
+		case '@fast': {
+			if (trimmedLine !== '@slow' && trimmedLine !== '@fast') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex + firstWord.length, lineLength, `${firstWord} should be on its own line`));
+			}
+			break;
+		}
+
+		case '@using': {
+			const usingRegex = /^@using\s+(\w+)$/;
+			if (!trimmedLine.match(usingRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @using syntax: expected\n@using namespace'));
+			}
+			break;
+		}
+
+		case '@bypass':
+		case '@command':
+		case '@console': {
+			const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
+			if (!trimmedLine.match(bypassCommandConsoleRegex)) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, `Invalid ${firstWord} syntax: expected\n${firstWord} /command`));
+			}
+			break;
+		}
+	}
+}
+
+function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
+
+	switch (firstWord) {
+		case '@if': {
+			parsingContext.push({
+				type: 'if',
+				line: lineNumber,
+				hadElse: false
+			});
+			break;
+		}
+
+		case '@for': {
+			parsingContext.push({
+				type: 'for',
+				line: lineNumber,
+			});
+			break;
+		}
+
+		case '@fi':
+		case '@done': {
+			parsingContext.popReturns();
+			const lastBlock: NestedScriptBlock | undefined = parsingContext.pop();
+			if (lastBlock === undefined) {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}`));
+			} else {
+				if ((firstWord === '@fi' && lastBlock.type !== 'if') ||
+					(firstWord === '@done' && lastBlock.type !== 'for')) {
+					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}: expected ${lastBlock?.type === 'if' ? '@fi' : '@done'}`));
+				}
+			}
+			break;
+		}
+		case '@elseif':
+		case '@else': {
+			parsingContext.popReturns();
+			const lastBlock: NestedScriptBlock | undefined = parsingContext.last();
+			if (lastBlock?.type !== 'if') {
+				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, `Mismatched ${firstWord}: no matching @if`));
+			} else {
+				if (lastBlock.hadElse) {
+					const diagnosticMessage = firstWord === '@else' ? 'Multiple @else in @if-@fi block' : '@elseif can\'t occur after @else in @if-fi block';
+					diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineStartIndex + firstWord.length, diagnosticMessage));
+				}
+				if (firstWord === "@else") {
+					lastBlock.hadElse = true;
+				}
+			}
+			break;
+		}
+
+		case '@return': {
+			parsingContext.pushReturn(lineNumber);
+			break;
+		}
+	}
+
+	if ((firstWord !== '@return' && parsingContext.currentScopeHadReturn()) || (firstWord === '@return' && currentScopeHadReturnBeforeThisLine)) {
+		diagnostics.push(createDiagnostic(lineNumber, 0, lineLength, 'Unreachable code after @return', DiagnosticSeverity.Warning));
+	}
+}
+
+function processLine(line: string, lineNumber: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+	const trimmedLine = line.trim();
+
+	if (trimmedLine === '' || trimmedLine.startsWith("# ")) {
+		return;
+	}
+
+	const firstWord = trimmedLine.split(" ")[0];
+	const lineStartIndex = line.indexOf(firstWord);
+
+	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, diagnostics);
+	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
+}
+
+function validateAndReportDiagnostics(textDocument: TextDocument): void {
+	const text = textDocument.getText();
+
+	if (text.includes("# msc-ignore-errors")) {
+		connection.sendDiagnostics({
+			uri: textDocument.uri,
+			diagnostics: []
+		});
+		return;
+	}
+
+	const parsingContext = new ScriptParsingContext();
+	const diagnostics: Diagnostic[] = [];
+
+	const lines = text.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		processLine(lines[i], i, parsingContext, diagnostics);
+	}
+
+	if (parsingContext.blockStack.length > 0) {
+		for (const block of parsingContext.blockStack) {
+			if (block.type === 'if' || block.type === 'for') {
+				diagnostics.push(createDiagnostic(block.line, lines[block.line].indexOf(`@${block.type}`), lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length, `Unclosed @${block.type} block`));
+			}
+		}
+	}
+
+	connection.sendDiagnostics({
+		uri: textDocument.uri,
+		diagnostics
+	});
+}
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 documents.listen(connection);
+
+// Register the text document validation function
+documents.onDidSave(change => {
+	validateAndReportDiagnostics(change.document);
+});
+
+// Register the text document validation function
+documents.onDidOpen(change => {
+	validateAndReportDiagnostics(change.document);
+});
+
+documents.onDidChangeContent(e => {
+	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
+	validateAndReportDiagnostics(e.document);
+});
+
+documents.onDidClose(e => {
+	sourceFileData.delete(e.document.uri);
+});
+
+connection.onDidChangeWatchedFiles(_ => {
+	refreshNamespaceFiles();
+});
 
 // Listen on the connection
 connection.listen();

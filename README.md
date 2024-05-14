@@ -1,6 +1,6 @@
 # Minr Scripts Extension README
 
-This extension adds syntax highlighting and code completion functionalities for minr.org Minecraft server scripts (MSC) and fast upload and download functions to paste.minr.org.
+This VS Code extension adds syntax highlighting and code completion functionalities for minr.org Minecraft server scripts (MSC) and fast upload and download functions to paste.minr.org. Available at [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Lightwood13.msc).
 
 ## Features
 

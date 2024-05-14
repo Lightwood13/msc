@@ -289,6 +289,7 @@ function getParamsFromSignature(signature: string): ParameterInformation[] {
 	return result;
 }
 
+// eslint-disable-next-line require-await
 export async function parseDocument(text: string): Promise<SourceFileData> {
 	const result: SourceFileData = 
 	{
