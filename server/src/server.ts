@@ -1101,7 +1101,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		}
 
 		case '@define': {
-			const defineRegex = RegExp(/^@define\s+([\w:]+)\s+([\w]+)(\s*=(.+)?)?$/, 'd');
+			const defineRegex = RegExp(/^@define\s+([\w:[\]]+)\s+([\w]+)\s*(=\s*(.+)?)?$/, 'd');
 			const defineMatch = trimmedLine.match(defineRegex);
 			if (!defineMatch) {
 				diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, 'Invalid @define syntax: expected\n@define type variable [= expression]'));
