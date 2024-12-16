@@ -46,7 +46,8 @@ interface IncludedFileInfo {
 
 interface NamespaceFunction {
 	namespaceName: string,
-	functionName: string
+	functionName: string,
+	functionWithSignature: string
 }
 
 interface ClassConstructor {
@@ -674,7 +675,7 @@ export function activate(context: ExtensionContext) {
 						await uploadNamespaceChildFile(
 							namespaceFolderUri, `${functionInfo.functionName}.msc`, cache,
 							functionLink => {
-								importLines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionName} ${functionLink}`);
+								importLines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionWithSignature} ${functionLink}`);
 							}, incrementProgress
 						);
 					}

@@ -760,7 +760,8 @@ connection.onNotification('processDefaultNamespaces', (text: string) => {
 
 interface NamespaceFunction {
 	namespaceName: string,
-	functionName: string
+	functionName: string,
+	functionWithSignature: string
 }
 interface ClassConstructor {
 	namespaceName: string,
@@ -885,7 +886,8 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 				memberDefinitionsLines.push(`@bypass /function define ${namespaceName} ${lines[j].trim()}`);
 				functions.push({
 					namespaceName: namespaceName,
-					functionName: functionRegExpRes[2]
+					functionName: functionRegExpRes[2],
+					functionWithSignature: lines[j].trim()
 				});
 			} else if (variableRegExpRes !== null) {
 				const variableDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, j, namespaceEndLine);
