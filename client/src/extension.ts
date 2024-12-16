@@ -59,7 +59,8 @@ interface ClassConstructor {
 interface ClassMethod {
 	namespaceName: string,
 	className: string,
-	methodName: string
+	methodName: string,
+	methodWithSignature: string
 }
 
 interface NamespaceUploadResult {
@@ -695,7 +696,7 @@ export function activate(context: ExtensionContext) {
 						await uploadNamespaceChildFile(
 							namespaceFolderUri, `${methodInfo.className}/${methodInfo.methodName}.msc`, cache,
 							methodLink => {
-								importLines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodName} ${methodLink}`);
+								importLines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodWithSignature} ${methodLink}`);
 							}, incrementProgress
 						);
 					}

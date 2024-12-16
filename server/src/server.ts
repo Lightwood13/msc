@@ -771,7 +771,8 @@ interface ClassConstructor {
 interface ClassMethod {
 	namespaceName: string,
 	className: string,
-	methodName: string
+	methodName: string,
+	methodWithSignature: string
 }
 interface NamespaceUploadResult {
 	name: string,
@@ -850,7 +851,8 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 						methods.push({
 							namespaceName: namespaceName,
 							className: className,
-							methodName: functionRegExpRes[2]
+							methodName: functionRegExpRes[2],
+							methodWithSignature: lines[k].trim()
 						});
 					} else if (constructorRegExpRes !== null) {
 						memberDefinitionsLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
