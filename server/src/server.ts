@@ -761,7 +761,7 @@ connection.onNotification('processDefaultNamespaces', (text: string) => {
 interface NamespaceFunction {
 	namespaceName: string,
 	functionName: string,
-	functionWithSignature: string
+	functionSignature: string
 }
 interface ClassConstructor {
 	namespaceName: string,
@@ -772,7 +772,7 @@ interface ClassMethod {
 	namespaceName: string,
 	className: string,
 	methodName: string,
-	methodWithSignature: string
+	methodSignature: string
 }
 interface NamespaceUploadResult {
 	name: string,
@@ -852,7 +852,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 							namespaceName: namespaceName,
 							className: className,
 							methodName: functionRegExpRes[2],
-							methodWithSignature: lines[k].trim()
+							methodSignature: functionRegExpRes[2] + functionRegExpRes[3]
 						});
 					} else if (constructorRegExpRes !== null) {
 						memberDefinitionsLines.push(`@bypass /type constructor define ${namespaceName} ${lines[k].trim()}`);
@@ -889,7 +889,7 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 				functions.push({
 					namespaceName: namespaceName,
 					functionName: functionRegExpRes[2],
-					functionWithSignature: lines[j].trim()
+					functionSignature: functionRegExpRes[2] + functionRegExpRes[3]
 				});
 			} else if (variableRegExpRes !== null) {
 				const variableDeclarationEndLine = skipParenthesizedExpressionToEnd(lines, j, namespaceEndLine);
