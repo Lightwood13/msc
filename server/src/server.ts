@@ -131,6 +131,7 @@ const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
+let defaultNamespacesSourceUri: string | undefined = undefined;
 
 function refreshNamespaceFiles() {
 	// search for .nms files in all subfolders
@@ -709,6 +710,10 @@ function getMemberDefinitionLocation(definition: ClassInfo['definition'] | undef
 	return createLocation(definition.uri, definition.line, definition.character);
 }
 
+function isBuiltInDefinition(definitionUri: string | undefined): boolean {
+	return definitionUri !== undefined && defaultNamespacesSourceUri !== undefined && definitionUri === defaultNamespacesSourceUri;
+}
+
 async function getImplementationLocationForNamespaceFunction(namespaceName: string, functionName: string,
 	definitionUri: string | undefined): Promise<Location | undefined> {
 	if (definitionUri === undefined)
@@ -748,14 +753,6 @@ async function getImplementationLocationForClassMember(currentClass: ClassInfo, 
 	return undefined;
 }
 
-function getImplementationLocationForConstructor(currentClass: ClassInfo): Promise<Location | undefined> {
-	const constructorSignatures = currentClass.memberSignatures.get(`${currentClass.className}()`);
-	if (constructorSignatures === undefined || constructorSignatures.length !== 1)
-		return Promise.resolve(undefined);
-	return getImplementationLocationForClassMember(currentClass, currentClass.className, 'constructor',
-		currentClass.definition?.uri, constructorSignatures[0]?.label);
-}
-
 async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, document: TextDocument,
 	documentData: SourceFileData, lineNumber: number): Promise<Location | undefined> {
 	const dotPosition = nameAndType.name.indexOf('.');
@@ -768,6 +765,8 @@ async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, do
 			return undefined;
 		const currentMemberName = currentMember.name.endsWith('()') ?
 			currentMember.name.substring(0, currentMember.name.length - 2) : currentMember.name;
+		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
+			return undefined;
 		const implementationLocation = await getImplementationLocationForClassMember(currentClass, currentMemberName,
 			currentMember.kind, currentMember.definition?.uri, currentMember.signature?.label);
 		if (implementationLocation !== undefined)
@@ -788,6 +787,8 @@ async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, do
 		const currentMember = currentNamespace.members.get(memberName);
 		if (currentMember === undefined)
 			return undefined;
+		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
+			return undefined;
 		if (currentMember.kind === 'function') {
 			const functionName = currentMember.name.substring(0, currentMember.name.length - 2);
 			const implementationLocation = await getImplementationLocationForNamespaceFunction(
@@ -803,11 +804,6 @@ async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, do
 		const currentClass = classes.get(className);
 		if (currentClass === undefined)
 			return undefined;
-		if (nameAndType.name.endsWith('()')) {
-			const implementationLocation = await getImplementationLocationForConstructor(currentClass);
-			if (implementationLocation !== undefined)
-				return implementationLocation;
-		}
 		return getMemberDefinitionLocation(currentClass.definition);
 	}
 
@@ -918,6 +914,7 @@ connection.onHover(
 			return undefined;
 
 		let documentation: string | undefined = undefined;
+		let isBuiltIn = false;
 
 		const dotPosition = nameAndType.name.indexOf('.');
 		const scopeOperatorPosition = nameAndType.name.indexOf('::');
@@ -926,15 +923,19 @@ connection.onHover(
 			if (currentClass === undefined)
 				return undefined;
 			const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
-			if (currentMember !== undefined)
+			if (currentMember !== undefined) {
 				documentation = currentMember.documentation;
+				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
+			}
 		} else if (scopeOperatorPosition !== -1) {
 			const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
 			if (currentNamespace === undefined)
 				return undefined;
 			const currentMember = currentNamespace.members.get(nameAndType.name.substring(scopeOperatorPosition + 2));
-			if (currentMember !== undefined)
+			if (currentMember !== undefined) {
 				documentation = currentMember.documentation;
+				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
+			}
 		}
 
 		return {
@@ -942,7 +943,7 @@ connection.onHover(
 				kind: MarkupKind.Markdown,
 				value: [
 					'```msc',
-					(nameAndType.type !== 'Void' ? nameAndType.type + ' ' : '') + nameAndType.name,
+					(nameAndType.type !== 'Void' ? nameAndType.type + ' ' : '') + nameAndType.name + (isBuiltIn ? ' (builtin)' : ''),
 					'```'
 				].join('\n') + (documentation === undefined ? '' : '\n' + documentation)
 			}
@@ -1064,6 +1065,7 @@ interface DefaultNamespacesPayload {
 }
 
 connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespacesPayload) => {
+	defaultNamespacesSourceUri = payload.sourceUri;
 	parseNamespaceFile(payload.text, defaultNamespaces, classes, payload.sourceUri);
 	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 		namespaces.set(key, value);
