@@ -26,8 +26,11 @@ import {
 import {
 	SignatureHelp,
 	SignatureHelpParams,
+	Definition,
+	DefinitionParams,
 	Hover,
-	HoverParams
+	HoverParams,
+	Location
 } from 'vscode-languageserver-protocol';
 import {
 	readFile
@@ -44,10 +47,12 @@ import {
 	dirname,
 	extname,
 	join,
-	normalize
+	normalize,
+	resolve
 } from 'path';
 import {
-	fileURLToPath
+	fileURLToPath,
+	pathToFileURL
 } from 'url';
 
 import {
@@ -88,19 +93,20 @@ connection.onInitialize((params: InitializeParams) => {
 	);
 
 	const result: InitializeResult = {
-		capabilities: {
-			textDocumentSync: TextDocumentSyncKind.Incremental,
-			// Tell the client that this server supports code completion.
-			completionProvider: {
-				triggerCharacters: ['.', ':']
-			},
-			signatureHelpProvider: {
-				triggerCharacters: ['(', ',']
-			},
-			hoverProvider: true,
-			codeActionProvider: true
-		}
-	};
+			capabilities: {
+				textDocumentSync: TextDocumentSyncKind.Incremental,
+				// Tell the client that this server supports code completion.
+				completionProvider: {
+					triggerCharacters: ['.', ':']
+				},
+				signatureHelpProvider: {
+					triggerCharacters: ['(', ',']
+				},
+				definitionProvider: true,
+				hoverProvider: true,
+				codeActionProvider: true
+			}
+		};
 	if (hasWorkspaceFolderCapability) {
 		result.capabilities.workspace = {
 			workspaceFolders: {
@@ -136,17 +142,17 @@ function refreshNamespaceFiles() {
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 			namespaces.set(key, value);
 		});
-		for (const filename of files) {
-			const filenamesSplit = filename.split('.');
-			if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
-				readFile(filename, (err, data) => {
-					if (err) return console.log('Unable to read file: ' + err);
-					parseNamespaceFile(data.toString(), namespaces, classes);
-				});
+			for (const filename of files) {
+				const filenamesSplit = filename.split('.');
+				if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
+					readFile(filename, (err, data) => {
+						if (err) return console.log('Unable to read file: ' + err);
+						parseNamespaceFile(data.toString(), namespaces, classes, pathToFileURL(resolve(filename)).toString());
+					});
+				}
 			}
-		}
-	});
-}
+		});
+	}
 
 function getDocumentData(documentUri: string): Thenable<SourceFileData> {
 	let result = sourceFileData.get(documentUri);
@@ -628,6 +634,196 @@ function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number
 	return result;
 }
 
+function getLineText(document: TextDocument, lineNumber: number): string {
+	return document.getText({
+		start: {
+			line: lineNumber,
+			character: 0
+		},
+		end: {
+			line: lineNumber + 1,
+			character: 0
+		}
+	}).trimEnd();
+}
+
+function getResolvedNameAndTypeAtPosition(document: TextDocument, position: TextDocumentPositionParams['position'],
+	documentData: SourceFileData, activeNamespace: string | undefined): NameAndType | undefined {
+	const line = getLineText(document, position.line);
+	let i = position.character;
+	if ((i >= line.length || !/[a-zA-Z0-9_]/.test(line[i])) && i > 0 && /[a-zA-Z0-9_]/.test(line[i - 1]))
+		i--;
+	if (i < 0 || i >= line.length || !/[a-zA-Z0-9_]/.test(line[i]))
+		return undefined;
+	for (; i < line.length; i++) {
+		if (!/[a-zA-Z0-9_]/.test(line[i]))
+			break;
+	}
+
+	let parseString = line.substring(0, i);
+	if (i < line.length && line[i] === ':')
+		return undefined;
+	else if (i < line.length && line[i] === '(')
+		parseString += '().a';
+	else
+		parseString += '.a';
+
+	const callChain = parseCallChain(parseString);
+	return getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, position.line);
+}
+
+function findVisibleVariable(variableName: string, documentData: SourceFileData, lineNumber: number): VariableInfo | undefined {
+	const currentVariables = documentData.variables.get(variableName);
+	let currentVariable: VariableInfo | undefined = undefined;
+	if (currentVariables !== undefined)
+		for (const variable of currentVariables)
+			if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
+				variable.lineUndeclared > lineNumber))
+				currentVariable = variable;
+	return currentVariable;
+}
+
+function createLocation(uri: string, line: number, character: number): Location {
+	return {
+		uri: uri,
+		range: {
+			start: {
+				line: line,
+				character: character
+			},
+			end: {
+				line: line,
+				character: character
+			}
+		}
+	};
+}
+
+function createFileLocation(path: string): Location {
+	return createLocation(pathToFileURL(resolve(path)).toString(), 0, 0);
+}
+
+function getMemberDefinitionLocation(definition: ClassInfo['definition'] | undefined): Location | undefined {
+	if (definition === undefined || definition.uri === undefined)
+		return undefined;
+	return createLocation(definition.uri, definition.line, definition.character);
+}
+
+async function getImplementationLocationForNamespaceFunction(namespaceName: string, functionName: string,
+	definitionUri: string | undefined): Promise<Location | undefined> {
+	if (definitionUri === undefined)
+		return undefined;
+	try {
+		const namespaceDefinitionPath = fileURLToPath(definitionUri);
+		const implementationPath = join(dirname(namespaceDefinitionPath), namespaceName, `${functionName}.msc`);
+		if (await fileExists(implementationPath))
+			return createFileLocation(implementationPath);
+	} catch (_err) {
+		return undefined;
+	}
+	return undefined;
+}
+
+async function getImplementationLocationForClassMember(currentClass: ClassInfo, currentMemberName: string,
+	currentMemberKind: 'function' | 'constructor' | 'variable',
+	definitionUri: string | undefined, signatureLabel: string | undefined): Promise<Location | undefined> {
+	if (definitionUri === undefined)
+		return undefined;
+	try {
+		const namespaceDefinitionPath = fileURLToPath(definitionUri);
+		const classFolderPath = join(dirname(namespaceDefinitionPath), currentClass.namespaceName, currentClass.className);
+		let implementationPath: string | undefined = undefined;
+		if (currentMemberKind === 'function')
+			implementationPath = join(classFolderPath, `${currentMemberName}.msc`);
+		else if (currentMemberKind === 'constructor' && signatureLabel !== undefined) {
+			const params = /\(.*\)/.exec(signatureLabel)?.[0];
+			if (params !== undefined)
+				implementationPath = join(classFolderPath, `${getConstructorSignature(currentClass.className, params)}.msc`);
+		}
+		if (implementationPath !== undefined && await fileExists(implementationPath))
+			return createFileLocation(implementationPath);
+	} catch (_err) {
+		return undefined;
+	}
+	return undefined;
+}
+
+function getImplementationLocationForConstructor(currentClass: ClassInfo): Promise<Location | undefined> {
+	const constructorSignatures = currentClass.memberSignatures.get(`${currentClass.className}()`);
+	if (constructorSignatures === undefined || constructorSignatures.length !== 1)
+		return Promise.resolve(undefined);
+	return getImplementationLocationForClassMember(currentClass, currentClass.className, 'constructor',
+		currentClass.definition?.uri, constructorSignatures[0]?.label);
+}
+
+async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, document: TextDocument,
+	documentData: SourceFileData, lineNumber: number): Promise<Location | undefined> {
+	const dotPosition = nameAndType.name.indexOf('.');
+	if (dotPosition !== -1) {
+		const currentClass = classes.get(nameAndType.name.substring(0, dotPosition));
+		if (currentClass === undefined)
+			return undefined;
+		const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
+		if (currentMember === undefined)
+			return undefined;
+		const currentMemberName = currentMember.name.endsWith('()') ?
+			currentMember.name.substring(0, currentMember.name.length - 2) : currentMember.name;
+		const implementationLocation = await getImplementationLocationForClassMember(currentClass, currentMemberName,
+			currentMember.kind, currentMember.definition?.uri, currentMember.signature?.label);
+		if (implementationLocation !== undefined)
+			return implementationLocation;
+		return getMemberDefinitionLocation(currentMember.definition);
+	}
+
+	const scopeOperatorPosition = nameAndType.name.indexOf('::');
+	if (scopeOperatorPosition !== -1) {
+		const qualifiedName = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
+		const memberName = nameAndType.name.substring(scopeOperatorPosition + 2);
+		if (memberName.length !== 0 && /[A-Z]/.test(memberName[0]))
+			return getMemberDefinitionLocation(classes.get(qualifiedName)?.definition);
+
+		const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
+		if (currentNamespace === undefined)
+			return undefined;
+		const currentMember = currentNamespace.members.get(memberName);
+		if (currentMember === undefined)
+			return undefined;
+		if (currentMember.kind === 'function') {
+			const functionName = currentMember.name.substring(0, currentMember.name.length - 2);
+			const implementationLocation = await getImplementationLocationForNamespaceFunction(
+				nameAndType.name.substring(0, scopeOperatorPosition), functionName, currentMember.definition?.uri);
+			if (implementationLocation !== undefined)
+				return implementationLocation;
+		}
+		return getMemberDefinitionLocation(currentMember.definition);
+	}
+
+	if (nameAndType.name.length !== 0 && /[A-Z]/.test(nameAndType.name[0])) {
+		const className = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
+		const currentClass = classes.get(className);
+		if (currentClass === undefined)
+			return undefined;
+		if (nameAndType.name.endsWith('()')) {
+			const implementationLocation = await getImplementationLocationForConstructor(currentClass);
+			if (implementationLocation !== undefined)
+				return implementationLocation;
+		}
+		return getMemberDefinitionLocation(currentClass.definition);
+	}
+
+	const currentVariable = findVisibleVariable(nameAndType.name, documentData, lineNumber);
+	if (currentVariable === undefined)
+		return undefined;
+	if (currentVariable.lineDeclared >= 0) {
+		const lineText = getLineText(document, currentVariable.lineDeclared);
+		const character = lineText.indexOf(currentVariable.name);
+		return createLocation(document.uri, currentVariable.lineDeclared, character === -1 ? 0 : character);
+	}
+	if (currentVariable.name === 'this')
+		return getMemberDefinitionLocation(classes.get(currentVariable.type)?.definition);
+	return undefined;
+}
+
 connection.onSignatureHelp(
 	async (textDocumentPosition: SignatureHelpParams): Promise<SignatureHelp> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
@@ -717,34 +913,7 @@ connection.onHover(
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return undefined;
-		let line = document.getText({
-			start: {
-				line: textDocumentPosition.position.line,
-				character: 0
-			},
-			end: {
-				line: textDocumentPosition.position.line + 1,
-				character: 0
-			}
-		});
-		line = line.trimEnd();
-		let i = textDocumentPosition.position.character;
-		if (!/[a-zA-Z0-9_]/.test(line[i]))
-			return undefined;
-		for (; i < line.length; i++) {
-			if (!/[a-zA-Z0-9_]/.test(line[i]))
-				break;
-		}
-		let parseString = line.substring(0, i);
-		if (i < line.length && line[i] === ':')
-			return undefined;
-		else if (i < line.length && line[i] === '(')
-			parseString += '().a';
-		else
-			parseString += '.a';
-
-		const callChain = parseCallChain(parseString);
-		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
+		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
 		if (nameAndType === undefined)
 			return undefined;
 
@@ -778,6 +947,23 @@ connection.onHover(
 				].join('\n') + (documentation === undefined ? '' : '\n' + documentation)
 			}
 		};
+	}
+);
+
+connection.onDefinition(
+	async (textDocumentPosition: DefinitionParams): Promise<Definition | undefined> => {
+		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
+		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
+
+		const document = documents.get(textDocumentPosition.textDocument.uri);
+		if (document === undefined)
+			return undefined;
+
+		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
+		if (nameAndType === undefined)
+			return undefined;
+
+		return await getDefinitionLocationForResolvedName(nameAndType, document, documentData, textDocumentPosition.position.line);
 	}
 );
 
@@ -872,8 +1058,13 @@ connection.onCompletion(
 	}
 );
 
-connection.onNotification('processDefaultNamespaces', (text: string) => {
-	parseNamespaceFile(text, defaultNamespaces, classes);
+interface DefaultNamespacesPayload {
+	text: string
+	sourceUri?: string
+}
+
+connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespacesPayload) => {
+	parseNamespaceFile(payload.text, defaultNamespaces, classes, payload.sourceUri);
 	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 		namespaces.set(key, value);
 	});
