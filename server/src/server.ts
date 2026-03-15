@@ -33,8 +33,22 @@ import {
 	readFile
 } from 'fs';
 import {
+	access,
+	readFile as readFileAsync
+} from 'fs/promises';
+import {
 	files
 } from 'node-dir';
+import {
+	basename,
+	dirname,
+	extname,
+	join,
+	normalize
+} from 'path';
+import {
+	fileURLToPath
+} from 'url';
 
 import {
 	VariableInfo,
@@ -117,6 +131,7 @@ function refreshNamespaceFiles() {
 	files('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
+		sourceFileData.clear();
 		namespaces.clear();
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 			namespaces.set(key, value);
@@ -141,19 +156,125 @@ function getDocumentData(documentUri: string): Thenable<SourceFileData> {
 }
 
 function refreshDocument(documentUri: string): Promise<SourceFileData> {
-	const result = new Promise<SourceFileData>((resolve) => {
+	const result = (async () => {
 		const document = documents.get(documentUri);
 		if (document === undefined) {
 			console.log('Couldn\'t read file ' + documentUri);
-			resolve({
+			return {
 				variables: new Map(),
 				usingDeclarations: []
-			});
-		} else
-			resolve(parseDocument(document.getText()));
-	});
+			};
+		}
+
+		const implicitThisType = await resolveImplicitThisType(documentUri);
+		return parseDocument(document.getText(),
+			implicitThisType === undefined ? [] : [{ name: 'this', type: implicitThisType }]);
+	})();
 	sourceFileData.set(documentUri, result);
 	return result;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch (_err) {
+		return false;
+	}
+}
+
+function collectImplicitThisType(namespaceDefinitionPath: string, text: string, targetPath: string): string | undefined {
+	const normalizedTargetPath = normalize(targetPath);
+	const lines = text.split(newLineRegExp);
+
+	for (let i = 0; i < lines.length; i++) {
+		const namespaceMatch = namespaceSignatureRegExp.exec(lines[i]);
+		if (namespaceMatch === null)
+			continue;
+
+		let namespaceEndLine = i;
+		for (; namespaceEndLine < lines.length; namespaceEndLine++) {
+			if (lines[namespaceEndLine].trim() === '@endnamespace')
+				break;
+		}
+		if (namespaceEndLine === lines.length)
+			break;
+
+		const namespaceName = namespaceMatch[1];
+		const namespaceFolderPath = join(dirname(namespaceDefinitionPath), namespaceName);
+		for (let j = i + 1; j < namespaceEndLine; j++) {
+			const classMatch = classSignatureRegExp.exec(lines[j]);
+			if (classMatch === null)
+				continue;
+
+			let classEndLine = j;
+			for (; classEndLine < namespaceEndLine; classEndLine++) {
+				if (lines[classEndLine].trim() === '@endclass')
+					break;
+			}
+			if (classEndLine === namespaceEndLine)
+				break;
+
+			const className = classMatch[1];
+			const classType = namespaceName === '__default__' ? className : `${namespaceName}::${className}`;
+			for (let k = j + 1; k < classEndLine; k++) {
+				const methodMatch = functionSignatureRegExp.exec(lines[k]);
+				const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
+				if (methodMatch !== null) {
+					const methodPath = normalize(join(namespaceFolderPath, className, `${methodMatch[2]}.msc`));
+					if (methodPath === normalizedTargetPath)
+						return classType;
+				} else if (constructorMatch !== null) {
+					const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
+					const constructorPath = normalize(join(namespaceFolderPath, className, `${constructorSignature}.msc`));
+					if (constructorPath === normalizedTargetPath)
+						return classType;
+				}
+			}
+
+			j = classEndLine;
+		}
+
+		i = namespaceEndLine;
+	}
+
+	return undefined;
+}
+
+async function resolveImplicitThisType(documentUri: string): Promise<string | undefined> {
+	let targetPath: string;
+	try {
+		targetPath = normalize(fileURLToPath(documentUri));
+	} catch (_err) {
+		return undefined;
+	}
+
+	const scriptFileName = basename(targetPath, extname(targetPath));
+	if (scriptFileName === '__init__')
+		return undefined;
+
+	const scriptDirectoryPath = dirname(targetPath);
+	const directNamespaceName = basename(scriptDirectoryPath);
+	const directNamespaceDefinitionPath = join(dirname(scriptDirectoryPath), `${directNamespaceName}.nms`);
+
+	const enclosingNamespaceDirectoryPath = dirname(scriptDirectoryPath);
+	const nestedNamespaceName = basename(enclosingNamespaceDirectoryPath);
+	const nestedNamespaceDefinitionPath = join(dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`);
+
+	const candidateDefinitionPaths: string[] = [];
+	if (await fileExists(directNamespaceDefinitionPath))
+		candidateDefinitionPaths.push(directNamespaceDefinitionPath);
+	if (nestedNamespaceDefinitionPath !== directNamespaceDefinitionPath && await fileExists(nestedNamespaceDefinitionPath))
+		candidateDefinitionPaths.push(nestedNamespaceDefinitionPath);
+	if (candidateDefinitionPaths.length !== 1)
+		return undefined;
+
+	try {
+		const text = await readFileAsync(candidateDefinitionPaths[0], 'utf8');
+		return collectImplicitThisType(candidateDefinitionPaths[0], text, targetPath);
+	} catch (_err) {
+		return undefined;
+	}
 }
 
 function skipStringBackward(line: string, pos: number): number | undefined {
@@ -1317,11 +1438,12 @@ documents.onDidSave(change => {
 
 // Register the text document validation function
 documents.onDidOpen(change => {
+	void refreshDocument(change.document.uri);
 	validateAndReportDiagnostics(change.document);
 });
 
 documents.onDidChangeContent(e => {
-	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
+	void refreshDocument(e.document.uri);
 	validateAndReportDiagnostics(e.document);
 });
 

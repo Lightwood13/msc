@@ -35,6 +35,10 @@ export interface SourceFileData {
 	variables: Map<string, VariableInfo[]>
 	usingDeclarations: UsingDeclaration[]
 }
+export interface ImplicitVariable {
+	name: string
+	type: string
+}
 
 export const newLineRegExp = /\r?\n/;
 export const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*|__default__)\s*$/;
@@ -289,36 +293,37 @@ function getParamsFromSignature(signature: string): ParameterInformation[] {
 	return result;
 }
 
+function createVariableInfo(name: string, type: string, lineDeclared: number): VariableInfo {
+	return {
+		name: name,
+		lineDeclared: lineDeclared,
+		lineUndeclared: undefined,
+		type: type,
+		suggestion: {
+			label: name,
+			kind: CompletionItemKind.Variable,
+			detail: type + ' ' + name
+		}
+	};
+}
+
 // eslint-disable-next-line require-await
-export async function parseDocument(text: string): Promise<SourceFileData> {
+export async function parseDocument(text: string, implicitVariables: ImplicitVariable[] = []): Promise<SourceFileData> {
 	const result: SourceFileData = 
 	{
 		variables: new Map(),
 		usingDeclarations: [],
 	};
 
-	result.variables.set('player', [{
-		name: 'player',
-		lineDeclared: -1,
-		lineUndeclared: undefined,
-		type: 'Player',
-		suggestion: {
-			label: 'player',
-			kind: CompletionItemKind.Variable,
-			detail: 'Player player'
-		}
-	}]);
-	result.variables.set('block', [{
-		name: 'block',
-		lineDeclared: -1,
-		lineUndeclared: undefined,
-		type: 'Block',
-		suggestion: {
-			label: 'block',
-			kind: CompletionItemKind.Variable,
-			detail: 'Block block'
-		}
-	}]);
+	result.variables.set('player', [createVariableInfo('player', 'Player', -1)]);
+	result.variables.set('block', [createVariableInfo('block', 'Block', -1)]);
+	for (const variable of implicitVariables) {
+		let sameNameVariables = result.variables.get(variable.name);
+		if (sameNameVariables === undefined)
+			sameNameVariables = [];
+		sameNameVariables.push(createVariableInfo(variable.name, variable.type, -1));
+		result.variables.set(variable.name, sameNameVariables);
+	}
 
 	const lines = text.split(newLineRegExp);
 	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
@@ -332,17 +337,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
 			if (regExpRes === null)
 				continue;
-			result.variables.set(regExpRes[2], [{
-				name: regExpRes[2],
-				lineDeclared: 0,
-				lineUndeclared: undefined,
-				type: regExpRes[1],
-				suggestion: {
-					label: regExpRes[2],
-					kind: CompletionItemKind.Variable,
-					detail: regExpRes[1] + ' ' + regExpRes[2]
-				}
-			}]);
+			result.variables.set(regExpRes[2], [createVariableInfo(regExpRes[2], regExpRes[1], 0)]);
 		}
 	}
 	const variableStack: VariableInfo[][] = [];
@@ -357,17 +352,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			variableStack.push([]);
 			if (!allowedTypeNameWithNamespaceRegExp.test(tokens[1]) || !allowedNameRegExp.test(tokens[2]))
 				continue;
-			variableStack[variableStack.length - 1].push({
-				name: tokens[2],
-				lineDeclared: i,
-				lineUndeclared: undefined,
-				type: tokens[1],
-				suggestion: {
-					label: tokens[2],
-					kind: CompletionItemKind.Variable,
-					detail: tokens[1] + ' ' + tokens[2]
-				}
-			});
+			variableStack[variableStack.length - 1].push(createVariableInfo(tokens[2], tokens[1], i));
 		}
 		else if (tokens[0] === '@fi' || tokens[0] === '@else' || tokens[0] === '@elseif' || tokens[0] === '@done') {
 			const lastBlockVariables = variableStack.pop();
@@ -390,17 +375,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			if (tokens[2].endsWith('='))
 				tokens[2] = tokens[2].substring(0, tokens[2].length - 1);
 
-			const newVariableInfo: VariableInfo = {
-				name: tokens[2],
-				lineDeclared: i,
-				lineUndeclared: undefined,
-				type: tokens[1],
-				suggestion: {
-					label: tokens[2],
-					kind: CompletionItemKind.Variable,
-					detail: tokens[1] + ' ' + tokens[2]
-				}
-			};
+			const newVariableInfo = createVariableInfo(tokens[2], tokens[1], i);
 			
 			if (variableStack.length > 0) {
 				variableStack[variableStack.length - 1].push(newVariableInfo);
