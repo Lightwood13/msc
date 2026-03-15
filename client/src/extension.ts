@@ -943,6 +943,7 @@ export function activate(context: ExtensionContext) {
 	// when the client is ready, get the default namespace from github
 	client.onReady().then(() => {
 		client.onNotification('getDefaultNamespaces', () => {
+			const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
 			axios({
 				httpsAgent: new https.Agent({
 					rejectUnauthorized: false
@@ -953,14 +954,19 @@ export function activate(context: ExtensionContext) {
 				// success: send notification to server to start processing received default namespaces
 				.then(data => {
 					console.log('Successfully fetched default namespaces file from GitHub');
-					client.sendNotification('processDefaultNamespaces', data.data);
+					client.sendNotification('processDefaultNamespaces', {
+						text: data.data,
+						sourceUri: defaultNamespacesUri.toString()
+					});
 				})
 				// if this fails, get default namespaces from extension resources and send it to server for processing
 				.catch(_err => {
 					console.log('Couldn\'t connect to GitHub');
-					const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
 					workspace.fs.readFile(defaultNamespacesUri).then((result) => {
-						client.sendNotification('processDefaultNamespaces', result.toString());
+						client.sendNotification('processDefaultNamespaces', {
+							text: result.toString(),
+							sourceUri: defaultNamespacesUri.toString()
+						});
 					});
 				});
 		});

@@ -25,6 +25,8 @@ Note that when you're typing something at the beginning of the line, only comman
 
 This extension also provides hover hints: if you hover your mouse over a variable, function or field name, the extension will show its information.
 
+It also supports go to definition. Ctrl-click or press F12 on local variables to jump to their declarations, on custom namespace functions and methods to jump to their backing script files when available, and on constructors to jump to their namespace declarations.
+
 ![feature_1](images/feature_1.gif)
 ![feature_2](images/feature_2.gif)
 
