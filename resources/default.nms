@@ -1,105 +1,137 @@
 @namespace __default__
 
 	@class Int
-		# Make an Int from another Int. (Clone operation)
-		Int(Int value)
-		# Cast a Long down to an Int. (Precision loss)
-		Int(Long value)
-		# Discard the decimals and convert a Float to Int.
-		Int(Float value)
 		# Discard the decimals and convert a Double to Int.
-		Int(Double value)
+		Int(Double other)
+		# Discard the decimals and convert a Float to Int.
+		Int(Float other)
+		# Make an Int from another Int. (Clone operation)
+		Int(Int other)
+		# Cast a Long down to an Int. (Precision loss)
+		Int(Long other)
 		# Attempt to parse a String into an Int.
 		# Only succeeds if the entire String can be represented as an Int.
 		# Throws NumberFormatException otherwise
-		Int(String value)
+		Int(String other)
+
+		# Retrieve the string representation of this Int.
+		String string()
 	@endclass
-	
+
+
 	@class Long
-		# Upcast an Int to a Long.
-		Long(Int value)
-		# Clone a Long.
-		Long(Long value)
-		# Discard the decimals and convert a Float to Long.
-		Long(Float value)
 		# Discard the decimals and convert a Double to Long.
-		Long(Double value)
+		Long(Double other)
+		# Discard the decimals and convert a Float to Long.
+		Long(Float other)
+		# Upcast an Int to a Long.
+		Long(Int other)
+		# Clone a Long.
+		Long(Long other)
 		# Attempt to parse a String into a Long.
 		# Only succeeds if the entire String can be represented as a Long.
 		# Throws NumberFormatException otherwise
-		Long(String value)
+		Long(String other)
+
+		# Retrieve the string representation of this Long.
+		String string()
 	@endclass
 
+
 	@class Float
-		# Cast an Int to a Float.
-		Float(Int value)
-		# Cast a Long to a Float.
-		Float(Long value)
-		# Clone a Float.
-		Float(Float value)
 		# Cast a Double to a Float. (Precision loss)
-		Float(Double value)
+		Float(Double other)
+		# Clone a Float.
+		Float(Float other)
+		# Cast an Int to a Float.
+		Float(Int other)
+		# Cast a Long to a Float.
+		Float(Long other)
 		# Attempt to parse a String into a Float.
 		# Only succeeds if the entire String can be represented as a Float.
 		# Throws NumberFormatException otherwise
-		Float(String value)
+		Float(String other)
+
+		# Retrieve the string representation of this Float.
+		String string()
 	@endclass
 
+
 	@class Double
-		# Cast an Int to a Double.
-		Double(Int value)
-		# Cast a Long to a Double.
-		Double(Long value)
-		# Upcast a Float to a Double.
-		Double(Float value)
 		# Clone a Double.
-		Double(Double value)
+		Double(Double other)
+		# Upcast a Float to a Double.
+		Double(Float other)
+		# Cast an Int to a Double.
+		Double(Int other)
+		# Cast a Long to a Double.
+		Double(Long other)
 		# Attempt to parse a String into a Double.
 		# Only succeeds if the entire String can be represented as a Double.
 		# Throws NumberFormatException otherwise
-		Double(String value)
+		Double(String other)
+
+		# Retrieve the string representation of this Double.
+		String string()
 	@endclass
+
 
 	@class Boolean
 		# Copy a Boolean.
-		Boolean(Boolean)
-		# Parse true or false in string format to a boolean. Defaults to false
-		Boolean(String)
+		Boolean(Boolean other)
+		# Parse true or false in string format to a Boolean, defaulting to false.
+		Boolean(String other)
+
+		# Retrieve the string representation of this Boolean.
+		String string()
 	@endclass
-	
+
+
 	@class Void
 	@endclass
 
+
 	@class String
-		# Clone a String.
-		String(String value)
-		# Get the textual value of an Int.
-		String(Int value)
-		# Get the textual value of a Long.
-		String(Long value)
-		# Get the textual value of a Float.
-		String(Float value)
-		# Get the textual value of a Boolean.
-		String(Boolean value)
-		# Get the textual value of a Double.
-		String(Double value)
-		# Get the Player name in textual form.
-		String(Player value)
-		# Get the Entity UUID in textual form.
-		String(Entity value)
 		# Get the Block coordinates in textual form.
-		String(Block value)
+		String(Block other)
+		# Get the textual value of a Boolean.
+		String(Boolean other)
+		# Get the textual value of a Double.
+		String(Double other)
+		# Get the Entity UUID in textual form.
+		String(Entity other)
+		# Get the textual value of a Float.
+		String(Float other)
+		# Get the textual value of an Int.
+		String(Int other)
 		# Get the Item in textual form.
-		String(Item value)
+		String(Item other)
+		# Get the textual value of a Long.
+		String(Long other)
+		# Get the Player name in textual form.
+		String(Player other)
+		# Clone a String.
+		String(String other)
+
 		# Returns true if the String contains *sequence*, false otherwise.
 		Boolean contains(String sequence)
 		# Returns true if the String is equal except for case to *other*, false otherwise.
 		Boolean equalsIgnoreCase(String other)
-		# Returns the index the first occurrence of *sequence* starts at.
+		# Returns the index of the first occurrence of *sequence* starts at.
 		# If the String does not contain *sequence*, returns -1.
-		Int indexOf(String sequence)
-		# Replaces all occurrences of *old* with *new* in the String
-		String replace(String old, String new)
+		Int indexOf(String other)
+		# Returns the length of the String in characters.
+		Int length()
+		# Returns true if the String matches the given regular expression, false otherwise.
+		Boolean matches(String regex)
+		# Replaces all occurrences of *old* with *replacement* in the String
+		String replace(String old, String replacement)
+		# Splits the String around matches of the given regular expression. The delimiter is not included in the resulting strings.
+		String[] split(String delimiter)
+		# Returns true if the String starts with *start*, false otherwise.
+		Boolean startsWith(String start)
+		# Returns true if the String ends with *end*, false otherwise.
+		String string()
 		# Returns a substring starting (inclusive) at *start* and ending (exclusive) at *end*.
 		# Throws IndexOutOfBoundsException when *start* or *end* are invalid indices within the string.
 		# Throws InvalidParameterException when *end* is smaller than *start*.
@@ -110,285 +142,293 @@
 		String toUpperCase()
 		# Returns the String with leading and trailing whitespace omitted.
 		String trim()
-
-		Int length()
-		Boolean matches(String regex)
-		String[] split(String delimiter)
-		Boolean startsWith(String start)
-		String string()
 	@endclass
 
+
 	@class Player
-		# Construct a player from their name or UUID.
-		# Null if the player does not exist.
-		Player(String value)
-		Player(String value, Player visibleTo)
 		# Find a player at these coordinates in the passed world.
 		# Null if the player does not exist. In the scenario that multiple players
 		# are in the same location, nondeterministically returns one Player at that location.
 		Player(Int x, Int y, Int z, String world)
+		# Construct a player from their name or UUID.
+		# Null if the player does not exist.
+		Player(String value)
+		Player(String value, Player visibleTo)
 
+        # Returns whether this player can see the target player.
+        # A player can see another player if the other player is not vanished from their perspective.
+		Boolean canSee(Player target)
+		# Force-closes the currently open inventory view for this player, if any.
+		Void closeInventory()
+        # Returns the number of items in the player's inventory that match the given item ID.
+        # This counts all stacks in the inventory.
+		Int countItem(String id)
+		# Deals the given amount of damage to this entity.
+		Void damage(Double amount)
+		# Make the entity drop the item in their hand.
+		# This will force the entity to drop the item they are holding with an option to drop the entire ItemStack or just 1 of the items.
+		Boolean dropItem(Boolean dropAll)
+		# Get the number of times a player has hit any starting checkpoint sign.
+		Int getAttempts()
+        # Returns the location of the player's bed.
+		Location getBedLocation()
+        # Returns the world of the player's bed location.
+		String getBedLocationWorld()
+        # Returns the x-coordinate of the player's bed location.
+		Double getBedLocationX()
+        # Returns the y-coordinate of the player's bed location.
+		Double getBedLocationY()
+        # Returns the z-coordinate of the player's bed location.
+		Double getBedLocationZ()
+		# Return the Item from the boots slot.
+		Item getBoots()
+		# Returns the amount of challenge points the player has.
+		Int getChallengePoints()
+		# Returns the current time the player has spent in the challenge.
+		Long getChallengeTime()
+		# Return the Item from the chestplate slot.
+		Item getChestplate()
+		# Gets the blockface of the block that the living entity has likely clicked, ignoring fluids.
+		# Null if no block is targeted within 5 blocks distance. Identical to getTargetBlockFace(5).
+		String getClickedBlockFace()
+		# Returns the challenge the player is playing. Returns null when player is not playing any challenge.
+		String getCurrentChallenge()
+		# Returns the checkpoint the player has. Returns null when no checkpoint
+		# in the current checkpoint mode is set. Returns the checkpoint from the
+		# current checkpoint mode (HC or FFA).
+		String getCurrentCheckpoint()
+        # Returns the x-component of the entity's current direction vector.
+        # This is a unit vector pointing in the direction the entity is facing.
+		Double getDirectionX()
+        # Returns the y-component of the entity's current direction vector.
+        # This is a unit vector pointing in the direction the entity is facing.
+		Double getDirectionY()
+        # Returns the z-component of the entity's current direction vector.
+        # This is a unit vector pointing in the direction the entity is facing.
+		Double getDirectionZ()
+        # Returns the player's name with a color code prefix based on their rank.
+		String getDisplayName()
+        # Returns an entity statistic for this player.
+		Int getEntityStatistic(statistic::Statistic statistic, entity::EntityType entityType)
+		# Gets the player's current experience points towards the next level.
+		Float getExp()
 		# Returns the distance this entity has fallen.
 		Float getFallDistance()
 		# Returns the entity's current fire ticks (ticks before the entity stops being on fire).
 		Int getFireTicks()
-		# Sets the entity's current fire ticks (ticks before the entity stops being on fire).
-		setFireTicks(Int ticks)
-		# Gets the entity's current x position.
-		Double getX()
-		# Gets the entity's current y position.
-		Double getY()
-		# Gets the entity's current z position.
-		Double getZ()
-		# Gets the entity's current rotation around the y axis.
-		Float getYaw()
-		# Gets the entity's current rotation around the x axis.
-		Float getPitch()	
-		# Gets the current world this entity resides in.
-		String getWorld()
-		# Returns true if this entity has been marked for removal.
-		Boolean isDead()
-		# Checks to see if this player is currently flying or not.
-		Boolean isFlying()
-		# Returns true if the entity is supported by a block.
-		# This value is a state updated by the server and is not recalculated unless the entity moves.
-		Boolean isOnGround()
-		# Returns true if the player is in sneak mode
-		Boolean isSneaking()
-		# Gets whether the player is sprinting or not.
-		Boolean isSprinting()
-		# Gives the player the amount of experience specified.
-		giveExp(Int amount)
-		# Gets the player's current experience points towards the next level.
-		Float getExp()
-		# Sets the player's current experience points towards the next level.
-		giveExpLevels(Int amount)
-		# Gets the player's current experience level.
-		Float getLevel()
-		# Sets the player's current experience level.
-		setLevel(Int level)
-		# Deals the given amount of damage to this entity.
-		damage(Double amount)
+		# Gets the player's current food level.
+		Float getFoodLevels()
+        # Returns the gamemode of the player. Possible values include "survival", "creative", "adventure", and "spectator".
+		String getGameMode()
+		# Returns the amount of global points the player has.
+		Int getGlobalPoints()
 		# Gets the entity's health from 0 to getMaxHealth(), where 0 is dead.
 		Double getHealth()
-		# Sets the entity's health from 0 to getMaxHealth(), where 0 is dead.
-		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
-		setHealth(Double health)
-		# Gets the maximum health this entity has.
-		Double getMaxHealth()
-		# Sets the maximum health this entity has. If the health of the entity is
-		# above the value provided it will be clamped to the max value. Only sets
-		# the 'base' max health value, any modifiers changing this value (potions,
-		# etc) will apply *after* this value. The value returned by getMaxHealth may
-		# deviate from the value set here.
-		setMaxHealth()
-		# Gets the players current food level.
-		Float getFoodLevels()
-		# Sets the players current food level.
-		setFoodLevel(Int value)
-		# Gets the players current saturation level. Saturation is a buffer for food
-		# level. Your food level will not drop if you are saturated > 0.
-		Float getSaturation()
-		# Sets the players current saturation level.
-		setSaturation(Float value)
-		# Returns whether this entity is inside a vehicle.
-		Boolean isInsideVehicle()
-		# Leave the current vehicle. If the entity is currently in a vehicle (and is
-		# removed from it), true will be returned, otherwise false will be returned.
-		Boolean leaveVehicle()
-		# Force-closes the currently open inventory view for this player, if any.
-		closeInventory()
-		# Gets the player's playtime on the server in milliseconds.
-		Long getTimePlayed()
-		# Gets the player's current locale. The value of the locale String is not
-		# defined properly. The vanilla Minecraft client will use lowercase
-		# language / country pairs separated by an underscore, but custom resource
-		# packs may use any format they wish.
-		String getLocale()
-		# Gets the UUID of the entity (in string format).
-		String getUniqueId()
-		# Checks if this player is currently online.
-		Boolean isOnline()
-		# Checks if this Player is a server operator.
-		Boolean isOp()
-		# Request that the player's client downloads and switches resource pack.
-		setResourcePack(String resourcePackURL, String resourcePackSHA1)
+		# Return the Item from the helmet slot.
+		Item getHelmet()
+		# Returns the stage the player reached in Hexa.
+		Int getHexaRecord()
 		# Returns the Item found in the slot at the given index.
 		Item getItem(Int slot)
 		# Gets a copy of the item the player is currently holding in their main hand.
 		Item getItemInMainHand()
 		# Gets a copy of the item the player is currently holding in their off hand.
 		Item getItemInOffHand()
-		# Return the Item from the boots slot.
-		Item getBoots()
-		# Return the Item from the leg slot.
+		# Returns the Item from the leg slot.
 		Item getLeggings()
-		# Return the Item from the chestplate slot.
-		Item getChestplate()
-		# Return the Item from the helmet slot.
-		Item getHelmet()
-		# Stores the Item at the given index of the inventory. Indexes 0 through 8 refer to the
-		# hotbar. 9 through 35 refer to the main inventory, counting up from 9 at the top left
-		# corner of the inventory, moving to the right, and moving to the row below it back on the
-		# left side when it reaches the end of the row. It follows the same path in the inventory like you
-		# would read a book. Indexes 36 through 39 refer to the armor slots. Though you can set
-		# armor with this method using these indexes, you are encouraged to use the provided
-		# methods for those slots. If you attempt to use this method with an index less than 0 or
-		# greater than 39, an ArrayIndexOutOfBounds exception will be thrown.
-		setItem(Int slot, Item item)
-		# Sets the item the player is holding in their main hand.
-		setItemInMainHand(Item item)
-		# Sets the item the player is holding in their off hand.
-		setItemInOffHand(Item item)
-		# Put the given Item into the boots slot. This does not check if the Item is a boots.
-		setBoots(Item item)
-		# Put the given Item into the leg slot. This does not check if the Item is a pair of leggings.
-		setLeggings(Item item)
-		# Put the given Item into the chestplate slot. This does not check if the Item is a chestplate.
-		setChestplate(Item item)
-		# Put the given Item into the helmet slot. This does not check if the Item is a helmet.
-		setHelmet(Item item)
-		# Returns whether the player is playing a challenge.
-		Boolean isPlayingChallenge()
-		# Returns the challenge the player is playing. Returns null when player is not playing any challenge.
-		String getCurrentChallenge()
-		# Returns the amount of challenge points the player has.
-		Int getChallengePoints()
-		# Returns the stage the player reached in hexa.
-		Int getHexaRecord()
-		# Returns whether the player has completed the specified challenge.
-		Boolean hasCompletedChallenge(String challengetag)
-		# Returns the current time the player has spent in the challenge.
-		Long getChallengeTime()
-		# Returns whether the player is playing a map.
-		Boolean isPlayingMap()
-		# Returns the checkpoint the player has. Returns null when no checkpoint
-		# in the current checkpoint mode is set. Returns the checkpoint from the
-		# current checkpoint mode (HC or FFA).
-		String getCurrentCheckpoint()
-		# Returns the amount of FFA points the player has.
-		Int getPoints()
-		# Returns the amount of global points the player has.
-		Int getGlobalPoints()
-		# Returns whether the player has completed the specified map.
-		Boolean hasCompletedMap(String tag)
+		# Gets the player's current experience level.
+		Float getLevel()
+		# Gets the player's current locale. The value of the locale String is not
+		# defined properly. The vanilla Minecraft client will use lowercase
+		# language / country pairs separated by an underscore, but custom resource
+		# packs may use any format they wish.
+		String getLocale()
+        # Returns the Location of the player, including their current coordinates and world.
+		Location getLocation()
 		# Returns the current time the player has spent in the map.
 		Long getMapTime()
-		# Get the amount of times a player has hit any starting checkpoint sign.
-		Int getAttempts()
-		# Invalidate the player's challenge and map run.
-		invalidate()
-		# Invalidate the player's time on map and challenge, but allows
-		# them to complete the map and challenge.
-		invalidateTime()
-
-		Boolean canSee(Player target)
-		Int countItem(String id)
-		Location getBedLocation()
-		String getBedLocationWorld()
-		Double getBedLocationX()
-		Double getBedLocationY()
-		Double getBedLocationZ()
-		Double getDirectionX()
-		Double getDirectionY()
-		Double getDirectionZ()
-		String getDisplayName()
-		Int getEntityStatistic(statistic::Statistic statistic, entity::EntityType entityType)
-		String getGameMode()
-		Location getLocation()
+        # Gets a material statistic for this player.
 		Int getMaterialStatistic(statistic::Statistic statistic, material::Material material)
+		# Gets the maximum health this entity has.
+		Int getMaxHealth()
+        # Returns the player's username.
 		String getName()
-		Position getPosition()
-		String getRank()
-		Int getSpeedrunScore()
-		Int getStatistic(statistic::Statistic statistic)
-		Boolean hasBedLocation()
-		sendMessage(String message)
-		sendMessageFancy(text::TextComponent[] msg)
-		setExp(Float exp)
-		String string()
-		teleport(Position destination)
-
-		# Gets the blockface of the block that the living entity has likely clicked, ignoring fluids.
-		# Null if no block is targeted within 5 blocks distance. Identical to getTargetBlockFace(5).
-		String getClickedBlockFace()
-
-		# Gets the blockface of the block that the living entity has targeted, ignoring fluids.
-		# Null if no block is targeted within distance.
-		String getTargetBlockFace(Int distance)
-
-		# Gets the block that the living entity has targeted, ignoring fluids.
-		# Null if no block is targeted within distance.
-		Block getTargetBlock(Int distance)
-
-		# Gets the entity being targeted.
-		# Null if no entity is targeted within distance.
-		Entity getTargetEntity(Int distance)
-
-		# Sets whether gravity applies to this entity.
-		# (Please unset this when you are done :) )
-		Void setGravity(Boolean gravity)
-
-		# Checks to see if an entity is gliding, such as using an Elytra.
-		Boolean isGliding()
-
-		# Returns the type of weather the player is currently experiencing.
-		String getPlayerWeather()
-
-		# Sets the type of weather the player will see.
-		# When used, the weather status of the player is locked until resetPlayerWeather() is used.
-		Void setPlayerWeather(String weather)
-
-		# Restores the normal condition where the player's weather is controlled by server conditions.
-		Void resetPlayerWeather()
-
+		# Gets the entity's current rotation around the x-axis.
+		Float getPitch()
 		# Returns the player's current timestamp.
 		Long getPlayerTime()
-
 		# Returns the player's current time offset relative to server time,
 		# or the current player's fixed time if the player's time is absolute.
 		Long getPlayerTimeOffset()
-
-		# Sets the current time on the player's client.
-		# When using non relative time the player's time will stay fixed at the specified time parameter.
-		# It's up to the caller to continue updating the player's time.
-		# To restore player time to normal use resetPlayerTime().
-		Void setPlayerTime(Long time, Boolean serverRelative)
-
-		# Restores the normal condition where the player's time is synchronized with the server time.
-		Void resetPlayerTime()
-
-		# Make the entity drop the item in their hand.
-		# This will force the entity to drop the item they are holding with an option to drop the entire ItemStack or just 1 of the items.
-		Boolean dropItem(Boolean dropAll)
-	@endclass
-
-	@class Entity
-		# Construct an entity from its UUID.
-		# Returns null if it does not exist.
-		Entity(String uuid)
-		# Find an entity at these coordinates in the passed world.
-		# Null if the entity does not exist. In the scenario that multiple entities
-		# are in the same location, nondeterministically returns one entity at that location.
-		Entity(Int x, Int y, Int z, String world)
-
-		# Gets the entity's type. Actual value returned is a
-		# 'magic value' and can change at any spigot or bukkit update.
-		String getEntityType()
+		# Returns the type of weather the player is currently experiencing.
+		String getPlayerWeather()
+		# Returns the amount of FFA points the player has.
+		Int getPoints()
+        # Returns the Position of the player, including their current coordinates, world, and rotation.
+		Position getPosition()
+        # Returns the player's rank. Possible values include "default", "blues", "greenies", "mods", and "admins".
+		String getRank()
+		# Gets the player's current saturation level. Saturation is a buffer for food
+		# level. Your food level will not drop if saturation > 0.
+		Float getSaturation()
+        # Returns the speedrun score of the player.
+		Int getSpeedrunScore()
+        # Gets a statistic for this player.
+		Int getStatistic(statistic::Statistic statistic)
+		# Gets the block that the living entity has targeted, ignoring fluids.
+		# Null if no block is targeted within distance.
+		Block getTargetBlock(Int distance)
+		# Gets the blockface of the block that the living entity has targeted, ignoring fluids.
+		# Null if no block is targeted within distance.
+		String getTargetBlockFace(Int distance)
+		# Gets the entity being targeted.
+		# Null if no entity is targeted within distance.
+		Entity getTargetEntity(Int distance)
+		# Gets the player's playtime on the server in milliseconds.
+		Long getTimePlayed()
+		# Gets the UUID of the entity (in string format).
+		String getUniqueId()
+		# Gets the current world in which this entity resides.
+		String getWorld()
 		# Gets the entity's current x position.
 		Double getX()
 		# Gets the entity's current y position.
 		Double getY()
+		# Gets the entity's current rotation around the y-axis.
+		Float getYaw()
 		# Gets the entity's current z position.
 		Double getZ()
-		Location getLocation()
-		# Gets the entity's current rotation around the y axis.
-		Float getYaw()
-		# Gets the entity's current rotation around the x axis.
-		Float getPitch()
+		# Gives the player the amount of experience specified.
+		Void giveExp(Int amount)
+		# Sets the player's current experience points towards the next level.
+		Void giveExpLevels(Int amount)
+		Boolean hasBedLocation()
+		# Returns whether the player has completed the specified challenge.
+		Boolean hasCompletedChallenge(String challenge)
+		# Returns whether the player has completed the specified map.
+		Boolean hasCompletedMap(String tag)
+		# Checks whether gravity applies to this entity.
+		Boolean hasGravity()
+		# Returns true if this entity has been marked for removal.
+		Boolean isDead()
+		# Checks to see if this player is currently flying or not.
+		Boolean isFlying()
+		# Checks to see if an entity is gliding, such as using an Elytra.
+		Boolean isGliding()
+		# Returns whether this entity is inside a vehicle.
+		Boolean isInsideVehicle()
+		# Returns true if the entity is supported by a block.
+		# This value is a state updated by the server and is not recalculated unless the entity moves.
+		Boolean isOnGround()
+		# Checks if this player is currently online.
+		Boolean isOnline()
+		# Checks if this Player is a server operator.
+		Boolean isOp()
+		# Returns whether the player is playing a challenge.
+		Boolean isPlayingChallenge()
+		# Returns whether the player is playing a map.
+		Boolean isPlayingMap()
+		# Returns true if the player is in sneak mode
+		Boolean isSneaking()
+		# Gets whether the player is sprinting or not.
+		Boolean isSprinting()
+		# Leave the current vehicle. If the entity is currently in a vehicle (and is
+		# removed from it), true will be returned, otherwise false will be returned.
+		Boolean leaveVehicle()
+        # Sends a message to the player. The message will be displayed in the player's chat.
+		Void sendMessage(String message)
+        # Sends a message to the player. The message will be displayed in the player's chat.
+        # This method allows for messages with multiple colors and styles.
+		Void sendMessageFancy(text::TextComponent[] msg)
+		# Put the given Item into the boots slot. This does not check if the Item are boots.
+		Void setBoots(Item item)
+		# Put the given Item into the chestplate slot. This does not check if the Item is a chestplate.
+		Void setChestplate(Item item)
+        # Sets the player's current experience points towards the next level.
+		Void setExp(Float exp)
+		# Sets the entity's current fire ticks (ticks before the entity stops being on fire).
+		Void setFireTicks(Int ticks)
+		# Sets the players current food level.
+		Void setFoodLevel(Int value)
+		# Sets whether gravity applies to this entity.
+		# (Please unset this when you are done!)
+		Void setGravity(Boolean gravity)
+		# Sets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
+		Void setHealth(Double health)
+		# Put the given Item into the helmet slot. This does not check if the Item is a helmet.
+		Void setHelmet(Item item)
+		# Stores the Item at the given index of the inventory. Indices 0 through 8 refer to the
+		# hotbar. 9 through 35 refer to the main inventory, counting up from 9 at the top left
+		# corner of the inventory, moving to the right, and moving to the row below it back on the
+		# left side when it reaches the end of the row. It follows the same path in the inventory like you
+		# would read a book. Indexes 36 through 39 refer to the armor slots. Though you can set
+		# armor with this method using these indices, you are encouraged to use the provided
+		# methods for those slots. If you attempt to use this method with an index less than 0 or
+		# greater than 39, an ArrayIndexOutOfBoundsException will be thrown.
+		Void setItem(Int slot, Item item)
+		# Sets the item the player is holding in their main hand.
+		Void setItemInMainHand(Item item)
+		# Sets the item the player is holding in their off hand.
+		Void setItemInOffHand(Item item)
+		# Put the given Item into the leg slot. This does not check if the Item is a pair of leggings.
+		Void setLeggings(Item item)
+		# Sets the player's current experience level.
+		Void setLevel(Int level)
+		# Sets the maximum health this entity has. If the health of the entity is
+		# above the value provided it will be clamped to the max value. Only sets
+		# the 'base' max health value, any modifiers changing this value (potions,
+		# etc.) will apply *after* this value. The value returned by getMaxHealth may
+		# deviate from the value set here.
+		Void setMaxHealth(Int value)
+		# Request that the player's client download and switch resource pack.
+		Void setResourcePack(String resourcePackURL, String resourcePackSHA1)
+		# Sets the player's current saturation level.
+		Void setSaturation(Float value)
+        # Returns the player's username.
+		String string()
+        # Teleports the player to the given destination.
+		Void teleport(Position destination)
+	@endclass
+
+
+	@class Entity
+		# Find an entity at these coordinates in the passed world.
+		# Null if the entity does not exist. In the scenario that multiple entities
+		# are in the same location, nondeterministically returns one entity at that location.
+		Entity(Int x, Int y, Int z, String world)
+		# Construct an entity from its UUID.
+		# Returns null if it does not exist.
+		Entity(String uuid)
+
+        # Force the passenger to mount this entity.
+        # Returns true if the passenger successfully mounts this entity, false otherwise.
+		Boolean addPassenger(Entity passenger)
+		# Deals the given amount of damage to this entity.
+		Void damage(Double amount)
+        # Dismounts all passengers from this entity. If the entity has no passengers, this method does nothing.
+		Void ejectPassengers()
+		# Gets the x component of the entity's current direction vector. This is a unit vector pointing in the direction the entity is facing.
 		Double getDirectionX()
+		# Gets the y component of the entity's current direction vector. This is a unit vector pointing in the direction the entity is facing.
 		Double getDirectionY()
+		# Gets the z component of the entity's current direction vector. This is a unit vector pointing in the direction the entity is facing.
 		Double getDirectionZ()
+		# Gets the entity's type. Actual value returned is a
+		# 'magic value' and can change at any Spigot or Bukkit update.
+		String getEntityType()
+		# Gets the entity's health from 0 to getMaxHealth(), where 0 is dead.
+		Double getHealth()
+		# Gets the entity's current position as a Location object, which includes only the coordinates and world of the entity.
+		Location getLocation()
+		# Gets the maximum health this entity has.
+		Int getMaxHealth()
+		# Gets the entity's current rotation around the x-axis.
+		Float getPitch()
+		# Gets the entity's current position as a Position object, which includes the location and rotation of the entity.
+		Position getPosition()
+		# Gets the UUID of the entity (in string format).
+		String getUniqueId()
 		# Gets the entity's current velocity in the x direction. Works unreliably if the entity is a player.
 		Double getVelocityX()
 		# Gets the entity's current velocity in the y direction. Works unreliably if the entity is a player.
@@ -397,149 +437,204 @@
 		Double getVelocityZ()
 		# Gets the current world this entity resides in.
 		String getWorld()
+		# Gets the entity's current x position.
+		Double getX()
+		# Gets the entity's current y position.
+		Double getY()
+		# Gets the entity's current rotation around the y-axis.
+		Float getYaw()
+		# Gets the entity's current z position.
+		Double getZ()
 		# Returns true if this entity has been marked for removal.
 		Boolean isDead()
 		# Returns true if the entity is supported by a block.
 		# This value is a state updated by the server and is not recalculated unless the entity moves.
 		Boolean isOnGround()
-		# Deals the given amount of damage to this entity.
-		damage(Double amount)
-		# Gets the entity's health from 0 to getMaxHealth(), where 0 is dead.
-		Double getHealth()
 		# Sets the entity's health from 0 to getMaxHealth(), where 0 is dead.
 		# Throws IllegalArgumentException if the health is < 0 or > getMaxHealth().
-		setHealth(Double health)
-		# Gets the maximum health this entity has.
-		Int getMaxHealth()
+		Void setHealth(Double health)
 		# Sets the maximum health this entity has. If the health of the entity is
 		# above the value provided it will be clamped to the max value. Only sets
 		# the 'base' max health value, any modifiers changing this value (potions,
-		# etc) will apply *after* this value. The value returned by getMaxHealth may
+		# etc.) will apply *after* this value. The value returned by getMaxHealth may
 		# deviate from the value set here.
-		setMaxHealth(Int value)
-		# Gets the UUID of the entity (in string format).
-		String getUniqueId()
-		teleport(Position destination)
-		Boolean addPassenger(Entity passenger)
-		ejectPassengers()
+		Void setMaxHealth(Int value)
+        # Returns a string representation of the entity.
+		String string()
+		# Teleports the entity to the given destination.
+		Void teleport(Position destination)
 	@endclass
 
+
 	@class Block
+        # Gets the block at the location in the given world.
 		Block(BlockLocation location)
-		# Get the block at these coordinates in the given world.
+		# Gets the block at these coordinates in the given world.
 		Block(Int x, Int y, Int z, String world)
-		
-		# Returns the Redstone power being provided to this block.
+
+		# Returns the redstone power being provided to this block.
 		Int getBlockPower()
-		# Returns the amount of light at this block.
-		Int getLightLevel()
+		# Gets the type of this block. Actual value returned is a
+		# 'magic value' and can change at any Spigot or Bukkit update.
+		String getBlockType()
 		# Returns the amount of light at this block from nearby blocks.
 		Int getLightFromBlocks()
 		# Returns the amount of light at this block from the sky.
 		Int getLightFromSky()
-		# Gets the type of this block. Actual value returned is a
-		# 'magic value' and can change at any spigot or bukkit update.
-		String getBlockType()
+		# Returns the amount of light at this block.
+		Int getLightLevel()
+		BlockLocation getLocation()
+		# Returns the world where this block resides.
+		String getWorld()
 		# Returns the x-coordinate of this block.
 		Int getX()
 		# Returns the y-coordinate of this block.
 		Int getY()
 		# Returns the z-coordinate of this block.
 		Int getZ()
-		# Returns the world where this block resides in.
-		String getWorld()
-		BlockLocation getLocation()
-		# Returns true if the block is being indirectly powered by Redstone.
+		# Returns true if the block is being indirectly powered by redstone.
 		Boolean isBlockIndirectlyPowered()
-		# Returns true if the block is being powered by Redstone.
+		# Returns true if the block is being powered by redstone.
 		Boolean isBlockPowered()
-		# Returns true if this block is Air.
+		# Returns true if this block is air.
 		Boolean isEmpty()
 		# Returns true if this block is liquid.
 		Boolean isLiquid()
 		String string()
 	@endclass
 
+
 	@class Item
-		# Create an item from the passed name with a stack size of amount.
+		# Creates an item from the passed name with a stack size of amount.
 		# Throws MaterialNotFoundException when passed an invalid name.
 		Item(String item, Int amount)
 
 		# Gets the amount of items in this stack.
 		Int getAmount()
+        # Gets the display name of this item, or the default name if it does not have a custom display name.
+		String getDisplayName()
 		# Gets the type of this item.
 		String getItemType()
-		String getDisplayName()
-		Boolean hasDisplayName()
-		# Get the maximum stacksize for the material held in
-		# this ItemStack. (Returns -1 if it has no idea).
+		# Gets the maximum stack size for the material held in
+		# this ItemStack. (Returns -1 if the value is unknown).
 		Int getMaxStackSize()
-		# Sets the amount of items in this stack.
-		setAmount(Int amount)
-		# Sets the type of this item. Note that in doing so 
-		# you will reset the extra data for this stack as well.
-		# Throws MaterialNotFoundException when passed an invalid name.
-		setItemType(String item)
+        # True if this item has a custom display name, false if it is using the default display name for its material.
+		Boolean hasDisplayName()
 		# Returns whether two items are equal, but does not consider stack size (amount).
 		Boolean isSimilar(Item item)
+		# Sets the amount of items in this stack.
+		Void setAmount(Int amount)
+		# Sets the type of this item. Note that in doing so
+		# you will reset the extra data for this stack as well.
+		# Throws MaterialNotFoundException when passed an invalid name.
+		Void setItemType(String item)
+        # Returns a string representation of the item.
 		String string()
 	@endclass
+
 
 	@class Location
-		Location(Vector3 vector, String world)
-		Location(Float x, Float y, Float z, String world)
+        # Construct a Location object with the given coordinates and world.
 		Location(Double x, Double y, Double z, String world)
+        # Construct a Location object with the given coordinates and world.
+		Location(Float x, Float y, Float z, String world)
+        # Construct a Location object with the given coordinates and world.
 		Location(Int x, Int y, Int z, String world)
+        # Construct a Location object from a Vector3 and world.
+		Location(Vector3 vector, String world)
 
+        # Returns the coordinates and world of this Location as a 3D block location, rounding down the coordinates to the nearest block.
 		BlockLocation asBlockLocation()
+        # Returns the coordinates of this Location as a Vector2, dropping the y-coordinate.
 		Vector2 asVector2()
+        # Returns the coordinates of this Location as a Vector3.
 		Vector3 asVector3()
+        # Returns the world of this Location.
 		String getWorld()
+        # Returns the x-coordinate of this Location.
 		Double getX()
+        # Returns the y-coordinate of this Location.
 		Double getY()
+        # Returns the z-coordinate of this Location.
 		Double getZ()
+        # Returns a string representation of the location.
 		String string()
 	@endclass
+
 
 	@class BlockLocation
+        # Construct a BlockLocation object with the given coordinates and world.
 		BlockLocation(BlockVector3 vector, String world)
+        # Construct a BlockLocation object with the given coordinates and world.
 		BlockLocation(Int x, Int y, Int z, String world)
 
+        # Drops the world and y-coordinate of this BlockLocation and returns the x and z coordinates as a 2D block vector.
 		BlockVector2 asBlockVector2()
+        # Drops the world and returns the coordinates of this BlockLocation as a 3D block vector.
 		BlockVector3 asBlockVector3()
+        # Returns the coordinates and world of this BlockLocation as a Location, adding 0.5 to the x and z coordinates to get the center of the block.
 		Location asLocation()
+        # Returns a list of regions encompassing this block.
+        # If there are no regions at this location, an empty list is returned.
 		Region[] getRegions()
+        # Returns the world of this BlockLocation.
 		String getWorld()
+        # Returns the x-coordinate of this BlockLocation.
 		Int getX()
+        # Returns the y-coordinate of this BlockLocation.
 		Int getY()
+        # Returns the z-coordinate of this BlockLocation.
 		Int getZ()
-		set(String block)
+        # Sets the block at this location to the given type.
+		Void set(String block)
+        # Returns a string representation of the block location.
 		String string()
 	@endclass
+
 
 	@class Position
-		Position(Location location, Float yaw, Float pitch)
-		Position(Double x, Double y, Double z, FLoat yaw, Float pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
+		Position(Double x, Double y, Double z, Float yaw, Float pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
 		Position(Double x, Double y, Double z, Int yaw, Int pitch, String world)
-		Position(Int x, Int y, Int z, Float yaw, Float pitch, String world)
-		Position(Int x, Int y, Int z, Int yaw, Int pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
 		Position(Float x, Float y, Float z, Float yaw, Float pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
 		Position(Float x, Float y, Float z, Int yaw, Int pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
+		Position(Int x, Int y, Int z, Float yaw, Float pitch, String world)
+        # Construct a Position object with the given coordinates, rotation, and world.
+		Position(Int x, Int y, Int z, Int yaw, Int pitch, String world)
+        # Construct a Position object with the given location, rotation, and world.
+		Position(Location location, Float yaw, Float pitch)
 
+        # Construct a Location object by dropping the rotation from this Position.
 		Location asLocation()
+        # Returns the pitch (rotation up and down) of this Position.
 		Float getPitch()
+        # Returns the world of this Position.
 		String getWorld()
+        # Returns the x-coordinate of this Position.
 		Double getX()
+        # Returns the y-coordinate of this Position.
 		Double getY()
-		Double getZ()
+        # Returns the yaw (rotation left and right) of this Position.
 		Float getYaw()
+        # Returns the z-coordinate of this Position.
+		Double getZ()
+        # Returns a string representation of the position.
 		String string()
 	@endclass
 
+
 	@class Vector2
+        # Construct a Vector2 with the given x and z coordinates.
 		Vector2(Double x, Double z)
+        # Construct a Vector2 with the given x and z coordinates.
 		Vector2(Float x, Float z)
+        # Construct a Vector2 with the given x and z coordinates.
 		Vector2(Int x, Int z)
+        # Construct a Vector2 with the given x and z coordinates.
 		Vector2(Long x, Long z)
 
 		Vector2 abs()
@@ -563,6 +658,7 @@
 		Vector2 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
 	@endclass
 
+
 	@class BlockVector2
 		BlockVector2(Int x, Int z)
 
@@ -581,11 +677,12 @@
 		Int getZ()
 		Double length()
 		Double lengthSq()
-		BloclVector2 normalise()
+		BlockVector2 normalise()
 		BlockVector2 round()
 		String string()
 		BlockVector2 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
 	@endclass
+
 
 	@class Vector3
 		Vector3(Double x, Double y, Double z)
@@ -618,6 +715,7 @@
 		Vector3 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
 	@endclass
 
+
 	@class BlockVector3
 		BlockVector3(Int x, Int y, Int z)
 
@@ -635,9 +733,9 @@
 		BlockVector3 floor()
 		BlockVector3 getMaximum(BlockVector3 other)
 		BlockVector3 getMinimum(BlockVector3 other)
-		Double getX()
-		Double getY()
-		Double getZ()
+		Int getX()
+		Int getY()
+		Int getZ()
 		Double length()
 		Double lengthSq()
 		BlockVector3 normalise()
@@ -646,20 +744,21 @@
 		BlockVector3 transform2D(Double angle, Double aboutX, Double aboutZ, Double translateX, Double translateZ)
 	@endclass
 
-	@class Region
-		Region(String id, String world)
-		Region(BlockVector3 min, BlockVector3 max, String world)
-		Region(String id, BLockVector3 min, BlockVector3 max, String world)
-		Region(BlockVector2[] points, Int minY, Int maxY, String world)
-		Region(String id, BlockVectro2[] points, Int minY, Int maxY, String world)
-		Region(Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
-		Region(String id, Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
 
-		addMemberGroup(String group)
-		addMemberPlayer(Player player)
-		addOwnerGroup(String group)
-		addOwnerPlayer(Player player)
-		clearParent()
+	@class Region
+		Region(BlockVector2[] points, Int minY, Int maxY, String world)
+		Region(BlockVector3 min, BlockVector3 max, String world)
+		Region(Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
+		Region(String id, BlockVector2[] points, Int minY, Int maxY, String world)
+		Region(String id, BlockVector3 min, BlockVector3 max, String world)
+		Region(String id, Int minX, Int minY, Int minZ, Int maxX, Int maxY, Int maxZ, String world)
+		Region(String id, String world)
+
+		Void addMemberGroup(String group)
+		Void addMemberPlayer(Player player)
+		Void addOwnerGroup(String group)
+		Void addOwnerPlayer(Player player)
+		Void clearParent()
 		Boolean containsAny(BlockVector2[] positions)
 		Boolean containsBlockVector2(BlockVector2 vector)
 		Boolean containsBlockVector3(BlockVector3 vector)
@@ -668,8 +767,8 @@
 		Boolean containsPlayer(Player player)
 		Double getDoubleFlag(String flag)
 		String getID()
-		Int getIntFlag(String flag)
 		Region[] getIntersectingRegions(Region[] candidates)
+		Int getIntFlag(String flag)
 		BlockLocation getMaximumPoint()
 		String[] getMemberGroups()
 		Player[] getMemberPlayers()
@@ -699,13 +798,17 @@
 @endnamespace
 
 
+
 @namespace system
+
 	Long currentTimeMillis()
 	Double[] getTPS()
 @endnamespace
 
 
+
 @namespace math
+
 	Double abs(Double x)
 	Double arccos(Double x)
 	Double arcsin(Double x)
@@ -733,19 +836,25 @@
 @endnamespace
 
 
+
 @namespace list
+
 	Int[] range(Int start, Int end)
 @endnamespace
 
 
+
 @namespace util
+
 	Int executeAndQueryResult(String command)
 	Boolean executeAndQuerySuccess(String command)
 	String randomUUID()
 @endnamespace
 
 
+
 @namespace text
+
 	text::TextComponent[] deserialise(String json)
 	String escapeJSON(String json)
 	text::TextComponent[] fromLegacyText(String text, format::TextFormat defaultColor)
@@ -754,8 +863,8 @@
 	String toPlainText(text::TextComponent[] components)
 
 	@class TextComponent
-		TextComponent(String text)
 		TextComponent(String componentType, String value)
+		TextComponent(String text)
 
 		text::TextComponent addExtraComponent(text::TextComponent component)
 		text::TextComponent addExtraString(String text)
@@ -765,7 +874,9 @@
 		text::TextComponent clearObfuscated()
 		text::TextComponent clearStrikethrough()
 		text::TextComponent clearUnderlined()
+		text::TextComponent copyFormatting(text::TextComponent component)
 		text::TextComponent copyFormatting(text::TextComponent component, Boolean replace)
+		text::TextComponent copyFormatting(text::TextComponent component, String formatRetention, Boolean replace)
 		String debug()
 		text::TextComponent duplicate()
 		String getClickEventAction()
@@ -807,11 +918,12 @@
 		String toPlainText()
 	@endclass
 
+
 	@class ComponentBuilder
 		ComponentBuilder()
-		ComponentBuilder(text::TextComponent component)
-		ComponentBuilder(text::ComponentBuilder other)
 		ComponentBuilder(String text)
+		ComponentBuilder(text::ComponentBuilder other)
+		ComponentBuilder(text::TextComponent component)
 
 		text::ComponentBuilder appendComponent(text::TextComponent component)
 		text::ComponentBuilder appendComponentRetain(text::TextComponent component, String formatRetention)
@@ -841,7 +953,10 @@
 	@endclass
 @endnamespace
 
+
+
 @namespace scoreboard
+
 	addObjective(String name, String type, String displayName)
 	clearDisplaySlot(String slot)
 	String getObjectiveDisplaySlot(String objective)
@@ -854,7 +969,10 @@
 	setScore(String player, String objective, Int score)
 @endnamespace
 
+
+
 @namespace timer
+
 	String formatTime(Long time)
 	timer::Timer getChallengeTimer(Player player, String tag)
 	timer::Timer getCustomTimer(Player player, String tag)
@@ -867,24 +985,24 @@
 		Timer(Player player, String tag, String name, Boolean silent)
 		Timer(Player player, String tag, String name, Boolean silent, Boolean validate)
 
-		deactivate()
-		finish(Boolean silent)
+		Void deactivate()
+		Void finish(Boolean silent)
 		Long getDeltaTime()
 		Long getFinishTime()
 		String getName()
 		Long getStartTime()
 		String getTag()
 		String getTimerType()
-		invalidate()
+		Void invalidate()
 		Boolean isActive()
 		Boolean isInvalidated()
 		Boolean isNullified()
-		nullify()
-		setFinishTime(Long milli)
-		setInvalidState(Boolean state)
-		setNullifiedState(Boolean state)
-		setStartTime(Long milli)
-		start()
+		Void nullify()
+		Void setFinishTime(Long milli)
+		Void setInvalidState(Boolean state)
+		Void setNullifiedState(Boolean state)
+		Void setStartTime(Long milli)
+		Void start()
 		String string()
 	@endclass
 @endnamespace
