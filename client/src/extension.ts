@@ -625,7 +625,7 @@ async function uploadNamespaceChildFile(
 async function uploadScriptEditor(textEditor: TextEditor): Promise<string | null> {
 	const text = textEditor.document.getText();
 	if (text.trim().length === 0) {
-		window.showErrorMessage('Cannot upload empty file');
+		window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: file is empty`);
 		return null;
 	}
 
@@ -633,7 +633,7 @@ async function uploadScriptEditor(textEditor: TextEditor): Promise<string | null
 	if (includedFilesInfo.length === 0) {
 		const link = await uploadFile(text);
 		if (link === null) {
-			window.showErrorMessage('Failed to upload file');
+			window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: upload failed`);
 		}
 		return link;
 	}
@@ -677,7 +677,7 @@ async function uploadScriptEditor(textEditor: TextEditor): Promise<string | null
 		});
 
 		if (result === null) {
-			window.showErrorMessage('Failed to upload file');
+			window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: upload failed`);
 		}
 		return result;
 	});
@@ -687,15 +687,15 @@ async function uploadScriptEditor(textEditor: TextEditor): Promise<string | null
 function showErrors(cache: ProcessedFileCache): boolean {
 	let errorsFound = false;
 	if (cache.notFoundFiles.size !== 0) {
-		window.showErrorMessage('Failed to find files: ' + getFileNameList(cache.notFoundFiles));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.notFoundFiles)}: file not found`);
 		errorsFound = true;
 	}
 	if (cache.emptyFiles.size !== 0) {
-		window.showErrorMessage('Cannot upload empty files: ' + getFileNameList(cache.emptyFiles));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.emptyFiles)}: files are empty`);
 		errorsFound = true;
 	}
 	if (cache.failedUploads.size !== 0) {
-		window.showErrorMessage('Failed to upload files: ' + getFileNameList(cache.failedUploads));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.failedUploads)}: upload failed`);
 		errorsFound = true;
 	}
 	return errorsFound;
@@ -750,7 +750,7 @@ export function activate(context: ExtensionContext) {
 		// gets the currently open script (terminates if nonexistent)
 		const textEditor = window.activeTextEditor;
 		if (textEditor === undefined) {
-			window.showErrorMessage('No file open to upload');
+			window.showErrorMessage('Failed to upload: no file open');
 			return;
 		}
 
@@ -771,7 +771,7 @@ export function activate(context: ExtensionContext) {
 			// if we have a link, write it to the clipboard and display a success message
 			if (link !== null) {
 				env.clipboard.writeText(link);
-				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				window.showInformationMessage(`Uploaded file: ${link} copied to clipboard`);
 			}
 		}
 	});
@@ -780,12 +780,12 @@ export function activate(context: ExtensionContext) {
 	disposable = commands.registerCommand('msc.copyImportLink', async () => {
 		const textEditor = window.activeTextEditor;
 		if (textEditor === undefined) {
-			window.showErrorMessage('No file open to upload');
+			window.showErrorMessage('Failed to upload: no file open');
 			return;
 		}
 
 		if (textEditor.document.languageId !== 'msc' && textEditor.document.languageId !== 'nms') {
-			window.showErrorMessage('Copy import link works only for .msc and .nms files');
+			window.showErrorMessage('This command only works for .msc and .nms files');
 			return;
 		}
 
@@ -808,12 +808,12 @@ export function activate(context: ExtensionContext) {
 		const importContext = await resolveImportCommandContext(textEditor.document);
 		if (importContext === null) {
 			env.clipboard.writeText(link);
-			window.showWarningMessage('Upload finished, but could not infer import context. Script URL was copied to clipboard instead.');
+			window.showWarningMessage('Could not infer import context: link copied to clipboard');
 			return;
 		}
 
 		env.clipboard.writeText(formatImportCommand(importContext, link));
-		window.showInformationMessage('Upload finished. Import command was copied to clipboard');
+		window.showInformationMessage('Export finished: command copied to clipboard');
 	});
 	context.subscriptions.push(disposable);
 
@@ -823,7 +823,7 @@ export function activate(context: ExtensionContext) {
 		// gets the currently open script (terminates if nonexistent)
 		const textEditor = window.activeTextEditor;
 		if (textEditor === undefined) {
-			window.showErrorMessage('No file open to upload');
+			window.showErrorMessage('Failed to update namespace: no file open');
 			return;
 		}
 
@@ -839,7 +839,7 @@ export function activate(context: ExtensionContext) {
 		}
 		// otherwise ignore
 		else {
-			window.showErrorMessage('Can only update .nms files');
+			window.showErrorMessage('Failed to update namespace: can only update .nms files');
 		}
 	});
 	context.subscriptions.push(disposable);
@@ -852,7 +852,7 @@ export function activate(context: ExtensionContext) {
 		// gets text from clipboard and verifies it's nonempty
 		const clipboardText = await env.clipboard.readText();
 		if (clipboardText.length === 0) {
-			window.showErrorMessage('Clipboard is empty. Please copy script url to clipboard');
+			window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			return;
 		}
 
@@ -865,7 +865,7 @@ export function activate(context: ExtensionContext) {
 		if (match) {
 			scriptName = match[1];
 		} else {
-			window.showErrorMessage('Please copy a valid script URL to clipboard');
+			window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			return;
 		}
 
@@ -887,7 +887,7 @@ export function activate(context: ExtensionContext) {
 			})
 			// if errored, then display an error message
 			.catch(_err => {
-				window.showErrorMessage('Cannot get requested script. Please copy a valid script URL to clipboard');
+				window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			});
 	});
 	context.subscriptions.push(disposable);
@@ -971,7 +971,7 @@ export function activate(context: ExtensionContext) {
 
 			// if no namespace to upload, then exit
 			if (namespaces.length === 0) {
-				window.showErrorMessage("Couldn't parse any namespaces");
+				window.showErrorMessage('Failed to upload: couldn\'t parse any namespaces');
 				return;
 			}
 
@@ -1102,7 +1102,7 @@ export function activate(context: ExtensionContext) {
 			// uploads this script
 			const finalLink: string | null = await uploadFile(finalScript);
 			if (finalLink === null) {
-				window.showErrorMessage('Failed to upload script');
+				window.showErrorMessage(`Failed to upload namespace: upload of ${finalScript} failed`);
 				return;
 			}
 
@@ -1112,11 +1112,11 @@ export function activate(context: ExtensionContext) {
 				finalLink;
 			env.clipboard.writeText(clipboardText);
 			if (clipboardMode === 'import-command') {
-				window.showInformationMessage('Namespace upload finished. Import command copied to clipboard.');
+				window.showInformationMessage('Exported namespace: command copied to clipboard.');
 			} else if (namespaces[0].defineScript !== '') {
-				window.showInformationMessage('Namespace upload finished. Script URL copied to clipboard.');
+				window.showInformationMessage('Exported namespace: script URL copied to clipboard.');
 			} else {
-				window.showInformationMessage('Namespace update finished. Script URL copied to clipboard.');
+				window.showInformationMessage('Exported namespace: script URL copied to clipboard.');
 			}
 		});
 	});
