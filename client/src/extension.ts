@@ -5,12 +5,14 @@
 
 // imports needed
 import * as path from 'path';
+import { createHash } from 'crypto';
 import {
 	commands,
 	window,
 	env,
 	workspace,
 	ExtensionContext,
+	Memento,
 	Uri,
 	Progress,
 	ProgressLocation,
@@ -30,6 +32,10 @@ import {
 
 // creates a client for the extension
 let client: LanguageClient;
+let uploadLinkCache: UploadLinkCache | undefined;
+
+const uploadCacheStorageKey = 'msc.uploadLinkCache.v1';
+const maxUploadCacheEntries = 500;
 
 // the interface for uploading a .msc or .nms file
 interface UploadFileInfo {
@@ -71,6 +77,84 @@ interface NamespaceUploadResult {
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
 	methods: ClassMethod[]
+}
+
+interface UploadCacheEntry {
+	link: string,
+	lastUsed: number
+}
+
+interface PreparedUpload {
+	contents: string,
+	hash: string
+}
+
+function prepareUpload(contents: string): PreparedUpload {
+	const normalizedContents = contents.replace(/<##/g, '<#');
+	return {
+		contents: normalizedContents,
+		hash: createHash('sha256').update(normalizedContents).digest('hex')
+	};
+}
+
+class UploadLinkCache {
+	private entries: Map<string, UploadCacheEntry> = new Map();
+
+	constructor(private readonly storage: Memento) {
+		const storedEntries = storage.get<Record<string, UploadCacheEntry>>(uploadCacheStorageKey, {});
+		for (const [hash, entry] of Object.entries(storedEntries)) {
+			if (typeof entry.link === 'string' && typeof entry.lastUsed === 'number') {
+				this.entries.set(hash, entry);
+			}
+		}
+	}
+
+	prepare(contents: string): PreparedUpload {
+		return prepareUpload(contents);
+	}
+
+	get(hash: string): string | null {
+		const entry = this.entries.get(hash);
+		if (entry === undefined) {
+			return null;
+		}
+
+		entry.lastUsed = Date.now();
+		return entry.link;
+	}
+
+	async set(hash: string, link: string): Promise<void> {
+		this.entries.set(hash, {
+			link,
+			lastUsed: Date.now()
+		});
+		this.prune();
+		await this.persist();
+	}
+
+	private prune() {
+		if (this.entries.size <= maxUploadCacheEntries) {
+			return;
+		}
+
+		const staleHashes = [...this.entries.entries()]
+			.sort((left, right) => left[1].lastUsed - right[1].lastUsed)
+			.slice(0, this.entries.size - maxUploadCacheEntries)
+			.map(([hash]) => hash);
+
+		for (const hash of staleHashes) {
+			this.entries.delete(hash);
+		}
+	}
+
+	private async persist(): Promise<void> {
+		const serializedEntries: Record<string, UploadCacheEntry> = {};
+		for (const [hash, entry] of this.entries.entries()) {
+			serializedEntries[hash] = entry;
+		}
+
+		await this.storage.update(uploadCacheStorageKey, serializedEntries);
+	}
 }
 
 class ProcessedFileCache {
@@ -163,7 +247,11 @@ function collectIncludedFilesInfo(text: string): IncludedFileInfo[] {
 // uploads a file to paste.minr.org and returns the link if successful
 async function uploadFile(contents: string): Promise<string | null> {
 	try {
-		contents = contents.replace(/<##/g, '<#');
+		const preparedUpload = uploadLinkCache?.prepare(contents) ?? prepareUpload(contents);
+		const cachedLink = uploadLinkCache?.get(preparedUpload.hash) ?? null;
+		if (cachedLink !== null) {
+			return cachedLink;
+		}
 
 		// send a POST request to the API endpoint with the text provided as payload
 		const data = await axios({
@@ -172,11 +260,13 @@ async function uploadFile(contents: string): Promise<string | null> {
 			}),
 			url: 'https://paste.minr.org/documents',
 			method: 'POST',
-			data: contents
+			data: preparedUpload.contents
 		});
 
 		// return the key formatted as a link, or return null if failed
-		return 'https://paste.minr.org/' + data.data.key;
+		const link = 'https://paste.minr.org/' + data.data.key;
+		await uploadLinkCache?.set(preparedUpload.hash, link);
+		return link;
 	} catch (error) {
 		return null;
 	}
@@ -373,6 +463,7 @@ function formatDocument(document: TextDocument): TextEdit[] {
 // triggers on client activation
 export function activate(context: ExtensionContext) {
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+	uploadLinkCache = new UploadLinkCache(context.globalState);
 
 	// VSC command to upload a script
 	let disposable = commands.registerCommand('msc.upload', async () => {
