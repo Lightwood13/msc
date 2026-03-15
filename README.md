@@ -1,4 +1,4 @@
-# Minr Scripts VSCode Extension README
+# Minr Scripts VSCode Extension
 
 This Visual Studio Code extension adds syntax highlighting and code completion functionalities for minr.org Minecraft server scripts (MSC), as well as fast upload and download to paste.minr.org. The extension is available to download at [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Lightwood13.msc).
 
@@ -30,9 +30,9 @@ This extension also provides hover hints: if you hover your mouse over a variabl
 
 ### Upload/Download using [Hastebin](https://paste.minr.org/)
 
-The upload function uploads the currently opened file and copies the resulting URL to clipboard. The download function downloads the script from the URL currently stored in the user's clipboard and opens it in a new tab of the editor.
+The upload function uploads the currently opened file to paste.minr.org and copies the resulting URL to clipboard. The copy import link function uploads the currently opened file and copies the full `/script import ...` command to the clipboard when the file belongs to a namespace-backed function, constructor, method. The download function downloads the script from the URL currently stored in the user's clipboard and opens it in a new tab of the editor.
 
-They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'Upload script' and 'Download script'. Keyboard shortcuts are also available: `Alt+U` and `Alt+D` by default. They can be reassigned in 'Preferences: Open Keyboard Shortcuts' in Command Palette.
+They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'MSC: Upload script', 'MSC: Copy import link', and 'MSC: Download script'. Keyboard shortcuts are also available for upload and download: `Alt+U` and `Alt+D` by default. These can be reassigned in 'Preferences: Open Keyboard Shortcuts' in Command Palette.
 
 ### Namespace Import / Update
 
