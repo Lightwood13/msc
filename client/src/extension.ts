@@ -1117,9 +1117,9 @@ export function activate(context: ExtensionContext) {
 			if (clipboardMode === 'import-command') {
 				window.showInformationMessage('Exported namespace: command copied to clipboard.');
 			} else if (namespaces[0].defineScript !== '') {
-				window.showInformationMessage('Exported namespace: script URL copied to clipboard.');
+				window.showInformationMessage('Uploaded namespace: script URL copied to clipboard.');
 			} else {
-				window.showInformationMessage('Exported namespace: script URL copied to clipboard.');
+				window.showInformationMessage('Updated namespace: script URL copied to clipboard.');
 			}
 		});
 	});
