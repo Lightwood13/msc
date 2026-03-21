@@ -182,7 +182,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 	return result;
 }
 
-function parseClass(name: string, lines: string[], sourceUri: string | undefined, lineOffset: number,
+function parseClass(classNameWithNamespace: string, lines: string[], sourceUri: string | undefined, lineOffset: number,
 	namespaceName: string, className: string, definition: DefinitionLocation): ClassInfo {
 	const result: ClassInfo = {
 		members: new Map(),
@@ -193,7 +193,7 @@ function parseClass(name: string, lines: string[], sourceUri: string | undefined
 		definition: definition
 	};
 	for (let i = 0; i < lines.length; i++) {
-		const newMember = parseVariableOrFunctionAtLine(name + '.', lines, i, sourceUri, lineOffset);
+		const newMember = parseVariableOrFunctionAtLine(classNameWithNamespace + '.', lines, i, sourceUri, lineOffset);
 		if (newMember !== null) {
 			result.members.set(newMember.name, newMember);
 			if (newMember.suggestion !== undefined)
