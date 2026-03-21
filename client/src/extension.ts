@@ -34,7 +34,6 @@ import {
 // creates a client for the extension
 let client: LanguageClient;
 let uploadLinkCache: UploadLinkCache | undefined;
-const pendingNamespaceClipboardModes: NamespaceClipboardMode[] = [];
 
 const uploadCacheStorageKey = 'msc.uploadLinkCache.v1';
 const maxUploadCacheEntries = 500;
@@ -48,7 +47,13 @@ const newLineRegExp = /\r?\n/;
 interface UploadFileInfo {
 	path: string,
 	content: string,
-	update: boolean // only update or do full upload (for .nms files)
+	update: boolean, // only update or do full upload (for .nms files)
+	clipboardMode: NamespaceClipboardMode
+}
+
+interface NamespaceUploadResponse {
+	namespaces: NamespaceUploadResult[],
+	clipboardMode: NamespaceClipboardMode
 }
 
 interface IncludedFileInfo {
@@ -751,9 +756,9 @@ export function activate(context: ExtensionContext) {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
 				content: textEditor.document.getText(),
-				update: false
+				update: false,
+				clipboardMode: 'url'
 			};
-			pendingNamespaceClipboardModes.push('url');
 			client.sendNotification('Export namespace', fileInfo);
 
 			// otherwise, it's a normal script to upload
@@ -785,9 +790,9 @@ export function activate(context: ExtensionContext) {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
 				content: textEditor.document.getText(),
-				update: false
+				update: false,
+				clipboardMode: 'import-command'
 			};
-			pendingNamespaceClipboardModes.push('import-command');
 			client.sendNotification('Export namespace', fileInfo);
 			return;
 		}
@@ -824,9 +829,9 @@ export function activate(context: ExtensionContext) {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
 				content: textEditor.document.getText(),
-				update: true
+				update: true,
+				clipboardMode: 'url'
 			};
-			pendingNamespaceClipboardModes.push('url');
 			client.sendNotification('Export namespace', fileInfo);
 		}
 		// otherwise ignore
@@ -964,8 +969,8 @@ export function activate(context: ExtensionContext) {
 		});
 
 		// the logic behind uploading namespaces
-		client.onNotification('Upload namespace script', async (namespaces: NamespaceUploadResult[]) => {
-			const clipboardMode = pendingNamespaceClipboardModes.shift() ?? 'url';
+		client.onNotification('Upload namespace script', async (response: NamespaceUploadResponse) => {
+			const { namespaces, clipboardMode } = response;
 
 			// if no namespace to upload, then exit
 			if (namespaces.length === 0) {

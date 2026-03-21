@@ -1110,7 +1110,8 @@ function getConstructorSignature(className: string, params: string): string {
 interface UploadFileInfo {
 	path: string,
 	content: string,
-	update: boolean // only update or do full upload (for .nms files)
+	update: boolean, // only update or do full upload (for .nms files)
+	clipboardMode: string
 }
 
 connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
@@ -1243,7 +1244,10 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 		result.push(currentNamespace);
 	}
 
-	connection.sendNotification('Upload namespace script', result);
+	connection.sendNotification('Upload namespace script', {
+		namespaces: result,
+		clipboardMode: fileInfo.clipboardMode
+	});
 });
 
 connection.onCodeAction((params: CodeActionParams) => {
