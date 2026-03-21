@@ -747,7 +747,7 @@ async function getImplementationLocationForClassMember(currentClass: ClassInfo, 
 		else if (currentMemberKind === 'constructor' && signatureLabel !== undefined) {
 			const params = /\(.*\)/.exec(signatureLabel)?.[0];
 			if (params !== undefined)
-				implementationPath = join(classFolderPath, `${getConstructorSignature(currentClass.className, params)}.msc`);
+				implementationPath = join(classFolderPath, `${escapeFunctionName(getConstructorSignature(currentClass.className, params))}.msc`);
 		}
 		if (implementationPath !== undefined && await fileExists(implementationPath))
 			return createFileLocation(implementationPath);
