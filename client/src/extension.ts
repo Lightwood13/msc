@@ -91,11 +91,6 @@ interface UploadCacheEntry {
 	lastUsed: number
 }
 
-interface PreparedUpload {
-	contents: string,
-	hash: string
-}
-
 type NamespaceClipboardMode = 'url' | 'import-command';
 
 interface NamespaceImportContext {
@@ -124,12 +119,12 @@ interface MethodImportContext {
 type ScriptImportContext = FunctionImportContext | ConstructorImportContext | MethodImportContext;
 type ImportCommandContext = NamespaceImportContext | ScriptImportContext;
 
-function prepareUpload(contents: string): PreparedUpload {
-	const normalizedContents = contents.replace(/<##/g, '<#');
-	return {
-		contents: normalizedContents,
-		hash: createHash('sha256').update(normalizedContents).digest('hex')
-	};
+function normalizeContents(contents: string): string {
+	return contents.replace(/<##/g, '<#');
+}
+
+function hashContents(contents: string): string {
+	return createHash('sha256').update(contents).digest('hex');
 }
 
 class UploadLinkCache {
@@ -142,10 +137,6 @@ class UploadLinkCache {
 				this.entries.set(hash, entry);
 			}
 		}
-	}
-
-	prepare(contents: string): PreparedUpload {
-		return prepareUpload(contents);
 	}
 
 	get(hash: string): string | null {
@@ -465,8 +456,9 @@ function collectIncludedFilesInfo(text: string): IncludedFileInfo[] {
 // uploads a file to paste.minr.org and returns the link if successful
 async function uploadFile(contents: string): Promise<string | null> {
 	try {
-		const preparedUpload = uploadLinkCache?.prepare(contents) ?? prepareUpload(contents);
-		const cachedLink = uploadLinkCache?.get(preparedUpload.hash) ?? null;
+		const normalized = normalizeContents(contents);
+		const hash = hashContents(normalized);
+		const cachedLink = uploadLinkCache?.get(hash) ?? null;
 		if (cachedLink !== null) {
 			return cachedLink;
 		}
@@ -478,12 +470,12 @@ async function uploadFile(contents: string): Promise<string | null> {
 			}),
 			url: 'https://paste.minr.org/documents',
 			method: 'POST',
-			data: preparedUpload.contents
+			data: normalized
 		});
 
 		// return the key formatted as a link, or return null if failed
 		const link = 'https://paste.minr.org/' + data.data.key;
-		await uploadLinkCache?.set(preparedUpload.hash, link);
+		await uploadLinkCache?.set(hash, link);
 		return link;
 	} catch (error) {
 		return null;
