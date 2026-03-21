@@ -1250,6 +1250,129 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 	});
 });
 
+interface ResolveImportContextsParams {
+	namespaceDefinitionPath: string,
+	contents: string,
+	scriptPath: string
+}
+
+interface FunctionImportContext {
+	kind: 'function',
+	namespaceName: string,
+	functionSignature: string
+}
+
+interface ConstructorImportContext {
+	kind: 'constructor',
+	namespaceName: string,
+	constructorSignature: string
+}
+
+interface MethodImportContext {
+	kind: 'method',
+	namespaceName: string,
+	className: string,
+	methodSignature: string
+}
+
+type ScriptImportContext = FunctionImportContext | ConstructorImportContext | MethodImportContext;
+
+function escapeFunctionName(name: string): string {
+	return name.replace(/::/g, '__');
+}
+
+function getScriptChildPath(namespaceFolderPath: string, relativePath: string): string {
+	return resolve(join(namespaceFolderPath, escapeFunctionName(relativePath)));
+}
+
+connection.onRequest('Resolve import contexts', (params: ResolveImportContextsParams): ScriptImportContext[] => {
+	const targetPath = resolve(params.scriptPath);
+	const lines = params.contents.split(newLineRegExp);
+	const contexts: ScriptImportContext[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const namespaceMatch = namespaceSignatureRegExp.exec(lines[i]);
+		if (namespaceMatch === null) {
+			continue;
+		}
+
+		let namespaceEndLine = i;
+		for (; namespaceEndLine < lines.length; namespaceEndLine++) {
+			if (lines[namespaceEndLine].trim() === '@endnamespace') {
+				break;
+			}
+		}
+		if (namespaceEndLine === lines.length) {
+			break;
+		}
+
+		const namespaceName = namespaceMatch[1];
+		const namespaceFolderPath = join(dirname(params.namespaceDefinitionPath), namespaceName);
+
+		for (let j = i + 1; j < namespaceEndLine; j++) {
+			const classMatch = classSignatureRegExp.exec(lines[j]);
+			if (classMatch !== null) {
+				let classEndLine = j;
+				for (; classEndLine < namespaceEndLine; classEndLine++) {
+					if (lines[classEndLine].trim() === '@endclass') {
+						break;
+					}
+				}
+				if (classEndLine === namespaceEndLine) {
+					break;
+				}
+
+				const className = classMatch[1];
+				for (let k = j + 1; k < classEndLine; k++) {
+					const methodMatch = functionSignatureRegExp.exec(lines[k]);
+					const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
+
+					if (methodMatch !== null) {
+						const methodPath = getScriptChildPath(namespaceFolderPath, `${className}/${methodMatch[2]}.msc`);
+						if (methodPath === targetPath) {
+							contexts.push({
+								kind: 'method',
+								namespaceName,
+								className,
+								methodSignature: methodMatch[2] + methodMatch[3]
+							});
+						}
+					} else if (constructorMatch !== null) {
+						const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
+						const constructorPath = getScriptChildPath(namespaceFolderPath, `${className}/${constructorSignature}.msc`);
+						if (constructorPath === targetPath) {
+							contexts.push({
+								kind: 'constructor',
+								namespaceName,
+								constructorSignature
+							});
+						}
+					}
+				}
+
+				j = classEndLine;
+				continue;
+			}
+
+			const functionMatch = functionSignatureRegExp.exec(lines[j]);
+			if (functionMatch !== null) {
+				const functionPath = getScriptChildPath(namespaceFolderPath, `${functionMatch[2]}.msc`);
+				if (functionPath === targetPath) {
+					contexts.push({
+						kind: 'function',
+						namespaceName,
+						functionSignature: functionMatch[2] + functionMatch[3]
+					});
+				}
+			}
+		}
+
+		i = namespaceEndLine;
+	}
+
+	return contexts;
+});
+
 connection.onCodeAction((params: CodeActionParams) => {
 	const textDocument = documents.get(params.textDocument.uri);
 	if (!textDocument) {

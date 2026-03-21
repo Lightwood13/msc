@@ -37,11 +37,6 @@ let uploadLinkCache: UploadLinkCache | undefined;
 
 const uploadCacheStorageKey = 'msc.uploadLinkCache.v1';
 const maxUploadCacheEntries = 500;
-const namespaceSignatureRegExp = /^\s*@namespace\s+([a-zA-Z][a-zA-Z0-9_]*|__default__)\s*$/;
-const classSignatureRegExp = /^\s*@class\s+([A-Z][a-zA-Z0-9_]*)\s*$/;
-const functionSignatureRegExp = /^\s*(?:((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+)?([a-z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-const constructorSignatureRegExp = /^\s*([A-Z][a-zA-Z0-9_]*)\s*(\(.*\))\s*$/;
-const newLineRegExp = /\r?\n/;
 
 // the interface for uploading a .msc or .nms file
 interface UploadFileInfo {
@@ -249,14 +244,6 @@ function escapeFunctionName(name: string): string {
 	return name.replace(/::/g, '__');
 }
 
-function getConstructorSignature(className: string, params: string): string {
-	const paramsList = params.substring(1, params.length - 1).split(',');
-	let result = className + '(';
-	for (const param of paramsList)
-		result += param.trim().split(' ')[0] + ',';
-	result = result.substring(0, result.length - 1) + ')';
-	return result;
-}
 
 function formatImportCommand(importContext: ImportCommandContext, link: string): string {
 	if (importContext.kind === 'interact') {
@@ -278,9 +265,6 @@ function getImportContextKey(importContext: ScriptImportContext): string {
 	return formatImportCommand(importContext, '<url>');
 }
 
-function getScriptChildUri(namespaceFolderUri: Uri, relativePath: string): Uri {
-	return Uri.joinPath(namespaceFolderUri, escapeFunctionName(relativePath));
-}
 
 async function fileExists(uri: Uri): Promise<boolean> {
 	try {
@@ -289,94 +273,6 @@ async function fileExists(uri: Uri): Promise<boolean> {
 	} catch (_error) {
 		return false;
 	}
-}
-
-function collectImportContextsFromNamespaceFile(namespaceDefinitionUri: Uri, contents: string, scriptUri: Uri): ScriptImportContext[] {
-	const targetPath = scriptUri.fsPath;
-	const lines = contents.split(newLineRegExp);
-	const contexts: ScriptImportContext[] = [];
-
-	for (let i = 0; i < lines.length; i++) {
-		const namespaceMatch = namespaceSignatureRegExp.exec(lines[i]);
-		if (namespaceMatch === null) {
-			continue;
-		}
-
-		let namespaceEndLine = i;
-		for (; namespaceEndLine < lines.length; namespaceEndLine++) {
-			if (lines[namespaceEndLine].trim() === '@endnamespace') {
-				break;
-			}
-		}
-		if (namespaceEndLine === lines.length) {
-			break;
-		}
-
-		const namespaceName = namespaceMatch[1];
-		const namespaceFolderUri = Uri.joinPath(namespaceDefinitionUri, '..', namespaceName);
-
-		for (let j = i + 1; j < namespaceEndLine; j++) {
-			const classMatch = classSignatureRegExp.exec(lines[j]);
-			if (classMatch !== null) {
-				let classEndLine = j;
-				for (; classEndLine < namespaceEndLine; classEndLine++) {
-					if (lines[classEndLine].trim() === '@endclass') {
-						break;
-					}
-				}
-				if (classEndLine === namespaceEndLine) {
-					break;
-				}
-
-				const className = classMatch[1];
-				for (let k = j + 1; k < classEndLine; k++) {
-					const methodMatch = functionSignatureRegExp.exec(lines[k]);
-					const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
-
-					if (methodMatch !== null) {
-						const methodUri = getScriptChildUri(namespaceFolderUri, `${className}/${methodMatch[2]}.msc`);
-						if (methodUri.fsPath === targetPath) {
-							contexts.push({
-								kind: 'method',
-								namespaceName,
-								className,
-								methodSignature: methodMatch[2] + methodMatch[3]
-							});
-						}
-					} else if (constructorMatch !== null) {
-						const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
-						const constructorUri = getScriptChildUri(namespaceFolderUri, `${className}/${constructorSignature}.msc`);
-						if (constructorUri.fsPath === targetPath) {
-							contexts.push({
-								kind: 'constructor',
-								namespaceName,
-								constructorSignature
-							});
-						}
-					}
-				}
-
-				j = classEndLine;
-				continue;
-			}
-
-			const functionMatch = functionSignatureRegExp.exec(lines[j]);
-			if (functionMatch !== null) {
-				const functionUri = getScriptChildUri(namespaceFolderUri, `${functionMatch[2]}.msc`);
-				if (functionUri.fsPath === targetPath) {
-					contexts.push({
-						kind: 'function',
-						namespaceName,
-						functionSignature: functionMatch[2] + functionMatch[3]
-					});
-				}
-			}
-		}
-
-		i = namespaceEndLine;
-	}
-
-	return contexts;
 }
 
 async function resolveScriptImportContext(scriptUri: Uri): Promise<ScriptImportContext | null> {
@@ -405,8 +301,13 @@ async function resolveScriptImportContext(scriptUri: Uri): Promise<ScriptImportC
 	}
 
 	try {
-		const contents = (await workspace.fs.readFile(candidateDefinitionUris[0])).toString();
-		const importContexts = collectImportContextsFromNamespaceFile(candidateDefinitionUris[0], contents, scriptUri);
+		const definitionUri = candidateDefinitionUris[0];
+		const contents = (await workspace.fs.readFile(definitionUri)).toString();
+		const importContexts: ScriptImportContext[] = await client.sendRequest('Resolve import contexts', {
+			namespaceDefinitionPath: definitionUri.fsPath,
+			contents,
+			scriptPath: scriptUri.fsPath
+		});
 		const uniqueImportContexts = new Map<string, ScriptImportContext>();
 		for (const importContext of importContexts) {
 			uniqueImportContexts.set(getImportContextKey(importContext), importContext);
