@@ -69,7 +69,8 @@ import {
 	functionSignatureRegExp,
 	constructorSignatureRegExp,
 	variableSignatureRegExp,
-	parseDocument
+	parseDocument,
+	NameAndType
 } from './parser';
 import {
 	keywords,
@@ -473,11 +474,6 @@ function parseCallChain(line: string): string[] {
 			return [];
 	}
 	return [];
-}
-
-interface NameAndType {
-	name: string,
-	type: string
 }
 
 function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentData: SourceFileData,

@@ -47,8 +47,8 @@ export interface SourceFileData {
 	variables: Map<string, VariableInfo[]>
 	usingDeclarations: UsingDeclaration[]
 }
-export interface ImplicitVariable {
-	name: string
+export interface NameAndType {
+	name: string,
 	type: string
 }
 
@@ -356,7 +356,7 @@ function createVariableInfo(name: string, type: string, lineDeclared: number): V
 }
 
 // eslint-disable-next-line require-await
-export async function parseDocument(text: string, implicitVariables: ImplicitVariable[] = []): Promise<SourceFileData> {
+export async function parseDocument(text: string, implicitVariables: NameAndType[] = []): Promise<SourceFileData> {
 	const result: SourceFileData = 
 	{
 		variables: new Map(),
