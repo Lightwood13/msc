@@ -15,7 +15,7 @@ export interface VariableInfo {
 	suggestion: CompletionItem;
 }
 export interface DefinitionLocation {
-	uri: string | undefined
+	uri: string
 	line: number
 	character: number
 }
@@ -37,7 +37,7 @@ export interface NamespaceInfo {
 export interface ClassInfo extends NamespaceInfo {
 	className: string
 	namespaceName: string
-	definition: DefinitionLocation | undefined
+	definition: DefinitionLocation
 }
 export interface UsingDeclaration {
 	lineDeclared: number
@@ -65,7 +65,7 @@ const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)
 
 
 export function parseNamespaceFile(text: string, namespaceStorage: Map<string, NamespaceInfo>,
-	classStorage: Map<string, ClassInfo>, sourceUri?: string) {
+	classStorage: Map<string, ClassInfo>, sourceUri: string) {
 	const lines = text.split(newLineRegExp);
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
@@ -109,7 +109,7 @@ function getArrayClassDefinition(name: string): string[] {
 }
 
 function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>,
-	sourceUri: string | undefined, lineOffset: number): NamespaceInfo {
+	sourceUri: string, lineOffset: number): NamespaceInfo {
 	const result: NamespaceInfo = {
 		members: new Map(),
 		memberSignatures: new Map(),
@@ -152,7 +152,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 		if (name !== '__default__')
 			classNameWithNamespace = name + '::' + className;
 		const classDefinitionCharacter = lines[i].indexOf(className);
-		const classDefinition: DefinitionLocation | undefined = sourceUri === undefined ? undefined : {
+		const classDefinition: DefinitionLocation = {
 			uri: sourceUri,
 			line: lineOffset + i,
 			character: classDefinitionCharacter === -1 ? 0 : classDefinitionCharacter
@@ -184,7 +184,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 }
 
 function parseClass(name: string, lines: string[], sourceUri: string | undefined, lineOffset: number,
-	namespaceName: string, className: string, definition: DefinitionLocation | undefined): ClassInfo {
+	namespaceName: string, className: string, definition: DefinitionLocation): ClassInfo {
 	const result: ClassInfo = {
 		members: new Map(),
 		memberSignatures: new Map(),

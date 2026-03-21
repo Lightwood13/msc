@@ -59,6 +59,7 @@ import {
 	VariableInfo,
 	NamespaceInfo,
 	ClassInfo,
+	DefinitionLocation,
 	UsingDeclaration,
 	SourceFileData,
 	parseNamespaceFile,
@@ -131,7 +132,7 @@ const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
-let defaultNamespacesSourceUri: string | undefined = undefined;
+let defaultNamespacesSourceUri: string = '';
 
 function refreshNamespaceFiles() {
 	// search for .nms files in all subfolders
@@ -704,14 +705,14 @@ function createFileLocation(path: string): Location {
 	return createLocation(pathToFileURL(resolve(path)).toString(), 0, 0);
 }
 
-function getMemberDefinitionLocation(definition: ClassInfo['definition'] | undefined): Location | undefined {
-	if (definition === undefined || definition.uri === undefined)
+function getMemberDefinitionLocation(definition: DefinitionLocation | undefined): Location | undefined {
+	if (definition === undefined)
 		return undefined;
 	return createLocation(definition.uri, definition.line, definition.character);
 }
 
 function isBuiltInDefinition(definitionUri: string | undefined): boolean {
-	return definitionUri !== undefined && defaultNamespacesSourceUri !== undefined && definitionUri === defaultNamespacesSourceUri;
+	return definitionUri !== undefined && definitionUri === defaultNamespacesSourceUri;
 }
 
 async function getImplementationLocationForNamespaceFunction(namespaceName: string, functionName: string,
@@ -1061,7 +1062,7 @@ connection.onCompletion(
 
 interface DefaultNamespacesPayload {
 	text: string
-	sourceUri?: string
+	sourceUri: string
 }
 
 connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespacesPayload) => {
