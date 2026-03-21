@@ -140,7 +140,6 @@ function refreshNamespaceFiles() {
 	files('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
-		sourceFileData.clear();
 		namespaces.clear();
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 			namespaces.set(key, value);
