@@ -21,6 +21,7 @@ import {
 } from 'vscode-languageserver/node';
 
 import {
+	Position,
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import {
@@ -651,7 +652,7 @@ function getLineText(document: TextDocument, lineNumber: number): string {
 	}).trimEnd();
 }
 
-function getResolvedNameAndTypeAtPosition(document: TextDocument, position: TextDocumentPositionParams['position'],
+function getResolvedNameAndTypeAtPosition(document: TextDocument, position: Position,
 	documentData: SourceFileData, activeNamespace: string | undefined): NameAndType | undefined {
 	const line = getLineText(document, position.line);
 	let i = position.character;
