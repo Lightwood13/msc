@@ -151,11 +151,10 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 		let classNameWithNamespace = className;
 		if (name !== '__default__')
 			classNameWithNamespace = name + '::' + className;
-		const classDefinitionCharacter = lines[i].indexOf(className);
 		const classDefinition: DefinitionLocation = {
 			uri: sourceUri,
 			line: lineOffset + i,
-			character: classDefinitionCharacter === -1 ? 0 : classDefinitionCharacter
+			character: lines[i].indexOf(className)
 		};
 		classStorage.set(classNameWithNamespace, parseClass(classNameWithNamespace, lines.slice(i + 1, j),
 			sourceUri, lineOffset + i + 1, name, className, classDefinition));
@@ -248,12 +247,11 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 				command: 'editor.action.triggerParameterHints'
 			}
 		};
-		const functionDefinitionCharacter = lines[line].indexOf(functionRegExpRes[2]);
 		if (sourceUri !== undefined)
 			result.definition = {
 				uri: sourceUri,
 				line: lineOffset + line,
-				character: functionDefinitionCharacter === -1 ? 0 : functionDefinitionCharacter
+				character: lines[line].indexOf(functionRegExpRes[2])
 			};
 		if (result.suggestion.detail !== undefined)
 			result.signature = {
@@ -267,12 +265,11 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		result.returnType = constructorRegExpRes[1];
 		result.suggestion = undefined;
 		const temp = lines[line].replace(constructorSignatureRegExp, '$1$2');
-		const constructorDefinitionCharacter = lines[line].indexOf(constructorRegExpRes[1]);
 		if (sourceUri !== undefined)
 			result.definition = {
 				uri: sourceUri,
 				line: lineOffset + line,
-				character: constructorDefinitionCharacter === -1 ? 0 : constructorDefinitionCharacter
+				character: lines[line].indexOf(constructorRegExpRes[1])
 			};
 		result.signature = {
 			label: temp,
@@ -291,12 +288,11 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 					+ ((variableRegExpRes[2] !== undefined || variableRegExpRes[4] !== undefined) ? 'relative ' : '')
 					+ '$4 ' + namePrefix + '$5')
 			};
-		const variableDefinitionCharacter = lines[line].indexOf(variableRegExpRes[6]);
 		if (sourceUri !== undefined)
 			result.definition = {
 				uri: sourceUri,
 				line: lineOffset + line,
-				character: variableDefinitionCharacter === -1 ? 0 : variableDefinitionCharacter
+				character: lines[line].indexOf(variableRegExpRes[6])
 			};
 	}
 
