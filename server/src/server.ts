@@ -133,6 +133,7 @@ const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
+const implicitThisTypeCache: Map<string, string | undefined> = new Map();
 let defaultNamespacesSourceUri: string = '';
 
 function refreshNamespaceFiles() {
@@ -141,6 +142,7 @@ function refreshNamespaceFiles() {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
 		namespaces.clear();
+		implicitThisTypeCache.clear();
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 			namespaces.set(key, value);
 		});
@@ -250,6 +252,15 @@ function collectImplicitThisType(namespaceDefinitionPath: string, text: string, 
 }
 
 async function resolveImplicitThisType(documentUri: string): Promise<string | undefined> {
+	if (implicitThisTypeCache.has(documentUri))
+		return implicitThisTypeCache.get(documentUri);
+
+	const result = await computeImplicitThisType(documentUri);
+	implicitThisTypeCache.set(documentUri, result);
+	return result;
+}
+
+async function computeImplicitThisType(documentUri: string): Promise<string | undefined> {
 	let targetPath: string;
 	try {
 		targetPath = normalize(fileURLToPath(documentUri));
@@ -265,21 +276,17 @@ async function resolveImplicitThisType(documentUri: string): Promise<string | un
 	const directNamespaceName = basename(scriptDirectoryPath);
 	const directNamespaceDefinitionPath = join(dirname(scriptDirectoryPath), `${directNamespaceName}.nms`);
 
+	// if the file is directly inside a namespace folder, it's a namespace function — no implicit this
+	if (await fileExists(directNamespaceDefinitionPath))
+		return undefined;
+
 	const enclosingNamespaceDirectoryPath = dirname(scriptDirectoryPath);
 	const nestedNamespaceName = basename(enclosingNamespaceDirectoryPath);
 	const nestedNamespaceDefinitionPath = join(dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`);
 
-	const candidateDefinitionPaths: string[] = [];
-	if (await fileExists(directNamespaceDefinitionPath))
-		candidateDefinitionPaths.push(directNamespaceDefinitionPath);
-	if (nestedNamespaceDefinitionPath !== directNamespaceDefinitionPath && await fileExists(nestedNamespaceDefinitionPath))
-		candidateDefinitionPaths.push(nestedNamespaceDefinitionPath);
-	if (candidateDefinitionPaths.length !== 1)
-		return undefined;
-
 	try {
-		const text = await readFileAsync(candidateDefinitionPaths[0], 'utf8');
-		return collectImplicitThisType(candidateDefinitionPaths[0], text, targetPath);
+		const text = await readFileAsync(nestedNamespaceDefinitionPath, 'utf8');
+		return collectImplicitThisType(nestedNamespaceDefinitionPath, text, targetPath);
 	} catch (_err) {
 		return undefined;
 	}
