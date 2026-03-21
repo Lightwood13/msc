@@ -838,35 +838,16 @@ export function activate(context: ExtensionContext) {
 	// start the client, also launching the server
 	client.start();
 
-	// when the client is ready, get the default namespace from github
+	// when the client is ready, load default namespaces from extension resources
 	client.onReady().then(() => {
 		client.onNotification('getDefaultNamespaces', () => {
 			const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
-			axios({
-				httpsAgent: new https.Agent({
-					rejectUnauthorized: false
-				}),
-				url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
-				method: 'GET',
-			})
-				// success: send notification to server to start processing received default namespaces
-				.then(data => {
-					console.log('Successfully fetched default namespaces file from GitHub');
-					client.sendNotification('processDefaultNamespaces', {
-						text: data.data,
-						sourceUri: defaultNamespacesUri.toString()
-					});
-				})
-				// if this fails, get default namespaces from extension resources and send it to server for processing
-				.catch(_err => {
-					console.log('Couldn\'t connect to GitHub');
-					workspace.fs.readFile(defaultNamespacesUri).then((result) => {
-						client.sendNotification('processDefaultNamespaces', {
-							text: result.toString(),
-							sourceUri: defaultNamespacesUri.toString()
-						});
-					});
+			workspace.fs.readFile(defaultNamespacesUri).then((result) => {
+				client.sendNotification('processDefaultNamespaces', {
+					text: result.toString(),
+					sourceUri: defaultNamespacesUri.toString()
 				});
+			});
 		});
 
 		// the logic behind uploading namespaces
