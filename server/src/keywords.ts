@@ -614,6 +614,151 @@ export const minecraftCommands: CompletionItem[] =
 				"kind": "plaintext",
 				"value": "/title <player> <clear|reset>"
 			}
+		},
+		{
+			"label": "attribute",
+			"detail": "Queries, adds, removes or sets an entity attribute",
+			"kind": CompletionItemKind.Text,
+			"filterText": "attribute",
+			"insertText": "attribute "
+		},
+		{
+			"label": "bossbar",
+			"detail": "Creates and modifies bossbars",
+			"kind": CompletionItemKind.Text,
+			"filterText": "bossbar",
+			"insertText": "bossbar "
+		},
+		{
+			"label": "damage",
+			"detail": "Applies damage to the specified entities",
+			"kind": CompletionItemKind.Text,
+			"filterText": "damage",
+			"insertText": "damage "
+		},
+		{
+			"label": "data",
+			"detail": "Gets, merges, modifies, and removes NBT data",
+			"kind": CompletionItemKind.Text,
+			"filterText": "data nbt",
+			"insertText": "data "
+		},
+		{
+			"label": "dialog",
+			"detail": "Shows dialog to clients",
+			"kind": CompletionItemKind.Text,
+			"filterText": "dialog",
+			"insertText": "dialog "
+		},
+		{
+			"label": "execute",
+			"detail": "Executes another command",
+			"kind": CompletionItemKind.Text,
+			"filterText": "execute",
+			"insertText": "execute "
+		},
+		{
+			"label": "fillbiome",
+			"detail": "Fills a region with a specific biome",
+			"kind": CompletionItemKind.Text,
+			"filterText": "fillbiome biome",
+			"insertText": "fillbiome "
+		},
+		{
+			"label": "forceload",
+			"detail": "Forces chunks to be loaded or not",
+			"kind": CompletionItemKind.Text,
+			"filterText": "forceload chunk",
+			"insertText": "forceload "
+		},
+		{
+			"label": "kill",
+			"detail": "Kills entities",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "kill",
+			"insertText": `kill \${1|${entitySelectors}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/kill <entity>"
+			}
+		},
+		{
+			"label": "loot",
+			"detail": "Drops items from an inventory slot",
+			"kind": CompletionItemKind.Text,
+			"filterText": "loot",
+			"insertText": "loot "
+		},
+		{
+			"label": "place",
+			"detail": "Places a feature, structure, or template",
+			"kind": CompletionItemKind.Text,
+			"filterText": "place",
+			"insertText": "place "
+		},
+		{
+			"label": "recipe",
+			"detail": "Gives or takes player recipes",
+			"kind": CompletionItemKind.Text,
+			"filterText": "recipe",
+			"insertText": "recipe "
+		},
+		{
+			"label": "ride",
+			"detail": "Makes entities ride other entities",
+			"kind": CompletionItemKind.Text,
+			"filterText": "ride mount",
+			"insertText": "ride "
+		},
+		{
+			"label": "rotate",
+			"detail": "Changes entity rotation",
+			"kind": CompletionItemKind.Text,
+			"filterText": "rotate",
+			"insertText": "rotate "
+		},
+		{
+			"label": "spreadplayers",
+			"detail": "Teleports entities randomly",
+			"kind": CompletionItemKind.Text,
+			"filterText": "spreadplayers",
+			"insertText": "spreadplayers "
+		},
+		{
+			"label": "stopsound",
+			"detail": "Stops a sound",
+			"kind": CompletionItemKind.Text,
+			"filterText": "stopsound",
+			"insertText": "stopsound "
+		},
+		{
+			"label": "swing",
+			"detail": "Swings the hands of an entity",
+			"kind": CompletionItemKind.Text,
+			"filterText": "swing",
+			"insertText": "swing "
+		},
+		{
+			"label": "team",
+			"detail": "Controls teams",
+			"kind": CompletionItemKind.Text,
+			"filterText": "team",
+			"insertText": "team "
+		},
+		{
+			"label": "trigger",
+			"detail": "Sets a trigger",
+			"kind": CompletionItemKind.Text,
+			"filterText": "trigger",
+			"insertText": "trigger "
+		},
+		{
+			"label": "waypoint",
+			"detail": "Manages waypoints",
+			"kind": CompletionItemKind.Text,
+			"filterText": "waypoint",
+			"insertText": "waypoint "
 		}
 	];
 
