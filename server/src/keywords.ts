@@ -210,11 +210,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Changes default namespace",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "using namespace",
-			"insertText": "@using ${1:namespace}",
+			"insertText": "@using ",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@using namespace"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
