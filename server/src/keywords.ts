@@ -5,6 +5,7 @@ import {
 	InsertTextFormat
 } from 'vscode-languageserver/node';
 
+// data is taken from https://github.com/misode/mcmeta/blob/registries
 import * as minecraftBlockData from './data/minecraftBlocks.json';
 import * as minecraftItemData from './data/minecraftItems.json';
 
