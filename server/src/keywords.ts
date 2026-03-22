@@ -138,11 +138,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "bypass command",
-			"insertText": "@bypass /${1:command}",
+			"insertText": "@bypass /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@bypass /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -150,11 +154,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command as the player",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "command",
-			"insertText": "@command /${1:command}",
+			"insertText": "@command /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@command /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -162,11 +170,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command as the console",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "console command",
-			"insertText": "@console /${1:command}",
+			"insertText": "@console /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@console /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
