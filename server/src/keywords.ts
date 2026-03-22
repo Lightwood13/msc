@@ -5,8 +5,11 @@ import {
 	InsertTextFormat
 } from 'vscode-languageserver/node';
 
+// data is taken from https://github.com/misode/mcmeta/blob/registries
 import * as minecraftBlockData from './data/minecraftBlocks.json';
 import * as minecraftItemData from './data/minecraftItems.json';
+import * as minecraftEntityData from './data/minecraftEntities.json';
+import * as minecraftEffectData from './data/minecraftEffects.json';
 
 export const keywords: CompletionItem[] =
 	[
@@ -135,11 +138,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "bypass command",
-			"insertText": "@bypass /${1:command}",
+			"insertText": "@bypass /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@bypass /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -147,11 +154,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command as the player",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "command",
-			"insertText": "@command /${1:command}",
+			"insertText": "@command /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@command /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -159,11 +170,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Run a command as the console",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "console command",
-			"insertText": "@console /${1:command}",
+			"insertText": "@console /",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@console /command"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -195,11 +210,15 @@ export const keywords: CompletionItem[] =
 			"detail": "Changes default namespace",
 			"kind": CompletionItemKind.Snippet,
 			"filterText": "using namespace",
-			"insertText": "@using ${1:namespace}",
+			"insertText": "@using ",
 			"insertTextFormat": InsertTextFormat.Snippet,
 			"documentation": {
 				"kind": "plaintext",
 				"value": "@using namespace"
+			},
+			"command": {
+				"title": "Trigger Suggest",
+				"command": "editor.action.triggerSuggest"
 			}
 		},
 		{
@@ -239,7 +258,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "return",
-			"detail": "Ends execution, optionally returning a  value",
+			"detail": "Ends execution, optionally returning a value",
 			"kind": CompletionItemKind.Keyword,
 			"filterText": "return",
 			"insertText": "@return "
@@ -267,10 +286,12 @@ export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion
 })
 );
 
-const entitySelectors = "{{player}},@s,@p,@a,@e";
-const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end";
+const entitySelectors = "{{player}},@s,@p,@a,@e,@n";
+const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end,epsilon,epsilon_nether,epsilon_the_end";
 const allMinecraftBlocks = minecraftBlockData.join(',');
 const allMinecraftItems = minecraftItemData.join(',');
+const allMinecraftEntities = minecraftEntityData.join(',');
+const allMinecraftEffects = minecraftEffectData.join(',');
 
 export const minecraftCommands: CompletionItem[] =
 	[
@@ -333,6 +354,415 @@ export const minecraftCommands: CompletionItem[] =
 				"kind": "plaintext",
 				"value": "/execute in <worldname> run teleport <entity> <coordinates> <pitch> <yaw>"
 			}
+		},
+		{
+			"label": "clear",
+			"detail": "Clears all items from a player's inventory",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "clear",
+			"insertText": `clear \${1|${entitySelectors}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/clear <player>"
+			}
+		},
+		{
+			"label": "clear item",
+			"detail": "Clears a specific item from a player's inventory",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "clear item",
+			"insertText": `clear \${1|${entitySelectors}|} minecraft:\${2|${allMinecraftItems}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/clear <player> <item>"
+			}
+		},
+		{
+			"label": "effect give",
+			"detail": "Gives a status effect to an entity",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "effect give",
+			"insertText": `effect give \${1|${entitySelectors}|} minecraft:\${2|${allMinecraftEffects}|} \${3:duration} \${4:amplifier}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/effect give <entity> <effect> <duration> <amplifier>"
+			}
+		},
+		{
+			"label": "effect clear",
+			"detail": "Clears status effects from an entity",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "effect clear",
+			"insertText": `effect clear \${1|${entitySelectors}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/effect clear <entity>"
+			}
+		},
+		{
+			"label": "summon",
+			"detail": "Summons an entity",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "summon",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run summon minecraft:\${2|${allMinecraftEntities}|} \${3:x} \${4:y} \${5:z}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/execute in <worldname> run summon <entity> <coordinates>"
+			}
+		},
+		{
+			"label": "clone",
+			"detail": "Clones a region of blocks",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "clone",
+			"insertText": `execute in minecraft:\${1|${worldNames}|} run clone \${2:srcX1} \${3:srcY1} \${4:srcZ1} \${5:srcX2} \${6:srcY2} \${7:srcZ2} \${8:destX} \${9:destY} \${10:destZ} \${11|replace,masked,filtered|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/execute in <worldname> run clone <src1> <src2> <dest> [replace|masked|filtered]"
+			}
+		},
+		{
+			"label": "enchant",
+			"detail": "Enchants an entity's held item",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "enchant",
+			"insertText": `enchant \${1|${entitySelectors}|} minecraft:\${2:enchantment} \${3:level}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/enchant <entity> <enchantment> [level]"
+			}
+		},
+		{
+			"label": "experience add",
+			"detail": "Adds experience to a player",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "experience xp add",
+			"insertText": `experience add \${1|${entitySelectors}|} \${2:amount} \${3|points,levels|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/experience add <player> <amount> <points|levels>"
+			}
+		},
+		{
+			"label": "experience set",
+			"detail": "Sets a player's experience",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "experience xp set",
+			"insertText": `experience set \${1|${entitySelectors}|} \${2:amount} \${3|points,levels|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/experience set <player> <amount> <points|levels>"
+			}
+		},
+		{
+			"label": "item replace entity",
+			"detail": "Replaces an item in an entity's slot",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "item replace entity",
+			"insertText": `item replace entity \${1|${entitySelectors}|} \${2:slot} with minecraft:\${3|${allMinecraftItems}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/item replace entity <entity> <slot> with <item>"
+			}
+		},
+		{
+			"label": "item replace block",
+			"detail": "Replaces an item in a block's slot",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "item replace block",
+			"insertText": `item replace block \${1:x} \${2:y} \${3:z} \${4:slot} with minecraft:\${5|${allMinecraftItems}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/item replace block <coordinates> <slot> with <item>"
+			}
+		},
+		{
+			"label": "particle",
+			"detail": "Creates particles",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "particle",
+			"insertText": `particle minecraft:\${1:particle} \${2:x} \${3:y} \${4:z} \${5:dx} \${6:dy} \${7:dz} \${8:speed} \${9:count} \${10|force,normal|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/particle <particle> <coordinates> <delta> <speed> <count> [force|normal]"
+			}
+		},
+		{
+			"label": "playsound",
+			"detail": "Plays a sound",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "playsound sound",
+			"insertText": `playsound minecraft:\${1:sound} \${2|master,ambient,block,hostile,music,neutral,player,record,voice,weather|} \${3|${entitySelectors}|} \${4:x} \${5:y} \${6:z} \${7:volume} \${8:pitch}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/playsound <sound> <category> <player> <coordinates> <volume> <pitch>"
+			}
+		},
+		{
+			"label": "scoreboard objectives add",
+			"detail": "Adds a scoreboard objective",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "scoreboard objectives add",
+			"insertText": "scoreboard objectives add ${1:name} ${2:criteria}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/scoreboard objectives add <name> <criteria>"
+			}
+		},
+		{
+			"label": "scoreboard objectives remove",
+			"detail": "Removes a scoreboard objective",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "scoreboard objectives remove",
+			"insertText": "scoreboard objectives remove ${1:name}",
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/scoreboard objectives remove <name>"
+			}
+		},
+		{
+			"label": "scoreboard players set",
+			"detail": "Sets a player's score",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "scoreboard players set",
+			"insertText": `scoreboard players set \${1|${entitySelectors}|} \${2:objective} \${3:score}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/scoreboard players set <entity> <objective> <score>"
+			}
+		},
+		{
+			"label": "scoreboard players add",
+			"detail": "Adds to a player's score",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "scoreboard players add",
+			"insertText": `scoreboard players add \${1|${entitySelectors}|} \${2:objective} \${3:count}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/scoreboard players add <entity> <objective> <count>"
+			}
+		},
+		{
+			"label": "scoreboard players reset",
+			"detail": "Resets a player's score",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "scoreboard players reset",
+			"insertText": `scoreboard players reset \${1|${entitySelectors}|} \${2:objective}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/scoreboard players reset <entity> [objective]"
+			}
+		},
+		{
+			"label": "tellraw",
+			"detail": "Sends a JSON text message to a player",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "tellraw",
+			"insertText": `tellraw \${1|${entitySelectors}|} \${2:json}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/tellraw <player> <json>"
+			}
+		},
+		{
+			"label": "title",
+			"detail": "Displays a title to a player",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "title",
+			"insertText": `title \${1|${entitySelectors}|} \${2|title,subtitle,actionbar|} \${3:json}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/title <player> <title|subtitle|actionbar> <json>"
+			}
+		},
+		{
+			"label": "title times",
+			"detail": "Sets title fade-in/stay/fade-out times",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "title times",
+			"insertText": `title \${1|${entitySelectors}|} times \${2:fadeIn} \${3:stay} \${4:fadeOut}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/title <player> times <fadeIn> <stay> <fadeOut>"
+			}
+		},
+		{
+			"label": "title clear",
+			"detail": "Clears the title from a player's screen",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "title clear",
+			"insertText": `title \${1|${entitySelectors}|} \${2|clear,reset|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/title <player> <clear|reset>"
+			}
+		},
+		{
+			"label": "attribute",
+			"detail": "Queries, adds, removes or sets an entity attribute",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "attribute",
+			"insertText": "attribute "
+		},
+		{
+			"label": "bossbar",
+			"detail": "Creates and modifies bossbars",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "bossbar",
+			"insertText": "bossbar "
+		},
+		{
+			"label": "damage",
+			"detail": "Applies damage to the specified entities",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "damage",
+			"insertText": "damage "
+		},
+		{
+			"label": "data",
+			"detail": "Gets, merges, modifies, and removes NBT data",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "data nbt",
+			"insertText": "data "
+		},
+		{
+			"label": "dialog",
+			"detail": "Shows dialog to clients",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "dialog",
+			"insertText": "dialog "
+		},
+		{
+			"label": "execute",
+			"detail": "Executes another command",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "execute",
+			"insertText": "execute "
+		},
+		{
+			"label": "fillbiome",
+			"detail": "Fills a region with a specific biome",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "fillbiome biome",
+			"insertText": "fillbiome "
+		},
+		{
+			"label": "forceload",
+			"detail": "Forces chunks to be loaded or not",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "forceload chunk",
+			"insertText": "forceload "
+		},
+		{
+			"label": "kill",
+			"detail": "Kills entities",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "kill",
+			"insertText": `kill \${1|${entitySelectors}|}`,
+			"insertTextFormat": InsertTextFormat.Snippet,
+			"documentation": {
+				"kind": "plaintext",
+				"value": "/kill <entity>"
+			}
+		},
+		{
+			"label": "loot",
+			"detail": "Drops items from an inventory slot",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "loot",
+			"insertText": "loot "
+		},
+		{
+			"label": "place",
+			"detail": "Places a feature, structure, or template",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "place",
+			"insertText": "place "
+		},
+		{
+			"label": "recipe",
+			"detail": "Gives or takes player recipes",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "recipe",
+			"insertText": "recipe "
+		},
+		{
+			"label": "ride",
+			"detail": "Makes entities ride other entities",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "ride mount",
+			"insertText": "ride "
+		},
+		{
+			"label": "rotate",
+			"detail": "Changes entity rotation",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "rotate",
+			"insertText": "rotate "
+		},
+		{
+			"label": "spreadplayers",
+			"detail": "Teleports entities randomly",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "spreadplayers",
+			"insertText": "spreadplayers "
+		},
+		{
+			"label": "stopsound",
+			"detail": "Stops a sound",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "stopsound",
+			"insertText": "stopsound "
+		},
+		{
+			"label": "swing",
+			"detail": "Swings the hands of an entity",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "swing",
+			"insertText": "swing "
+		},
+		{
+			"label": "team",
+			"detail": "Controls teams",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "team",
+			"insertText": "team "
+		},
+		{
+			"label": "trigger",
+			"detail": "Sets a trigger",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "trigger",
+			"insertText": "trigger "
+		},
+		{
+			"label": "waypoint",
+			"detail": "Manages waypoints",
+			"kind": CompletionItemKind.Snippet,
+			"filterText": "waypoint",
+			"insertText": "waypoint "
 		}
 	];
 

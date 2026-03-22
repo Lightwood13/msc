@@ -990,6 +990,19 @@ connection.onCompletion(
 				character: textDocumentPosition.position.character
 			}
 		});
+		const usingSuggestionRegExp = /^\s*@using\s+[a-zA-Z0-9_]*$/;
+		if (usingSuggestionRegExp.test(line)) {
+			const result: CompletionItem[] = [];
+			for (const [namespaceName, _namespaceInfo] of namespaces) {
+				if (namespaceName !== '__default__') {
+					result.push({
+						label: namespaceName,
+						kind: CompletionItemKind.Module
+					});
+				}
+			}
+			return result;
+		}
 		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
 		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`);
 		const commandSuggestionRegExpRes = commandSuggestionRegExp.exec(line);
