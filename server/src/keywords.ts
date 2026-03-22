@@ -8,6 +8,7 @@ import {
 // data is taken from https://github.com/misode/mcmeta/blob/registries
 import * as minecraftBlockData from './data/minecraftBlocks.json';
 import * as minecraftItemData from './data/minecraftItems.json';
+import * as minecraftEffectData from './data/minecraftEffects.json';
 
 export const keywords: CompletionItem[] =
 	[
@@ -272,6 +273,7 @@ const entitySelectors = "{{player}},@s,@p,@a,@e,@n";
 const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end,epsilon,epsilon_nether,epsilon_the_end";
 const allMinecraftBlocks = minecraftBlockData.join(',');
 const allMinecraftItems = minecraftItemData.join(',');
+const allMinecraftEffects = minecraftEffectData.join(',');
 
 export const minecraftCommands: CompletionItem[] =
 	[
