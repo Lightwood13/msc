@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr Scripts VS Code extension",
-	"version": "3.0.2",
+	"version": "3.1.0",
 	"icon": "images/minr.png",
 	"repository": {
 		"type": "git",
@@ -17,6 +17,7 @@
 	},
 	"activationEvents": [
 		"onCommand:msc.upload",
+		"onCommand:msc.copyImportLink",
 		"onCommand:msc.download",
 		"onLanguage:msc",
 		"onLanguage:nms"
@@ -60,15 +61,23 @@
 		"commands": [
 			{
 				"command": "msc.upload",
-				"title": "Upload script"
+				"title": "Upload script",
+				"category": "MSC"
+			},
+			{
+				"command": "msc.copyImportLink",
+				"title": "Copy import link",
+				"category": "MSC"
 			},
 			{
 				"command": "msc.update_nms",
-				"title": "Update namespace"
+				"title": "Update namespace",
+				"category": "MSC"
 			},
 			{
 				"command": "msc.download",
-				"title": "Download script"
+				"title": "Download script",
+				"category": "MSC"
 			}
 		],
 		"keybindings": [

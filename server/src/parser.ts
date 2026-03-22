@@ -14,19 +14,31 @@ export interface VariableInfo {
 	lineUndeclared: number | undefined
 	suggestion: CompletionItem;
 }
+export interface DefinitionLocation {
+	uri: string
+	line: number
+	character: number
+}
+export type MemberKind = 'variable' | 'function' | 'constructor';
 export interface MemberInfo {
 	name: string
+	kind: MemberKind
 	returnType: string
 	documentation: string | undefined
 	suggestion: CompletionItem | undefined
 	signature: SignatureInformation | undefined
+	definition: DefinitionLocation | undefined
 }
 export interface NamespaceInfo {
 	members: Map<string, MemberInfo>
 	memberSignatures: Map<string, SignatureInformation[] | undefined>
 	memberSuggestions: CompletionItem[]
 }
-export type ClassInfo = NamespaceInfo;
+export interface ClassInfo extends NamespaceInfo {
+	className: string
+	namespaceName: string
+	definition: DefinitionLocation
+}
 export interface UsingDeclaration {
 	lineDeclared: number
 	namespace: string
@@ -34,6 +46,10 @@ export interface UsingDeclaration {
 export interface SourceFileData {
 	variables: Map<string, VariableInfo[]>
 	usingDeclarations: UsingDeclaration[]
+}
+export interface NameAndType {
+	name: string,
+	type: string
 }
 
 export const newLineRegExp = /\r?\n/;
@@ -49,7 +65,7 @@ const firstLineCommentRegExp = /^\s*#(?:.*\()?(\s*,?\s*([a-zA-Z][a-zA-Z0-9_]*::)
 
 
 export function parseNamespaceFile(text: string, namespaceStorage: Map<string, NamespaceInfo>,
-	classStorage: Map<string, ClassInfo>) {
+	classStorage: Map<string, ClassInfo>, sourceUri: string) {
 	const lines = text.split(newLineRegExp);
 	for (let i = 0; i < lines.length; i++) {
 		const regExpRes = namespaceSignatureRegExp.exec(lines[i]);
@@ -62,7 +78,7 @@ export function parseNamespaceFile(text: string, namespaceStorage: Map<string, N
 		}
 		if (j === lines.length)
 			break;
-		namespaceStorage.set(regExpRes[1], parseNamespace(regExpRes[1], lines.slice(i + 1, j), classStorage));
+		namespaceStorage.set(regExpRes[1], parseNamespace(regExpRes[1], lines.slice(i + 1, j), classStorage, sourceUri, i + 1));
 		i = j;
 	}
 }
@@ -92,7 +108,8 @@ function getArrayClassDefinition(name: string): string[] {
 	return result;
 }
 
-function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>): NamespaceInfo {
+function parseNamespace(name: string, lines: string[], classStorage: Map<string, ClassInfo>,
+	sourceUri: string, lineOffset: number): NamespaceInfo {
 	const result: NamespaceInfo = {
 		members: new Map(),
 		memberSignatures: new Map(),
@@ -101,7 +118,7 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 	for (let i = 0; i < lines.length; i++) {
 		const classRegExpRes = classSignatureRegExp.exec(lines[i]);
 		if (classRegExpRes === null) {
-			const newMember = parseVariableOrFunctionAtLine(name + '::', lines, i);
+			const newMember = parseVariableOrFunctionAtLine(name + '::', lines, i, sourceUri, lineOffset);
 			if (newMember === null)
 				continue;
 
@@ -134,8 +151,15 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 		let classNameWithNamespace = className;
 		if (name !== '__default__')
 			classNameWithNamespace = name + '::' + className;
-		classStorage.set(classNameWithNamespace, parseClass(classNameWithNamespace, lines.slice(i + 1, j)));
-		classStorage.set(classNameWithNamespace + '[]', parseClass(classNameWithNamespace + '[]', getArrayClassDefinition(classNameWithNamespace)));
+		const classDefinition: DefinitionLocation = {
+			uri: sourceUri,
+			line: lineOffset + i,
+			character: lines[i].indexOf(className)
+		};
+		classStorage.set(classNameWithNamespace, parseClass(classNameWithNamespace, lines.slice(i + 1, j),
+			sourceUri, lineOffset + i + 1, name, className, classDefinition));
+		classStorage.set(classNameWithNamespace + '[]', parseClass(classNameWithNamespace + '[]',
+			getArrayClassDefinition(classNameWithNamespace), undefined, 0, name, className + '[]', classDefinition));
 		i = j;
 		const newClass: CompletionItem = {
 			label: className,
@@ -158,14 +182,18 @@ function parseNamespace(name: string, lines: string[], classStorage: Map<string,
 	return result;
 }
 
-function parseClass(name: string, lines: string[]): ClassInfo {
+function parseClass(classNameWithNamespace: string, lines: string[], sourceUri: string | undefined, lineOffset: number,
+	namespaceName: string, className: string, definition: DefinitionLocation): ClassInfo {
 	const result: ClassInfo = {
 		members: new Map(),
 		memberSignatures: new Map(),
-		memberSuggestions: []
+		memberSuggestions: [],
+		className: className,
+		namespaceName: namespaceName,
+		definition: definition
 	};
 	for (let i = 0; i < lines.length; i++) {
-		const newMember = parseVariableOrFunctionAtLine(name + '.', lines, i);
+		const newMember = parseVariableOrFunctionAtLine(classNameWithNamespace + '.', lines, i, sourceUri, lineOffset);
 		if (newMember !== null) {
 			result.members.set(newMember.name, newMember);
 			if (newMember.suggestion !== undefined)
@@ -183,7 +211,8 @@ function parseClass(name: string, lines: string[]): ClassInfo {
 	return result;
 }
 
-function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line: number): MemberInfo | null {
+function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line: number,
+	sourceUri: string | undefined, lineOffset: number): MemberInfo | null {
 	const functionRegExpRes = functionSignatureRegExp.exec(lines[line]);
 	const constructorRegExpRes = constructorSignatureRegExp.exec(lines[line]);
 	const variableRegExpRes = variableSignatureRegExp.exec(lines[line]);
@@ -194,15 +223,18 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 	const result: MemberInfo = {
 		returnType: '',
 		name: '',
+		kind: 'variable',
 		suggestion:  {
 			label: 'label'
 		},
 		signature: undefined,
-		documentation: undefined
+		documentation: undefined,
+		definition: undefined
 	};
 
 	if (functionRegExpRes !== null) {
 		result.name = functionRegExpRes[2] + '()';
+		result.kind = 'function';
 		result.returnType = functionRegExpRes[1];
 		result.suggestion = {
 			label: functionRegExpRes[2],
@@ -215,6 +247,12 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 				command: 'editor.action.triggerParameterHints'
 			}
 		};
+		if (sourceUri !== undefined)
+			result.definition = {
+				uri: sourceUri,
+				line: lineOffset + line,
+				character: lines[line].indexOf(functionRegExpRes[2])
+			};
 		if (result.suggestion.detail !== undefined)
 			result.signature = {
 				label: result.suggestion.detail,
@@ -223,9 +261,16 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 	}
 	else if (constructorRegExpRes !== null) {
 		result.name = constructorRegExpRes[1] + '()';
+		result.kind = 'constructor';
 		result.returnType = constructorRegExpRes[1];
 		result.suggestion = undefined;
 		const temp = lines[line].replace(constructorSignatureRegExp, '$1$2');
+		if (sourceUri !== undefined)
+			result.definition = {
+				uri: sourceUri,
+				line: lineOffset + line,
+				character: lines[line].indexOf(constructorRegExpRes[1])
+			};
 		result.signature = {
 			label: temp,
 			parameters: getParamsFromSignature(temp)
@@ -233,15 +278,22 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 	}
 	else if (variableRegExpRes !== null) {
 		result.name = variableRegExpRes[6];
+		result.kind = 'variable';
 		result.returnType = variableRegExpRes[5];
 		result.suggestion = {
 			label: variableRegExpRes[6],
 			kind: CompletionItemKind.Variable,
 			detail: lines[line].replace(variableSignatureRegExp,
 				((variableRegExpRes[3] !== undefined) ? 'final ' : '')
-				+ ((variableRegExpRes[2] !== undefined || variableRegExpRes[4] !== undefined) ? 'relative ' : '')
-				+ '$4 ' + namePrefix + '$5')
-		};
+					+ ((variableRegExpRes[2] !== undefined || variableRegExpRes[4] !== undefined) ? 'relative ' : '')
+					+ '$4 ' + namePrefix + '$5')
+			};
+		if (sourceUri !== undefined)
+			result.definition = {
+				uri: sourceUri,
+				line: lineOffset + line,
+				character: lines[line].indexOf(variableRegExpRes[6])
+			};
 	}
 
 	if (result.returnType === undefined)
@@ -289,36 +341,37 @@ function getParamsFromSignature(signature: string): ParameterInformation[] {
 	return result;
 }
 
+function createVariableInfo(name: string, type: string, lineDeclared: number): VariableInfo {
+	return {
+		name: name,
+		lineDeclared: lineDeclared,
+		lineUndeclared: undefined,
+		type: type,
+		suggestion: {
+			label: name,
+			kind: CompletionItemKind.Variable,
+			detail: type + ' ' + name
+		}
+	};
+}
+
 // eslint-disable-next-line require-await
-export async function parseDocument(text: string): Promise<SourceFileData> {
+export async function parseDocument(text: string, implicitVariables: NameAndType[] = []): Promise<SourceFileData> {
 	const result: SourceFileData = 
 	{
 		variables: new Map(),
 		usingDeclarations: [],
 	};
 
-	result.variables.set('player', [{
-		name: 'player',
-		lineDeclared: -1,
-		lineUndeclared: undefined,
-		type: 'Player',
-		suggestion: {
-			label: 'player',
-			kind: CompletionItemKind.Variable,
-			detail: 'Player player'
-		}
-	}]);
-	result.variables.set('block', [{
-		name: 'block',
-		lineDeclared: -1,
-		lineUndeclared: undefined,
-		type: 'Block',
-		suggestion: {
-			label: 'block',
-			kind: CompletionItemKind.Variable,
-			detail: 'Block block'
-		}
-	}]);
+	result.variables.set('player', [createVariableInfo('player', 'Player', -1)]);
+	result.variables.set('block', [createVariableInfo('block', 'Block', -1)]);
+	for (const variable of implicitVariables) {
+		let sameNameVariables = result.variables.get(variable.name);
+		if (sameNameVariables === undefined)
+			sameNameVariables = [];
+		sameNameVariables.push(createVariableInfo(variable.name, variable.type, -1));
+		result.variables.set(variable.name, sameNameVariables);
+	}
 
 	const lines = text.split(newLineRegExp);
 	if (lines.length !== 0 && firstLineCommentRegExp.test(lines[0])) {
@@ -332,17 +385,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			const regExpRes = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/.exec(param);
 			if (regExpRes === null)
 				continue;
-			result.variables.set(regExpRes[2], [{
-				name: regExpRes[2],
-				lineDeclared: 0,
-				lineUndeclared: undefined,
-				type: regExpRes[1],
-				suggestion: {
-					label: regExpRes[2],
-					kind: CompletionItemKind.Variable,
-					detail: regExpRes[1] + ' ' + regExpRes[2]
-				}
-			}]);
+			result.variables.set(regExpRes[2], [createVariableInfo(regExpRes[2], regExpRes[1], 0)]);
 		}
 	}
 	const variableStack: VariableInfo[][] = [];
@@ -357,17 +400,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			variableStack.push([]);
 			if (!allowedTypeNameWithNamespaceRegExp.test(tokens[1]) || !allowedNameRegExp.test(tokens[2]))
 				continue;
-			variableStack[variableStack.length - 1].push({
-				name: tokens[2],
-				lineDeclared: i,
-				lineUndeclared: undefined,
-				type: tokens[1],
-				suggestion: {
-					label: tokens[2],
-					kind: CompletionItemKind.Variable,
-					detail: tokens[1] + ' ' + tokens[2]
-				}
-			});
+			variableStack[variableStack.length - 1].push(createVariableInfo(tokens[2], tokens[1], i));
 		}
 		else if (tokens[0] === '@fi' || tokens[0] === '@else' || tokens[0] === '@elseif' || tokens[0] === '@done') {
 			const lastBlockVariables = variableStack.pop();
@@ -390,17 +423,7 @@ export async function parseDocument(text: string): Promise<SourceFileData> {
 			if (tokens[2].endsWith('='))
 				tokens[2] = tokens[2].substring(0, tokens[2].length - 1);
 
-			const newVariableInfo: VariableInfo = {
-				name: tokens[2],
-				lineDeclared: i,
-				lineUndeclared: undefined,
-				type: tokens[1],
-				suggestion: {
-					label: tokens[2],
-					kind: CompletionItemKind.Variable,
-					detail: tokens[1] + ' ' + tokens[2]
-				}
-			};
+			const newVariableInfo = createVariableInfo(tokens[2], tokens[1], i);
 			
 			if (variableStack.length > 0) {
 				variableStack[variableStack.length - 1].push(newVariableInfo);

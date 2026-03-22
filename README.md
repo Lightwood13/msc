@@ -1,4 +1,4 @@
-# Minr Scripts VSCode Extension README
+# Minr Scripts VSCode Extension
 
 This Visual Studio Code extension adds syntax highlighting and code completion functionalities for minr.org Minecraft server scripts (MSC), as well as fast upload and download to paste.minr.org. The extension is available to download at [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Lightwood13.msc).
 
@@ -25,14 +25,16 @@ Note that when you're typing something at the beginning of the line, only comman
 
 This extension also provides hover hints: if you hover your mouse over a variable, function or field name, the extension will show its information.
 
+It also supports go to definition. Ctrl-click or press F12 on local variables to jump to their declarations, on custom namespace functions and methods to jump to their backing script files when available, and on constructors to jump to their namespace declarations.
+
 ![feature_1](images/feature_1.gif)
 ![feature_2](images/feature_2.gif)
 
 ### Upload/Download using [Hastebin](https://paste.minr.org/)
 
-The upload function uploads the currently opened file and copies the resulting URL to clipboard. The download function downloads the script from the URL currently stored in the user's clipboard and opens it in a new tab of the editor.
+The upload function uploads the currently opened file to paste.minr.org and copies the resulting URL to clipboard. The copy import link function uploads the currently opened file and copies the full `/script import ...` command to the clipboard when the file belongs to a namespace-backed function, constructor, method. The download function downloads the script from the URL currently stored in the user's clipboard and opens it in a new tab of the editor.
 
-They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'Upload script' and 'Download script'. Keyboard shortcuts are also available: `Alt+U` and `Alt+D` by default. They can be reassigned in 'Preferences: Open Keyboard Shortcuts' in Command Palette.
+They can be accessed through Command Palette (Ctrl+Shift+P) by searching for 'MSC: Upload script', 'MSC: Copy import link', and 'MSC: Download script'. Keyboard shortcuts are also available for upload and download: `Alt+U` and `Alt+D` by default. These can be reassigned in 'Preferences: Open Keyboard Shortcuts' in Command Palette.
 
 ### Namespace Import / Update
 
@@ -81,6 +83,10 @@ Note that any use of variables and classes in .nms file has to include the names
 ![feature_3](images/feature_3.gif)
 
 ## Release Notes
+
+### 3.1.0
+
+Added script export caching and import command improvements, `this` autocomplete in methods and constructors, and go to definition for custom scripts.
 
 ### 3.0.0
 

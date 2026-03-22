@@ -21,25 +21,46 @@ import {
 } from 'vscode-languageserver/node';
 
 import {
+	Position,
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import {
 	SignatureHelp,
 	SignatureHelpParams,
+	Definition,
+	DefinitionParams,
 	Hover,
-	HoverParams
+	HoverParams,
+	Location
 } from 'vscode-languageserver-protocol';
 import {
 	readFile
 } from 'fs';
 import {
+	access,
+	readFile as readFileAsync
+} from 'fs/promises';
+import {
 	files
 } from 'node-dir';
+import {
+	basename,
+	dirname,
+	extname,
+	join,
+	normalize,
+	resolve
+} from 'path';
+import {
+	fileURLToPath,
+	pathToFileURL
+} from 'url';
 
 import {
 	VariableInfo,
 	NamespaceInfo,
 	ClassInfo,
+	DefinitionLocation,
 	UsingDeclaration,
 	SourceFileData,
 	parseNamespaceFile,
@@ -49,7 +70,8 @@ import {
 	functionSignatureRegExp,
 	constructorSignatureRegExp,
 	variableSignatureRegExp,
-	parseDocument
+	parseDocument,
+	NameAndType
 } from './parser';
 import {
 	keywords,
@@ -74,19 +96,20 @@ connection.onInitialize((params: InitializeParams) => {
 	);
 
 	const result: InitializeResult = {
-		capabilities: {
-			textDocumentSync: TextDocumentSyncKind.Incremental,
-			// Tell the client that this server supports code completion.
-			completionProvider: {
-				triggerCharacters: ['.', ':']
-			},
-			signatureHelpProvider: {
-				triggerCharacters: ['(', ',']
-			},
-			hoverProvider: true,
-			codeActionProvider: true
-		}
-	};
+			capabilities: {
+				textDocumentSync: TextDocumentSyncKind.Incremental,
+				// Tell the client that this server supports code completion.
+				completionProvider: {
+					triggerCharacters: ['.', ':']
+				},
+				signatureHelpProvider: {
+					triggerCharacters: ['(', ',']
+				},
+				definitionProvider: true,
+				hoverProvider: true,
+				codeActionProvider: true
+			}
+		};
 	if (hasWorkspaceFolderCapability) {
 		result.capabilities.workspace = {
 			workspaceFolders: {
@@ -111,6 +134,8 @@ const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
+const implicitThisTypeCache: Map<string, string | undefined> = new Map();
+let defaultNamespacesSourceUri: string = '';
 
 function refreshNamespaceFiles() {
 	// search for .nms files in all subfolders
@@ -118,20 +143,21 @@ function refreshNamespaceFiles() {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
 		namespaces.clear();
+		implicitThisTypeCache.clear();
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 			namespaces.set(key, value);
 		});
-		for (const filename of files) {
-			const filenamesSplit = filename.split('.');
-			if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
-				readFile(filename, (err, data) => {
-					if (err) return console.log('Unable to read file: ' + err);
-					parseNamespaceFile(data.toString(), namespaces, classes);
-				});
+			for (const filename of files) {
+				const filenamesSplit = filename.split('.');
+				if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
+					readFile(filename, (err, data) => {
+						if (err) return console.log('Unable to read file: ' + err);
+						parseNamespaceFile(data.toString(), namespaces, classes, pathToFileURL(resolve(filename)).toString());
+					});
+				}
 			}
-		}
-	});
-}
+		});
+	}
 
 function getDocumentData(documentUri: string): Thenable<SourceFileData> {
 	let result = sourceFileData.get(documentUri);
@@ -141,19 +167,130 @@ function getDocumentData(documentUri: string): Thenable<SourceFileData> {
 }
 
 function refreshDocument(documentUri: string): Promise<SourceFileData> {
-	const result = new Promise<SourceFileData>((resolve) => {
+	const result = (async () => {
 		const document = documents.get(documentUri);
 		if (document === undefined) {
 			console.log('Couldn\'t read file ' + documentUri);
-			resolve({
+			return {
 				variables: new Map(),
 				usingDeclarations: []
-			});
-		} else
-			resolve(parseDocument(document.getText()));
-	});
+			};
+		}
+
+		const implicitThisType = await resolveImplicitThisType(documentUri);
+		return parseDocument(document.getText(),
+			implicitThisType === undefined ? [] : [{ name: 'this', type: implicitThisType }]);
+	})();
 	sourceFileData.set(documentUri, result);
 	return result;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch (_err) {
+		return false;
+	}
+}
+
+function collectImplicitThisType(namespaceDefinitionPath: string, text: string, targetPath: string): string | undefined {
+	const normalizedTargetPath = normalize(targetPath);
+	const lines = text.split(newLineRegExp);
+
+	for (let i = 0; i < lines.length; i++) {
+		const namespaceMatch = namespaceSignatureRegExp.exec(lines[i]);
+		if (namespaceMatch === null)
+			continue;
+
+		let namespaceEndLine = i;
+		for (; namespaceEndLine < lines.length; namespaceEndLine++) {
+			if (lines[namespaceEndLine].trim() === '@endnamespace')
+				break;
+		}
+		if (namespaceEndLine === lines.length)
+			break;
+
+		const namespaceName = namespaceMatch[1];
+		const namespaceFolderPath = join(dirname(namespaceDefinitionPath), namespaceName);
+		for (let j = i + 1; j < namespaceEndLine; j++) {
+			const classMatch = classSignatureRegExp.exec(lines[j]);
+			if (classMatch === null)
+				continue;
+
+			let classEndLine = j;
+			for (; classEndLine < namespaceEndLine; classEndLine++) {
+				if (lines[classEndLine].trim() === '@endclass')
+					break;
+			}
+			if (classEndLine === namespaceEndLine)
+				break;
+
+			const className = classMatch[1];
+			const classType = namespaceName === '__default__' ? className : `${namespaceName}::${className}`;
+			for (let k = j + 1; k < classEndLine; k++) {
+				const methodMatch = functionSignatureRegExp.exec(lines[k]);
+				const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
+				if (methodMatch !== null) {
+					const methodPath = normalize(join(namespaceFolderPath, className, `${methodMatch[2]}.msc`));
+					if (methodPath === normalizedTargetPath)
+						return classType;
+				} else if (constructorMatch !== null) {
+					const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
+					const constructorPath = normalize(join(namespaceFolderPath, className, `${constructorSignature}.msc`));
+					if (constructorPath === normalizedTargetPath)
+						return classType;
+				}
+			}
+
+			j = classEndLine;
+		}
+
+		i = namespaceEndLine;
+	}
+
+	return undefined;
+}
+
+async function resolveImplicitThisType(documentUri: string): Promise<string | undefined> {
+	if (implicitThisTypeCache.has(documentUri))
+		return implicitThisTypeCache.get(documentUri);
+
+	const result = await computeImplicitThisType(documentUri);
+	implicitThisTypeCache.set(documentUri, result);
+	return result;
+}
+
+async function computeImplicitThisType(documentUri: string): Promise<string | undefined> {
+	let targetPath: string;
+	try {
+		targetPath = normalize(fileURLToPath(documentUri));
+	} catch (_err) {
+		return undefined;
+	}
+
+	const scriptFileName = basename(targetPath, extname(targetPath));
+	if (scriptFileName === '__init__')
+		return undefined;
+
+	const scriptDirectoryPath = dirname(targetPath);
+	const directNamespaceName = basename(scriptDirectoryPath);
+	const directNamespaceDefinitionPath = join(dirname(scriptDirectoryPath), `${directNamespaceName}.nms`);
+
+	// if the file is directly inside a namespace folder, it's a namespace function — no implicit this
+	if (await fileExists(directNamespaceDefinitionPath))
+		return undefined;
+
+	const enclosingNamespaceDirectoryPath = dirname(scriptDirectoryPath);
+	const nestedNamespaceName = basename(enclosingNamespaceDirectoryPath);
+	const nestedNamespaceDefinitionPath = join(dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`);
+
+	try {
+		const text = await readFileAsync(nestedNamespaceDefinitionPath, 'utf8');
+		return collectImplicitThisType(nestedNamespaceDefinitionPath, text, targetPath);
+	} catch (_err) {
+		return undefined;
+	}
 }
 
 function skipStringBackward(line: string, pos: number): number | undefined {
@@ -346,11 +483,6 @@ function parseCallChain(line: string): string[] {
 	return [];
 }
 
-interface NameAndType {
-	name: string,
-	type: string
-}
-
 function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentData: SourceFileData,
 	activeNamespaceName: string | undefined, lineNumber: number): NameAndType | undefined {
 	if (callChain.length === 0)
@@ -507,6 +639,191 @@ function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number
 	return result;
 }
 
+function getLineText(document: TextDocument, lineNumber: number): string {
+	return document.getText({
+		start: {
+			line: lineNumber,
+			character: 0
+		},
+		end: {
+			line: lineNumber + 1,
+			character: 0
+		}
+	}).trimEnd();
+}
+
+function getResolvedNameAndTypeAtPosition(document: TextDocument, position: Position,
+	documentData: SourceFileData, activeNamespace: string | undefined): NameAndType | undefined {
+	const line = getLineText(document, position.line);
+	let i = position.character;
+	if ((i >= line.length || !/[a-zA-Z0-9_]/.test(line[i])) && i > 0 && /[a-zA-Z0-9_]/.test(line[i - 1]))
+		i--;
+	if (i < 0 || i >= line.length || !/[a-zA-Z0-9_]/.test(line[i]))
+		return undefined;
+	for (; i < line.length; i++) {
+		if (!/[a-zA-Z0-9_]/.test(line[i]))
+			break;
+	}
+
+	let parseString = line.substring(0, i);
+	if (i < line.length && line[i] === ':')
+		return undefined;
+	else if (i < line.length && line[i] === '(')
+		parseString += '().a';
+	else
+		parseString += '.a';
+
+	const callChain = parseCallChain(parseString);
+	return getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, position.line);
+}
+
+function findVisibleVariable(variableName: string, documentData: SourceFileData, lineNumber: number): VariableInfo | undefined {
+	const currentVariables = documentData.variables.get(variableName);
+	let currentVariable: VariableInfo | undefined = undefined;
+	if (currentVariables !== undefined)
+		for (const variable of currentVariables)
+			if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
+				variable.lineUndeclared > lineNumber))
+				currentVariable = variable;
+	return currentVariable;
+}
+
+function createLocation(uri: string, line: number, character: number): Location {
+	return {
+		uri: uri,
+		range: {
+			start: {
+				line: line,
+				character: character
+			},
+			end: {
+				line: line,
+				character: character
+			}
+		}
+	};
+}
+
+function createFileLocation(path: string): Location {
+	return createLocation(pathToFileURL(resolve(path)).toString(), 0, 0);
+}
+
+function getMemberDefinitionLocation(definition: DefinitionLocation | undefined): Location | undefined {
+	if (definition === undefined)
+		return undefined;
+	return createLocation(definition.uri, definition.line, definition.character);
+}
+
+function isBuiltInDefinition(definitionUri: string | undefined): boolean {
+	return definitionUri !== undefined && definitionUri === defaultNamespacesSourceUri;
+}
+
+async function getImplementationLocationForNamespaceFunction(namespaceName: string, functionName: string,
+	definitionUri: string | undefined): Promise<Location | undefined> {
+	if (definitionUri === undefined)
+		return undefined;
+	try {
+		const namespaceDefinitionPath = fileURLToPath(definitionUri);
+		const implementationPath = join(dirname(namespaceDefinitionPath), namespaceName, `${functionName}.msc`);
+		if (await fileExists(implementationPath))
+			return createFileLocation(implementationPath);
+	} catch (_err) {
+		return undefined;
+	}
+	return undefined;
+}
+
+async function getImplementationLocationForClassMember(currentClass: ClassInfo, currentMemberName: string,
+	currentMemberKind: 'function' | 'constructor' | 'variable',
+	definitionUri: string | undefined, signatureLabel: string | undefined): Promise<Location | undefined> {
+	if (definitionUri === undefined)
+		return undefined;
+	try {
+		const namespaceDefinitionPath = fileURLToPath(definitionUri);
+		const classFolderPath = join(dirname(namespaceDefinitionPath), currentClass.namespaceName, currentClass.className);
+		let implementationPath: string | undefined = undefined;
+		if (currentMemberKind === 'function')
+			implementationPath = join(classFolderPath, `${currentMemberName}.msc`);
+		else if (currentMemberKind === 'constructor' && signatureLabel !== undefined) {
+			const params = /\(.*\)/.exec(signatureLabel)?.[0];
+			if (params !== undefined)
+				implementationPath = join(classFolderPath, `${escapeFunctionName(getConstructorSignature(currentClass.className, params))}.msc`);
+		}
+		if (implementationPath !== undefined && await fileExists(implementationPath))
+			return createFileLocation(implementationPath);
+	} catch (_err) {
+		return undefined;
+	}
+	return undefined;
+}
+
+async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, document: TextDocument,
+	documentData: SourceFileData, lineNumber: number): Promise<Location | undefined> {
+	const dotPosition = nameAndType.name.indexOf('.');
+	if (dotPosition !== -1) {
+		const currentClass = classes.get(nameAndType.name.substring(0, dotPosition));
+		if (currentClass === undefined)
+			return undefined;
+		const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
+		if (currentMember === undefined)
+			return undefined;
+		const currentMemberName = currentMember.name.endsWith('()') ?
+			currentMember.name.substring(0, currentMember.name.length - 2) : currentMember.name;
+		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
+			return undefined;
+		const implementationLocation = await getImplementationLocationForClassMember(currentClass, currentMemberName,
+			currentMember.kind, currentMember.definition?.uri, currentMember.signature?.label);
+		if (implementationLocation !== undefined)
+			return implementationLocation;
+		return getMemberDefinitionLocation(currentMember.definition);
+	}
+
+	const scopeOperatorPosition = nameAndType.name.indexOf('::');
+	if (scopeOperatorPosition !== -1) {
+		const qualifiedName = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
+		const memberName = nameAndType.name.substring(scopeOperatorPosition + 2);
+		if (memberName.length !== 0 && /[A-Z]/.test(memberName[0]))
+			return getMemberDefinitionLocation(classes.get(qualifiedName)?.definition);
+
+		const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
+		if (currentNamespace === undefined)
+			return undefined;
+		const currentMember = currentNamespace.members.get(memberName);
+		if (currentMember === undefined)
+			return undefined;
+		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
+			return undefined;
+		if (currentMember.kind === 'function') {
+			const functionName = currentMember.name.substring(0, currentMember.name.length - 2);
+			const implementationLocation = await getImplementationLocationForNamespaceFunction(
+				nameAndType.name.substring(0, scopeOperatorPosition), functionName, currentMember.definition?.uri);
+			if (implementationLocation !== undefined)
+				return implementationLocation;
+		}
+		return getMemberDefinitionLocation(currentMember.definition);
+	}
+
+	if (nameAndType.name.length !== 0 && /[A-Z]/.test(nameAndType.name[0])) {
+		const className = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
+		const currentClass = classes.get(className);
+		if (currentClass === undefined)
+			return undefined;
+		return getMemberDefinitionLocation(currentClass.definition);
+	}
+
+	const currentVariable = findVisibleVariable(nameAndType.name, documentData, lineNumber);
+	if (currentVariable === undefined)
+		return undefined;
+	if (currentVariable.lineDeclared >= 0) {
+		const lineText = getLineText(document, currentVariable.lineDeclared);
+		const character = lineText.indexOf(currentVariable.name);
+		return createLocation(document.uri, currentVariable.lineDeclared, character === -1 ? 0 : character);
+	}
+	if (currentVariable.name === 'this')
+		return getMemberDefinitionLocation(classes.get(currentVariable.type)?.definition);
+	return undefined;
+}
+
 connection.onSignatureHelp(
 	async (textDocumentPosition: SignatureHelpParams): Promise<SignatureHelp> => {
 		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
@@ -596,38 +913,12 @@ connection.onHover(
 		const document = documents.get(textDocumentPosition.textDocument.uri);
 		if (document === undefined)
 			return undefined;
-		let line = document.getText({
-			start: {
-				line: textDocumentPosition.position.line,
-				character: 0
-			},
-			end: {
-				line: textDocumentPosition.position.line + 1,
-				character: 0
-			}
-		});
-		line = line.trimEnd();
-		let i = textDocumentPosition.position.character;
-		if (!/[a-zA-Z0-9_]/.test(line[i]))
-			return undefined;
-		for (; i < line.length; i++) {
-			if (!/[a-zA-Z0-9_]/.test(line[i]))
-				break;
-		}
-		let parseString = line.substring(0, i);
-		if (i < line.length && line[i] === ':')
-			return undefined;
-		else if (i < line.length && line[i] === '(')
-			parseString += '().a';
-		else
-			parseString += '.a';
-
-		const callChain = parseCallChain(parseString);
-		const nameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
+		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
 		if (nameAndType === undefined)
 			return undefined;
 
 		let documentation: string | undefined = undefined;
+		let isBuiltIn = false;
 
 		const dotPosition = nameAndType.name.indexOf('.');
 		const scopeOperatorPosition = nameAndType.name.indexOf('::');
@@ -636,15 +927,19 @@ connection.onHover(
 			if (currentClass === undefined)
 				return undefined;
 			const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
-			if (currentMember !== undefined)
+			if (currentMember !== undefined) {
 				documentation = currentMember.documentation;
+				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
+			}
 		} else if (scopeOperatorPosition !== -1) {
 			const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
 			if (currentNamespace === undefined)
 				return undefined;
 			const currentMember = currentNamespace.members.get(nameAndType.name.substring(scopeOperatorPosition + 2));
-			if (currentMember !== undefined)
+			if (currentMember !== undefined) {
 				documentation = currentMember.documentation;
+				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
+			}
 		}
 
 		return {
@@ -652,11 +947,28 @@ connection.onHover(
 				kind: MarkupKind.Markdown,
 				value: [
 					'```msc',
-					(nameAndType.type !== 'Void' ? nameAndType.type + ' ' : '') + nameAndType.name,
+					(nameAndType.type !== 'Void' ? nameAndType.type + ' ' : '') + nameAndType.name + (isBuiltIn ? ' (builtin)' : ''),
 					'```'
 				].join('\n') + (documentation === undefined ? '' : '\n' + documentation)
 			}
 		};
+	}
+);
+
+connection.onDefinition(
+	async (textDocumentPosition: DefinitionParams): Promise<Definition | undefined> => {
+		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
+		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
+
+		const document = documents.get(textDocumentPosition.textDocument.uri);
+		if (document === undefined)
+			return undefined;
+
+		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
+		if (nameAndType === undefined)
+			return undefined;
+
+		return await getDefinitionLocationForResolvedName(nameAndType, document, documentData, textDocumentPosition.position.line);
 	}
 );
 
@@ -751,8 +1063,14 @@ connection.onCompletion(
 	}
 );
 
-connection.onNotification('processDefaultNamespaces', (text: string) => {
-	parseNamespaceFile(text, defaultNamespaces, classes);
+interface DefaultNamespacesPayload {
+	text: string
+	sourceUri: string
+}
+
+connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespacesPayload) => {
+	defaultNamespacesSourceUri = payload.sourceUri;
+	parseNamespaceFile(payload.text, defaultNamespaces, classes, payload.sourceUri);
 	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 		namespaces.set(key, value);
 	});
@@ -796,7 +1114,8 @@ function getConstructorSignature(className: string, params: string): string {
 interface UploadFileInfo {
 	path: string,
 	content: string,
-	update: boolean // only update or do full upload (for .nms files)
+	update: boolean, // only update or do full upload (for .nms files)
+	clipboardMode: string
 }
 
 connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
@@ -929,7 +1248,133 @@ connection.onNotification('Export namespace', (fileInfo: UploadFileInfo) => {
 		result.push(currentNamespace);
 	}
 
-	connection.sendNotification('Upload namespace script', result);
+	connection.sendNotification('Upload namespace script', {
+		namespaces: result,
+		clipboardMode: fileInfo.clipboardMode
+	});
+});
+
+interface ResolveImportContextsParams {
+	namespaceDefinitionPath: string,
+	contents: string,
+	scriptPath: string
+}
+
+interface FunctionImportContext {
+	kind: 'function',
+	namespaceName: string,
+	functionSignature: string
+}
+
+interface ConstructorImportContext {
+	kind: 'constructor',
+	namespaceName: string,
+	constructorSignature: string
+}
+
+interface MethodImportContext {
+	kind: 'method',
+	namespaceName: string,
+	className: string,
+	methodSignature: string
+}
+
+type ScriptImportContext = FunctionImportContext | ConstructorImportContext | MethodImportContext;
+
+function escapeFunctionName(name: string): string {
+	return name.replace(/::/g, '__');
+}
+
+function getScriptChildPath(namespaceFolderPath: string, relativePath: string): string {
+	return resolve(join(namespaceFolderPath, escapeFunctionName(relativePath)));
+}
+
+connection.onRequest('Resolve import contexts', (params: ResolveImportContextsParams): ScriptImportContext[] => {
+	const targetPath = resolve(params.scriptPath);
+	const lines = params.contents.split(newLineRegExp);
+	const contexts: ScriptImportContext[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const namespaceMatch = namespaceSignatureRegExp.exec(lines[i]);
+		if (namespaceMatch === null) {
+			continue;
+		}
+
+		let namespaceEndLine = i;
+		for (; namespaceEndLine < lines.length; namespaceEndLine++) {
+			if (lines[namespaceEndLine].trim() === '@endnamespace') {
+				break;
+			}
+		}
+		if (namespaceEndLine === lines.length) {
+			break;
+		}
+
+		const namespaceName = namespaceMatch[1];
+		const namespaceFolderPath = join(dirname(params.namespaceDefinitionPath), namespaceName);
+
+		for (let j = i + 1; j < namespaceEndLine; j++) {
+			const classMatch = classSignatureRegExp.exec(lines[j]);
+			if (classMatch !== null) {
+				let classEndLine = j;
+				for (; classEndLine < namespaceEndLine; classEndLine++) {
+					if (lines[classEndLine].trim() === '@endclass') {
+						break;
+					}
+				}
+				if (classEndLine === namespaceEndLine) {
+					break;
+				}
+
+				const className = classMatch[1];
+				for (let k = j + 1; k < classEndLine; k++) {
+					const methodMatch = functionSignatureRegExp.exec(lines[k]);
+					const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
+
+					if (methodMatch !== null) {
+						const methodPath = getScriptChildPath(namespaceFolderPath, `${className}/${methodMatch[2]}.msc`);
+						if (methodPath === targetPath) {
+							contexts.push({
+								kind: 'method',
+								namespaceName,
+								className,
+								methodSignature: methodMatch[2] + methodMatch[3]
+							});
+						}
+					} else if (constructorMatch !== null) {
+						const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
+						const constructorPath = getScriptChildPath(namespaceFolderPath, `${className}/${constructorSignature}.msc`);
+						if (constructorPath === targetPath) {
+							contexts.push({
+								kind: 'constructor',
+								namespaceName,
+								constructorSignature
+							});
+						}
+					}
+				}
+
+				j = classEndLine;
+				continue;
+			}
+
+			const functionMatch = functionSignatureRegExp.exec(lines[j]);
+			if (functionMatch !== null) {
+				const functionPath = getScriptChildPath(namespaceFolderPath, `${functionMatch[2]}.msc`);
+				if (functionPath === targetPath) {
+					contexts.push({
+						kind: 'function',
+						namespaceName,
+						functionSignature: functionMatch[2] + functionMatch[3]
+					});
+				}
+			}
+		}
+
+		i = namespaceEndLine;
+	}
+
+	return contexts;
 });
 
 connection.onCodeAction((params: CodeActionParams) => {
@@ -1317,11 +1762,12 @@ documents.onDidSave(change => {
 
 // Register the text document validation function
 documents.onDidOpen(change => {
+	void refreshDocument(change.document.uri);
 	validateAndReportDiagnostics(change.document);
 });
 
 documents.onDidChangeContent(e => {
-	sourceFileData.set(e.document.uri, parseDocument(e.document.getText()));
+	void refreshDocument(e.document.uri);
 	validateAndReportDiagnostics(e.document);
 });
 

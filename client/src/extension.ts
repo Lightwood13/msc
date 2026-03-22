@@ -5,19 +5,22 @@
 
 // imports needed
 import * as path from 'path';
+import { createHash } from 'crypto';
 import {
 	commands,
 	window,
 	env,
 	workspace,
 	ExtensionContext,
+	Memento,
 	Uri,
 	Progress,
 	ProgressLocation,
 	CancellationToken,
 	languages,
 	TextEdit,
-	TextDocument
+	TextDocument,
+	TextEditor
 } from 'vscode';
 import axios from 'axios';
 import * as https from 'https';
@@ -30,12 +33,22 @@ import {
 
 // creates a client for the extension
 let client: LanguageClient;
+let uploadLinkCache: UploadLinkCache | undefined;
+
+const uploadCacheStorageKey = 'msc.uploadLinkCache.v1';
+const maxUploadCacheEntries = 500;
 
 // the interface for uploading a .msc or .nms file
 interface UploadFileInfo {
 	path: string,
 	content: string,
-	update: boolean // only update or do full upload (for .nms files)
+	update: boolean, // only update or do full upload (for .nms files)
+	clipboardMode: NamespaceClipboardMode
+}
+
+interface NamespaceUploadResponse {
+	namespaces: NamespaceUploadResult[],
+	clipboardMode: NamespaceClipboardMode
 }
 
 interface IncludedFileInfo {
@@ -71,6 +84,103 @@ interface NamespaceUploadResult {
 	functions: NamespaceFunction[],
 	constructors: ClassConstructor[],
 	methods: ClassMethod[]
+}
+
+interface UploadCacheEntry {
+	link: string,
+	lastUsed: number
+}
+
+type NamespaceClipboardMode = 'url' | 'import-command';
+
+interface NamespaceImportContext {
+	kind: 'interact'
+}
+
+interface FunctionImportContext {
+	kind: 'function',
+	namespaceName: string,
+	functionSignature: string
+}
+
+interface ConstructorImportContext {
+	kind: 'constructor',
+	namespaceName: string,
+	constructorSignature: string
+}
+
+interface MethodImportContext {
+	kind: 'method',
+	namespaceName: string,
+	className: string,
+	methodSignature: string
+}
+
+type ScriptImportContext = FunctionImportContext | ConstructorImportContext | MethodImportContext;
+type ImportCommandContext = NamespaceImportContext | ScriptImportContext;
+
+function normalizeContents(contents: string): string {
+	return contents.replace(/<##/g, '<#');
+}
+
+function hashContents(contents: string): string {
+	return createHash('sha256').update(contents).digest('hex');
+}
+
+class UploadLinkCache {
+	private entries: Map<string, UploadCacheEntry> = new Map();
+
+	constructor(private readonly storage: Memento) {
+		const storedEntries = storage.get<Record<string, UploadCacheEntry>>(uploadCacheStorageKey, {});
+		for (const [hash, entry] of Object.entries(storedEntries)) {
+			if (typeof entry.link === 'string' && typeof entry.lastUsed === 'number') {
+				this.entries.set(hash, entry);
+			}
+		}
+	}
+
+	get(hash: string): string | null {
+		const entry = this.entries.get(hash);
+		if (entry === undefined) {
+			return null;
+		}
+
+		entry.lastUsed = Date.now();
+		return entry.link;
+	}
+
+	async set(hash: string, link: string): Promise<void> {
+		this.entries.set(hash, {
+			link,
+			lastUsed: Date.now()
+		});
+		this.prune();
+		await this.persist();
+	}
+
+	private prune() {
+		if (this.entries.size <= maxUploadCacheEntries) {
+			return;
+		}
+
+		const staleHashes = [...this.entries.entries()]
+			.sort((left, right) => left[1].lastUsed - right[1].lastUsed)
+			.slice(0, this.entries.size - maxUploadCacheEntries)
+			.map(([hash]) => hash);
+
+		for (const hash of staleHashes) {
+			this.entries.delete(hash);
+		}
+	}
+
+	private async persist(): Promise<void> {
+		const serializedEntries: Record<string, UploadCacheEntry> = {};
+		for (const [hash, entry] of this.entries.entries()) {
+			serializedEntries[hash] = entry;
+		}
+
+		await this.storage.update(uploadCacheStorageKey, serializedEntries);
+	}
 }
 
 class ProcessedFileCache {
@@ -134,6 +244,95 @@ function escapeFunctionName(name: string): string {
 	return name.replace(/::/g, '__');
 }
 
+
+function formatImportCommand(importContext: ImportCommandContext, link: string): string {
+	if (importContext.kind === 'interact') {
+		return `/script import interact ${link}`;
+	}
+
+	if (importContext.kind === 'function') {
+		return `/script import function ${importContext.namespaceName} ${importContext.functionSignature} ${link}`;
+	}
+
+	if (importContext.kind === 'constructor') {
+		return `/script import constructor ${importContext.namespaceName} ${importContext.constructorSignature} ${link}`;
+	}
+
+	return `/script import method ${importContext.namespaceName} ${importContext.className} ${importContext.methodSignature} ${link}`;
+}
+
+function getImportContextKey(importContext: ScriptImportContext): string {
+	return formatImportCommand(importContext, '<url>');
+}
+
+
+async function fileExists(uri: Uri): Promise<boolean> {
+	try {
+		await workspace.fs.stat(uri);
+		return true;
+	} catch (_error) {
+		return false;
+	}
+}
+
+async function resolveScriptImportContext(scriptUri: Uri): Promise<ScriptImportContext | null> {
+	const scriptFileName = path.basename(scriptUri.fsPath, path.extname(scriptUri.fsPath));
+	if (scriptFileName === '__init__') {
+		return null;
+	}
+
+	const scriptDirectoryPath = path.dirname(scriptUri.fsPath);
+	const directNamespaceName = path.basename(scriptDirectoryPath);
+	const directNamespaceDefinitionUri = Uri.file(path.join(path.dirname(scriptDirectoryPath), `${directNamespaceName}.nms`));
+
+	const enclosingNamespaceDirectoryPath = path.dirname(scriptDirectoryPath);
+	const nestedNamespaceName = path.basename(enclosingNamespaceDirectoryPath);
+	const nestedNamespaceDefinitionUri = Uri.file(path.join(path.dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`));
+
+	const candidateDefinitionUris: Uri[] = [];
+	if (await fileExists(directNamespaceDefinitionUri)) {
+		candidateDefinitionUris.push(directNamespaceDefinitionUri);
+	}
+	if (nestedNamespaceDefinitionUri.fsPath !== directNamespaceDefinitionUri.fsPath && await fileExists(nestedNamespaceDefinitionUri)) {
+		candidateDefinitionUris.push(nestedNamespaceDefinitionUri);
+	}
+	if (candidateDefinitionUris.length !== 1) {
+		return null;
+	}
+
+	try {
+		const definitionUri = candidateDefinitionUris[0];
+		const contents = (await workspace.fs.readFile(definitionUri)).toString();
+		const importContexts: ScriptImportContext[] = await client.sendRequest('Resolve import contexts', {
+			namespaceDefinitionPath: definitionUri.fsPath,
+			contents,
+			scriptPath: scriptUri.fsPath
+		});
+		const uniqueImportContexts = new Map<string, ScriptImportContext>();
+		for (const importContext of importContexts) {
+			uniqueImportContexts.set(getImportContextKey(importContext), importContext);
+		}
+
+		return uniqueImportContexts.size === 1 ? [...uniqueImportContexts.values()][0] : null;
+	} catch (_error) {
+		return null;
+	}
+}
+
+async function resolveImportCommandContext(document: TextDocument): Promise<ImportCommandContext | null> {
+	if (document.languageId === 'nms') {
+		return {
+			kind: 'interact'
+		};
+	}
+
+	if (document.languageId !== 'msc') {
+		return null;
+	}
+
+	return await resolveScriptImportContext(document.uri);
+}
+
 // combines two file paths from the base to a specified file
 function getIncludedFileUri(baseFileUri: Uri, includedFile: IncludedFileInfo): Uri {
 	return Uri.joinPath(baseFileUri, '..', includedFile.fileName);
@@ -163,7 +362,12 @@ function collectIncludedFilesInfo(text: string): IncludedFileInfo[] {
 // uploads a file to paste.minr.org and returns the link if successful
 async function uploadFile(contents: string): Promise<string | null> {
 	try {
-		contents = contents.replace(/<##/g, '<#');
+		const normalized = normalizeContents(contents);
+		const hash = hashContents(normalized);
+		const cachedLink = uploadLinkCache?.get(hash) ?? null;
+		if (cachedLink !== null) {
+			return cachedLink;
+		}
 
 		// send a POST request to the API endpoint with the text provided as payload
 		const data = await axios({
@@ -172,11 +376,13 @@ async function uploadFile(contents: string): Promise<string | null> {
 			}),
 			url: 'https://paste.minr.org/documents',
 			method: 'POST',
-			data: contents
+			data: normalized
 		});
 
 		// return the key formatted as a link, or return null if failed
-		return 'https://paste.minr.org/' + data.data.key;
+		const link = 'https://paste.minr.org/' + data.data.key;
+		await uploadLinkCache?.set(hash, link);
+		return link;
 	} catch (error) {
 		return null;
 	}
@@ -314,19 +520,80 @@ async function uploadNamespaceChildFile(
 	incrementProgress();
 }
 
+async function uploadScriptEditor(textEditor: TextEditor): Promise<string | null> {
+	const text = textEditor.document.getText();
+	if (text.trim().length === 0) {
+		window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: file is empty`);
+		return null;
+	}
+
+	const includedFilesInfo = collectIncludedFilesInfo(text);
+	if (includedFilesInfo.length === 0) {
+		const link = await uploadFile(text);
+		if (link === null) {
+			window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: upload failed`);
+		}
+		return link;
+	}
+
+	return await window.withProgress<string | null>({
+		title: `Uploading ${getFileNameFromPath(textEditor.document.uri.path)}`,
+		cancellable: false,
+		location: ProgressLocation.Notification
+	}, async (progress: Progress<{
+		increment?: number,
+		message?: string
+	}>, _token: CancellationToken): Promise<string | null> => {
+
+		const fileCount = includedFilesInfo.length + 1;
+		const cache = new ProcessedFileCache();
+
+		progress.report({
+			increment: 0,
+			message: '0%'
+		});
+
+		let index = 0;
+		await uploadIncludedFiles(textEditor.document.uri, includedFilesInfo, cache, () => {
+			index++;
+			progress.report({
+				increment: 100 / fileCount,
+				message: (index / fileCount * 100).toFixed(0) + '%'
+			});
+		});
+
+		if (showErrors(cache)) {
+			return null;
+		}
+
+		const replacedText = replaceIncludedFiles(textEditor.document.uri, text, includedFilesInfo, cache);
+		const result = await uploadFile(replacedText);
+
+		progress.report({
+			increment: 100 / fileCount,
+			message: '100%'
+		});
+
+		if (result === null) {
+			window.showErrorMessage(`Failed to upload file ${getFileNameFromPath(textEditor.document.uri.path)}: upload failed`);
+		}
+		return result;
+	});
+}
+
 // returns true if any errors are found
 function showErrors(cache: ProcessedFileCache): boolean {
 	let errorsFound = false;
 	if (cache.notFoundFiles.size !== 0) {
-		window.showErrorMessage('Failed to find files: ' + getFileNameList(cache.notFoundFiles));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.notFoundFiles)}: file not found`);
 		errorsFound = true;
 	}
 	if (cache.emptyFiles.size !== 0) {
-		window.showErrorMessage('Cannot upload empty files: ' + getFileNameList(cache.emptyFiles));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.emptyFiles)}: files are empty`);
 		errorsFound = true;
 	}
 	if (cache.failedUploads.size !== 0) {
-		window.showErrorMessage('Failed to upload files: ' + getFileNameList(cache.failedUploads));
+		window.showErrorMessage(`Failed to upload files ${getFileNameList(cache.failedUploads)}: upload failed`);
 		errorsFound = true;
 	}
 	return errorsFound;
@@ -373,6 +640,7 @@ function formatDocument(document: TextDocument): TextEdit[] {
 // triggers on client activation
 export function activate(context: ExtensionContext) {
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+	uploadLinkCache = new UploadLinkCache(context.globalState);
 
 	// VSC command to upload a script
 	let disposable = commands.registerCommand('msc.upload', async () => {
@@ -380,7 +648,7 @@ export function activate(context: ExtensionContext) {
 		// gets the currently open script (terminates if nonexistent)
 		const textEditor = window.activeTextEditor;
 		if (textEditor === undefined) {
-			window.showErrorMessage('No file open to upload');
+			window.showErrorMessage('Failed to upload: no file open');
 			return;
 		}
 
@@ -389,92 +657,61 @@ export function activate(context: ExtensionContext) {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
 				content: textEditor.document.getText(),
-				update: false
+				update: false,
+				clipboardMode: 'url'
 			};
 			client.sendNotification('Export namespace', fileInfo);
 
 			// otherwise, it's a normal script to upload
 		} else {
-
-			// if it's an empty file, ignore
-			const text: string = textEditor.document.getText();
-			if (text.trim().length === 0) {
-				window.showErrorMessage('Cannot upload empty file');
-				return;
-			}
-
-			// all manually included files with <#syntax>, and the link for this file
-			const includedFilesInfo = collectIncludedFilesInfo(text);
-			let link: string | null = null;
-
-			// if we don't have manually included files, just upload current file
-			if (includedFilesInfo.length === 0) {
-				link = await uploadFile(text);
-
-				if (link === null) {
-					window.showErrorMessage('Failed to upload file');
-				}
-			} else {
-
-				// if we have included files, show the progress notification for uploads
-				link = await window.withProgress<string | null>({
-					title: `Uploading ${getFileNameFromPath(textEditor.document.uri.path)}`,
-					cancellable: false,
-					location: ProgressLocation.Notification
-				}, async (progress: Progress<{
-					increment?: number,
-					message?: string
-				}>, _token: CancellationToken): Promise<string | null> => {
-
-					// must upload all manually included files, plus current file itself
-					const fileCount = includedFilesInfo.length + 1;
-					const cache = new ProcessedFileCache();
-
-					// start the progress counter
-					progress.report({
-						increment: 0,
-						message: '0%'
-					});
-
-					// for each file, increment the index, and report the appropriate progress level
-					let index = 0;
-					await uploadIncludedFiles(textEditor.document.uri, includedFilesInfo, cache, () => {
-						index++;
-						progress.report({
-							increment: 100 / fileCount,
-							message: (index / fileCount * 100).toFixed(0) + '%'
-						});
-					});
-
-					// if something went wrong (eg. missing file), stop here
-					if (showErrors(cache)) {
-						return null;
-					}
-
-					// otherwise replace all links and upload current file
-					const replacedText = replaceIncludedFiles(textEditor.document.uri, text, includedFilesInfo, cache);
-					const result = await uploadFile(replacedText);
-
-					// now completed, so send progress complete message
-					progress.report({
-						increment: 100 / fileCount,
-						message: '100%'
-					});
-
-					// error or return successful link
-					if (result === null) {
-						window.showErrorMessage('Failed to upload file');
-					}
-					return result;
-				});
-			}
+			const link = await uploadScriptEditor(textEditor);
 
 			// if we have a link, write it to the clipboard and display a success message
 			if (link !== null) {
 				env.clipboard.writeText(link);
-				window.showInformationMessage('Upload finished. Script url was copied to clipboard');
+				window.showInformationMessage(`Uploaded file: ${link} copied to clipboard`);
 			}
 		}
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = commands.registerCommand('msc.copyImportLink', async () => {
+		const textEditor = window.activeTextEditor;
+		if (textEditor === undefined) {
+			window.showErrorMessage('Failed to upload: no file open');
+			return;
+		}
+
+		if (textEditor.document.languageId !== 'msc' && textEditor.document.languageId !== 'nms') {
+			window.showErrorMessage('This command only works for .msc and .nms files');
+			return;
+		}
+
+		if (textEditor.document.languageId === 'nms') {
+			const fileInfo: UploadFileInfo = {
+				path: textEditor.document.uri.path,
+				content: textEditor.document.getText(),
+				update: false,
+				clipboardMode: 'import-command'
+			};
+			client.sendNotification('Export namespace', fileInfo);
+			return;
+		}
+
+		const link = await uploadScriptEditor(textEditor);
+		if (link === null) {
+			return;
+		}
+
+		const importContext = await resolveImportCommandContext(textEditor.document);
+		if (importContext === null) {
+			env.clipboard.writeText(link);
+			window.showWarningMessage('Could not infer import context: link copied to clipboard');
+			return;
+		}
+
+		env.clipboard.writeText(formatImportCommand(importContext, link));
+		window.showInformationMessage('Export finished: command copied to clipboard');
 	});
 	context.subscriptions.push(disposable);
 
@@ -484,7 +721,7 @@ export function activate(context: ExtensionContext) {
 		// gets the currently open script (terminates if nonexistent)
 		const textEditor = window.activeTextEditor;
 		if (textEditor === undefined) {
-			window.showErrorMessage('No file open to upload');
+			window.showErrorMessage('Failed to update namespace: no file open');
 			return;
 		}
 
@@ -493,13 +730,14 @@ export function activate(context: ExtensionContext) {
 			const fileInfo: UploadFileInfo = {
 				path: textEditor.document.uri.path,
 				content: textEditor.document.getText(),
-				update: true
+				update: true,
+				clipboardMode: 'url'
 			};
 			client.sendNotification('Export namespace', fileInfo);
 		}
 		// otherwise ignore
 		else {
-			window.showErrorMessage('Can only update .nms files');
+			window.showErrorMessage('Failed to update namespace: can only update .nms files');
 		}
 	});
 	context.subscriptions.push(disposable);
@@ -512,7 +750,7 @@ export function activate(context: ExtensionContext) {
 		// gets text from clipboard and verifies it's nonempty
 		const clipboardText = await env.clipboard.readText();
 		if (clipboardText.length === 0) {
-			window.showErrorMessage('Clipboard is empty. Please copy script url to clipboard');
+			window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			return;
 		}
 
@@ -525,7 +763,7 @@ export function activate(context: ExtensionContext) {
 		if (match) {
 			scriptName = match[1];
 		} else {
-			window.showErrorMessage('Please copy a valid script URL to clipboard');
+			window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			return;
 		}
 
@@ -547,7 +785,7 @@ export function activate(context: ExtensionContext) {
 			})
 			// if errored, then display an error message
 			.catch(_err => {
-				window.showErrorMessage('Cannot get requested script. Please copy a valid script URL to clipboard');
+				window.showErrorMessage('Failed to download: please copy a valid script URL to clipboard');
 			});
 	});
 	context.subscriptions.push(disposable);
@@ -600,37 +838,25 @@ export function activate(context: ExtensionContext) {
 	// start the client, also launching the server
 	client.start();
 
-	// when the client is ready, get the default namespace from github
+	// when the client is ready, load default namespaces from extension resources
 	client.onReady().then(() => {
 		client.onNotification('getDefaultNamespaces', () => {
-			axios({
-				httpsAgent: new https.Agent({
-					rejectUnauthorized: false
-				}),
-				url: 'https://raw.githubusercontent.com/Lightwood13/msc/master/resources/default.nms',
-				method: 'GET',
-			})
-				// success: send notification to server to start processing received default namespaces
-				.then(data => {
-					console.log('Successfully fetched default namespaces file from GitHub');
-					client.sendNotification('processDefaultNamespaces', data.data);
-				})
-				// if this fails, get default namespaces from extension resources and send it to server for processing
-				.catch(_err => {
-					console.log('Couldn\'t connect to GitHub');
-					const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
-					workspace.fs.readFile(defaultNamespacesUri).then((result) => {
-						client.sendNotification('processDefaultNamespaces', result.toString());
-					});
+			const defaultNamespacesUri = Uri.joinPath(context.extensionUri, 'resources', 'default.nms');
+			workspace.fs.readFile(defaultNamespacesUri).then((result) => {
+				client.sendNotification('processDefaultNamespaces', {
+					text: result.toString(),
+					sourceUri: defaultNamespacesUri.toString()
 				});
+			});
 		});
 
 		// the logic behind uploading namespaces
-		client.onNotification('Upload namespace script', async (namespaces: NamespaceUploadResult[]) => {
+		client.onNotification('Upload namespace script', async (response: NamespaceUploadResponse) => {
+			const { namespaces, clipboardMode } = response;
 
 			// if no namespace to upload, then exit
 			if (namespaces.length === 0) {
-				window.showErrorMessage("Couldn't parse any namespaces");
+				window.showErrorMessage('Failed to upload: couldn\'t parse any namespaces');
 				return;
 			}
 
@@ -761,16 +987,21 @@ export function activate(context: ExtensionContext) {
 			// uploads this script
 			const finalLink: string | null = await uploadFile(finalScript);
 			if (finalLink === null) {
-				window.showErrorMessage('Failed to upload script');
+				window.showErrorMessage(`Failed to upload namespace: upload of ${finalScript} failed`);
 				return;
 			}
 
 			// copies the upload link to clipboard and notifies the user
-			env.clipboard.writeText(finalLink);
-			if (namespaces[0].defineScript !== '') {
-				window.showInformationMessage('Namespace upload finished. Script URL copied to clipboard.');
+			const clipboardText = clipboardMode === 'import-command' ?
+				formatImportCommand({ kind: 'interact' }, finalLink) :
+				finalLink;
+			env.clipboard.writeText(clipboardText);
+			if (clipboardMode === 'import-command') {
+				window.showInformationMessage('Exported namespace: command copied to clipboard.');
+			} else if (namespaces[0].defineScript !== '') {
+				window.showInformationMessage('Uploaded namespace: script URL copied to clipboard.');
 			} else {
-				window.showInformationMessage('Namespace update finished. Script URL copied to clipboard.');
+				window.showInformationMessage('Updated namespace: script URL copied to clipboard.');
 			}
 		});
 	});
