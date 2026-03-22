@@ -239,7 +239,7 @@ export const keywords: CompletionItem[] =
 		},
 		{
 			"label": "return",
-			"detail": "Ends execution, optionally returning a  value",
+			"detail": "Ends execution, optionally returning a value",
 			"kind": CompletionItemKind.Keyword,
 			"filterText": "return",
 			"insertText": "@return "
@@ -267,8 +267,8 @@ export const keywordsWithoutAtSymbol: CompletionItem[] = keywords.map(suggestion
 })
 );
 
-const entitySelectors = "{{player}},@s,@p,@a,@e";
-const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end";
+const entitySelectors = "{{player}},@s,@p,@a,@e,@n";
+const worldNames = "theta,theta_nether,theta_the_end,overworld,the_nether,the_end,epsilon,epsilon_nether,epsilon_the_end";
 const allMinecraftBlocks = minecraftBlockData.join(',');
 const allMinecraftItems = minecraftItemData.join(',');
 
