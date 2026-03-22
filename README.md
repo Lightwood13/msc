@@ -84,6 +84,10 @@ Note that any use of variables and classes in .nms file has to include the names
 
 ## Release Notes
 
+### 3.2.0
+
+Expanded Minecraft command autocomplete to cover all commands, with hints for common arguments.
+
 ### 3.1.0
 
 Added script export caching and import command improvements, `this` autocomplete in methods and constructors, and go to definition for custom scripts.
