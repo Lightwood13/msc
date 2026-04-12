@@ -902,7 +902,7 @@ export function activate(context: ExtensionContext) {
 						await uploadNamespaceChildFile(
 							namespaceFolderUri, `${functionInfo.functionName}.msc`, cache,
 							functionLink => {
-								importLines.push(`@bypass /script import function ${functionInfo.namespaceName} ${functionInfo.functionSignature} ${functionLink}`);
+								importLines.push(`@command /script import function ${functionInfo.namespaceName} ${functionInfo.functionSignature} ${functionLink}`);
 							}, incrementProgress
 						);
 					}
@@ -912,7 +912,7 @@ export function activate(context: ExtensionContext) {
 						await uploadNamespaceChildFile(
 							namespaceFolderUri, `${constructorInfo.className}/${constructorInfo.constructorSignature}.msc`, cache,
 							constructorLink => {
-								importLines.push(`@bypass /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
+								importLines.push(`@command /script import constructor ${constructorInfo.namespaceName} ${constructorInfo.constructorSignature} ${constructorLink}`);
 							}, incrementProgress
 						);
 					}
@@ -922,7 +922,7 @@ export function activate(context: ExtensionContext) {
 						await uploadNamespaceChildFile(
 							namespaceFolderUri, `${methodInfo.className}/${methodInfo.methodName}.msc`, cache,
 							methodLink => {
-								importLines.push(`@bypass /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodSignature} ${methodLink}`);
+								importLines.push(`@command /script import method ${methodInfo.namespaceName} ${methodInfo.className} ${methodInfo.methodSignature} ${methodLink}`);
 							}, incrementProgress
 						);
 					}
@@ -933,7 +933,7 @@ export function activate(context: ExtensionContext) {
 						initLink => {
 							namespaceInfo.defineScript += '\n' + `# Namespace initialisation function from ${namespaceInfo.name}/__init__.msc` +
 								'\n' + `@bypass /function define ${namespaceInfo.name} wilexafixu()`;
-							importLines.push(`@bypass /script import function ${namespaceInfo.name} wilexafixu() ${initLink}`);
+							importLines.push(`@command /script import function ${namespaceInfo.name} wilexafixu() ${initLink}`);
 							namespaceInfo.initializeScript += '\n\n' + '@player &7[&#20a0d0VSCode&7] &eExecuting namespace initialisation function.' +
 								'\n' + `@bypass /function execute ${namespaceInfo.name}::wilexafixu()` +
 								'\n' + `@bypass /function remove ${namespaceInfo.name} wilexafixu()`;
@@ -981,7 +981,7 @@ export function activate(context: ExtensionContext) {
 			if (finalScript === null) return;
 
 			// removes the script from the block it was on, and notifies the player in chat
-			finalScript += '@bypass /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}} {{block.getWorld()}}';
+			finalScript += '@command /script remove interact {{block.getX()}} {{block.getY()}} {{block.getZ()}} {{block.getWorld()}}';
 			finalScript += '\n' + '@player &7[&#20a0d0VSCode&7] &aNamespace import finished!';
 
 			// uploads this script
