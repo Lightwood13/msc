@@ -1399,23 +1399,46 @@ connection.onCodeAction((params: CodeActionParams) => {
 	const actions: CodeAction[] = [];
 	for (const diagnostic of params.context.diagnostics) {
 		actions.push(...buildRuleFixes(textDocument, diagnostic));
-		actions.push({
-			title: 'Ignore errors in this file',
-			kind: CodeActionKind.QuickFix,
-			diagnostics: [diagnostic],
-			edit: {
-				documentChanges: [{
-					textDocument: { uri: textDocument.uri, version: textDocument.version },
-					edits: [{
-						range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-						newText: '# msc-ignore-errors\n'
-					}]
-				}]
-			}
-		});
+		actions.push(ignoreThisErrorAction(textDocument, diagnostic));
+		actions.push(ignoreAllErrorsAction(textDocument, diagnostic));
 	}
 	return actions;
 });
+
+function ignoreThisErrorAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction {
+	const line = diagnostic.range.start.line;
+	return {
+		title: 'Ignore this error',
+		kind: CodeActionKind.QuickFix,
+		diagnostics: [diagnostic],
+		edit: {
+			documentChanges: [{
+				textDocument: { uri: doc.uri, version: doc.version },
+				edits: [{
+					range: { start: { line, character: 0 }, end: { line, character: 0 } },
+					newText: '# msc-ignore-next-line\n'
+				}]
+			}]
+		}
+	};
+}
+
+function ignoreAllErrorsAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction {
+	return {
+		title: 'Ignore errors in this file',
+		kind: CodeActionKind.QuickFix,
+		diagnostics: [diagnostic],
+		edit: {
+			documentChanges: [{
+				textDocument: { uri: doc.uri, version: doc.version },
+				edits: [{
+					range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+					newText: '# msc-ignore-errors\n'
+				}]
+			}]
+		}
+	};
+}
 
 function buildRuleFixes(doc: TextDocument, diagnostic: Diagnostic): CodeAction[] {
 	const code = typeof diagnostic.code === 'string' ? diagnostic.code : undefined;
@@ -1762,9 +1785,19 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 		}
 	}
 
+	const ignoredLines = new Set<number>();
+	for (let i = 0; i < lines.length - 1; i++) {
+		if (/^\s*#\s*msc-ignore-next-line\b/.test(lines[i])) {
+			ignoredLines.add(i + 1);
+		}
+	}
+	const filtered = ignoredLines.size > 0
+		? diagnostics.filter(d => !ignoredLines.has(d.range.start.line))
+		: diagnostics;
+
 	connection.sendDiagnostics({
 		uri: textDocument.uri,
-		diagnostics
+		diagnostics: filtered
 	});
 }
 
