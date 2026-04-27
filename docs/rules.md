@@ -85,6 +85,253 @@ The first word of a non-comment line must be a recognised script operator (`@if`
 
 ---
 
+<a id="syn004"></a>
+### SYN004: operator-must-be-alone (syntax error)
+
+`@else`, `@fi`, `@done`, `@cancel`, `@slow`, and `@fast` cannot have anything after them on the same line.
+
+```msc
+# bad
+@fi some trailing junk
+
+# good
+@fi
+```
+
+The quick fix removes the trailing content.
+
+---
+
+<a id="syn005"></a>
+### SYN005: empty-condition (syntax error)
+
+`@if` and `@elseif` must be followed by a non-empty condition.
+
+```msc
+# bad
+@if
+
+# good
+@if {{player.isOp()}}
+```
+
+---
+
+<a id="syn006"></a>
+### SYN006: for-syntax (syntax error)
+
+`@for` must use the form `@for <type> <variable> in <list>`.
+
+```msc
+# bad
+@for Player in {{onlinePlayers}}
+
+# good
+@for Player p in {{onlinePlayers}}
+```
+
+---
+
+<a id="syn007"></a>
+### SYN007: define-syntax (syntax error)
+
+`@define` must use the form `@define <type> <variable> [= <expression>]`.
+
+```msc
+# bad
+@define String
+
+# good
+@define String name = "Minr"
+```
+
+---
+
+<a id="syn008"></a>
+### SYN008: empty-initializer (syntax error)
+
+If `@define` includes `=`, it must be followed by an initializer expression.
+
+```msc
+# bad
+@define Int count =
+
+# good
+@define Int count = 0
+```
+
+---
+
+<a id="syn009"></a>
+### SYN009: chatscript-syntax (syntax error)
+
+`@chatscript` must use the form `@chatscript <time> <group-name> <function>`.
+
+```msc
+# bad
+@chatscript 10s group
+
+# good
+@chatscript 10s group doStuff()
+```
+
+---
+
+<a id="syn010"></a>
+### SYN010: invalid-time (syntax error)
+
+Time values must be a number, optionally followed by one of these units: `t`, `s`, `m`, `h`, `d`, `w`, or `y`.
+
+```msc
+# bad
+@delay soon
+
+# good
+@delay 10s
+```
+
+---
+
+<a id="syn011"></a>
+### SYN011: chatscript-function (syntax error)
+
+The third argument to `@chatscript` must be a function call.
+
+```msc
+# bad
+@chatscript 10s group doStuff
+
+# good
+@chatscript 10s group doStuff()
+```
+
+---
+
+<a id="syn012"></a>
+### SYN012: cooldown-syntax (syntax error)
+
+`@cooldown` and `@global_cooldown` must be followed by a single time argument.
+
+```msc
+# bad
+@cooldown
+
+# good
+@cooldown 30s
+```
+
+---
+
+<a id="syn013"></a>
+### SYN013: delay-syntax (syntax error)
+
+`@delay` must be followed by a single time argument.
+
+```msc
+# bad
+@delay
+
+# good
+@delay 1s
+```
+
+---
+
+<a id="syn014"></a>
+### SYN014: using-syntax (syntax error)
+
+`@using` must use the form `@using <namespace>`.
+
+```msc
+# bad
+@using
+
+# good
+@using myNamespace
+```
+
+---
+
+<a id="syn015"></a>
+### SYN015: command-operator-syntax (syntax error)
+
+`@bypass`, `@command`, and `@console` must be followed by a command payload.
+
+```msc
+# bad
+@command
+
+# good
+@command /say hi
+```
+
+---
+
+<a id="syn016"></a>
+### SYN016: unmatched-block-end (syntax error)
+
+`@fi` and `@done` must each close a matching opener.
+
+```msc
+# bad
+@done
+
+# good
+@for Player p in {{onlinePlayers}}
+@done
+```
+
+---
+
+<a id="syn017"></a>
+### SYN017: mismatched-block-end (syntax error)
+
+Use `@fi` to close `@if`, and `@done` to close `@for`.
+
+```msc
+# bad
+@if {{x}}
+@done
+
+# good
+@if {{x}}
+@fi
+```
+
+---
+
+<a id="syn018"></a>
+### SYN018: unmatched-else (syntax error)
+
+`@else` and `@elseif` can only appear inside an `@if` block.
+
+```msc
+# bad
+@else
+
+# good
+@if {{x}}
+@else
+@fi
+```
+
+---
+
+<a id="syn019"></a>
+### SYN019: multiple-else (syntax error)
+
+An `@if` block can have at most one `@else`, and no `@elseif` may appear after it.
+
+```msc
+# bad
+@if {{x}}
+@else
+@elseif {{y}}
+@fi
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
@@ -145,3 +392,30 @@ The command name in `@bypass`, `@console`, or `@command` cannot start with a `{{
 
 The quick fix deletes the offending line.
 
+---
+
+<a id="sty001"></a>
+### STY001: lowercase-variable-name (style warning)
+
+Variable names should start with a lowercase letter.
+
+```msc
+# bad
+@define String Name = "Minr"
+
+# good
+@define String name = "Minr"
+```
+
+---
+
+<a id="sty002"></a>
+### STY002: unreachable-after-return (style warning)
+
+Code after `@return` in the same block is unreachable.
+
+```msc
+# bad
+@return
+@command /say never runs
+```

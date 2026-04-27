@@ -1550,6 +1550,15 @@ const validStarters = [
 	'@fast', '@slow', '@return'
 ];
 
+function validateTime(str: string, lineNumber: number, startIndex: number, endIndex: number, diagnostics: Diagnostic[]) {
+	if (!str.match(/^\d+[tsmhdwy]?$/)) {
+		raise(diagnostics, RULES.SYN010, {
+			start: { line: lineNumber, character: startIndex },
+			end: { line: lineNumber, character: endIndex }
+		});
+	}
+}
+
 function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, diagnostics: Diagnostic[]) {
 	if (!validStarters.includes(firstWord)) {
 		raise(diagnostics, RULES.SYN003, {
@@ -1592,7 +1601,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@fi':
 		case '@done': {
 			if (trimmedLine !== firstWord) {
-				// TODO(lint): port — ${firstWord} should be on its own line
+				raise(diagnostics, RULES.SYN004, {
+					start: { line: lineNumber, character: lineStartIndex + firstWord.length },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: `${firstWord} should be on its own line` });
 			}
 			break;
 		}
@@ -1601,7 +1613,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@elseif': {
 			const ifRegex = /^@(if|elseif)\s+(.+)$/;
 			if (!trimmedLine.match(ifRegex)) {
-				// TODO(lint): port — invalid ${firstWord} syntax: condition cannot be empty
+				raise(diagnostics, RULES.SYN005, {
+					start: { line: lineNumber, character: lineStartIndex + firstWord.length },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: `${firstWord} requires a non-empty condition` });
 			}
 			break;
 		}
@@ -1610,13 +1625,19 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const forRegex = RegExp(/^@for\s+([\w:]+)\s+(\w+)\s+in\s+(.+)$/, 'd');
 			const forMatch = trimmedLine.match(forRegex);
 			if (!forMatch) {
-				// TODO(lint): port — invalid @for syntax
+				raise(diagnostics, RULES.SYN006, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
 				break;
 			}
 
 			const [_all, _variableType, variableName, _initializer] = forMatch;
 			if (variableName[0] < 'a' || variableName[0] > 'z') {
-				// TODO(lint): port — variable names must start with lowercase (@for)
+				raise(diagnostics, RULES.STY001, {
+					start: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][0] },
+					end: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][1] }
+				});
 			}
 			break;
 		}
@@ -1625,16 +1646,25 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const defineRegex = RegExp(/^@define\s+([\w:[\]]+)\s+([\w]+)\s*(=\s*(.+)?)?$/, 'd');
 			const defineMatch = trimmedLine.match(defineRegex);
 			if (!defineMatch) {
-				// TODO(lint): port — invalid @define syntax
+				raise(diagnostics, RULES.SYN007, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
 				break;
 			}
 
 			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
 			if (variableName[0] < 'a' || variableName[0] > 'z') {
-				// TODO(lint): port — variable names must start with lowercase (@define)
+				raise(diagnostics, RULES.STY001, {
+					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][0] },
+					end: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][1] }
+				});
 			}
 			if (intializer !== undefined && initializerExpression === undefined) {
-				// TODO(lint): port — invalid @define syntax: initializer cannot be empty
+				raise(diagnostics, RULES.SYN008, {
+					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![3][1] },
+					end: { line: lineNumber, character: lineLength }
+				});
 			}
 			break;
 		}
@@ -1643,15 +1673,21 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(\S+)$/, 'd');
 			const chatscriptMatch = trimmedLine.match(chatscriptRegex);
 			if (!chatscriptMatch) {
-				// TODO(lint): port — invalid @chatscript syntax
+				raise(diagnostics, RULES.SYN009, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
 				break;
 			}
 
-			const [_all, _time, _group, func] = chatscriptMatch;
-			// TODO(lint): port — invalid time format (@chatscript)
+			const [_all, time, _group, func] = chatscriptMatch;
+			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
 
 			if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
-				// TODO(lint): port — invalid function syntax in @chatscript
+				raise(diagnostics, RULES.SYN011, {
+					start: { line: lineNumber, character: lineStartIndex + chatscriptMatch.indices![3][0] },
+					end: { line: lineNumber, character: lineStartIndex + chatscriptMatch.indices![3][1] }
+				});
 			}
 			break;
 		}
@@ -1660,16 +1696,22 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@global_cooldown': {
 			const cooldownMatch = trimmedLine.match(RegExp(/^@(cooldown|global_cooldown)\s+(\S+)$/, 'd'));
 			if (!cooldownMatch) {
-				// TODO(lint): port — invalid ${firstWord} syntax (expected: ${firstWord} time)
+				raise(diagnostics, RULES.SYN012, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: `Invalid ${firstWord} syntax: expected\n${firstWord} time` });
 			} else {
-				// TODO(lint): port — invalid time format (@cooldown/@global_cooldown)
+				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
 			}
 			break;
 		}
 
 		case '@cancel': {
 			if (trimmedLine !== '@cancel') {
-				// TODO(lint): port — @cancel should be on its own line
+				raise(diagnostics, RULES.SYN004, {
+					start: { line: lineNumber, character: lineStartIndex + firstWord.length },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: '@cancel should be on its own line' });
 			}
 			break;
 		}
@@ -1677,9 +1719,12 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@delay': {
 			const delayMatch = trimmedLine.match(RegExp(/^@delay\s+(\S+)$/, 'd'));
 			if (!delayMatch) {
-				// TODO(lint): port — invalid @delay syntax
+				raise(diagnostics, RULES.SYN013, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
 			} else {
-				// TODO(lint): port — invalid time format (@delay)
+				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
 			}
 			break;
 		}
@@ -1687,7 +1732,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@slow':
 		case '@fast': {
 			if (trimmedLine !== '@slow' && trimmedLine !== '@fast') {
-				// TODO(lint): port — ${firstWord} should be on its own line (@slow/@fast)
+				raise(diagnostics, RULES.SYN004, {
+					start: { line: lineNumber, character: lineStartIndex + firstWord.length },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: `${firstWord} should be on its own line` });
 			}
 			break;
 		}
@@ -1695,7 +1743,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@using': {
 			const usingRegex = /^@using\s+(\w+)$/;
 			if (!trimmedLine.match(usingRegex)) {
-				// TODO(lint): port — invalid @using syntax
+				raise(diagnostics, RULES.SYN014, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
 			}
 			break;
 		}
@@ -1705,14 +1756,17 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		case '@console': {
 			const bypassCommandConsoleRegex = /^@(bypass|command|console)\s+(.+)$/;
 			if (!trimmedLine.match(bypassCommandConsoleRegex)) {
-				// TODO(lint): port — invalid ${firstWord} syntax (expected: ${firstWord} /command)
+				raise(diagnostics, RULES.SYN015, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				}, { message: `Invalid ${firstWord} syntax: expected\n${firstWord} /command` });
 			}
 			break;
 		}
 	}
 }
 
-function processControlStatements(firstWord: string, lineNumber: number, _lineStartIndex: number, _lineLength: number, parsingContext: ScriptParsingContext, _diagnostics: Diagnostic[]) {
+function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
 
 	switch (firstWord) {
@@ -1738,11 +1792,17 @@ function processControlStatements(firstWord: string, lineNumber: number, _lineSt
 			parsingContext.popReturns();
 			const lastBlock: NestedScriptBlock | undefined = parsingContext.pop();
 			if (lastBlock === undefined) {
-				// TODO(lint): port — ${firstWord} without matching opener
+				raise(diagnostics, RULES.SYN016, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+				}, { message: `${firstWord} without matching ${firstWord === '@fi' ? '@if' : '@for'}` });
 			} else {
 				if ((firstWord === '@fi' && lastBlock.type !== 'if') ||
 					(firstWord === '@done' && lastBlock.type !== 'for')) {
-					// TODO(lint): port — mismatched ${firstWord}
+					raise(diagnostics, RULES.SYN017, {
+						start: { line: lineNumber, character: lineStartIndex },
+						end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+					}, { message: `Mismatched ${firstWord}: expected ${lastBlock.type === 'if' ? '@fi' : '@done'}` });
 				}
 			}
 			break;
@@ -1752,12 +1812,19 @@ function processControlStatements(firstWord: string, lineNumber: number, _lineSt
 			parsingContext.popReturns();
 			const lastBlock: NestedScriptBlock | undefined = parsingContext.last();
 			if (lastBlock?.type !== 'if') {
-				// TODO(lint): port — mismatched ${firstWord}: no matching @if
+				raise(diagnostics, RULES.SYN018, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+				}, { message: `Mismatched ${firstWord}: no matching @if` });
 			} else {
 				if (lastBlock.hadElse) {
-					// TODO(lint): port — multiple @else / @elseif after @else
+					const diagnosticMessage = firstWord === '@else' ? 'Multiple @else in @if-@fi block' : '@elseif can\'t occur after @else in @if-@fi block';
+					raise(diagnostics, RULES.SYN019, {
+						start: { line: lineNumber, character: lineStartIndex },
+						end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+					}, { message: diagnosticMessage });
 				}
-				if (firstWord === "@else") {
+				if (firstWord === '@else') {
 					lastBlock.hadElse = true;
 				}
 			}
@@ -1771,7 +1838,10 @@ function processControlStatements(firstWord: string, lineNumber: number, _lineSt
 	}
 
 	if ((firstWord !== '@return' && parsingContext.currentScopeHadReturn()) || (firstWord === '@return' && currentScopeHadReturnBeforeThisLine)) {
-		// TODO(lint): port — unreachable code after @return (warning)
+		raise(diagnostics, RULES.STY002, {
+			start: { line: lineNumber, character: 0 },
+			end: { line: lineNumber, character: lineLength }
+		});
 	}
 }
 
