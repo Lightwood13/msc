@@ -118,3 +118,18 @@ Scripts cannot run chat commands. This covers `/chat`, `/gchat`, `/echat`, `/ach
 
 The quick fix deletes the offending line.
 
+---
+
+<a id="sec004"></a>
+### SEC004: dynamic-commands-banned (security error)
+
+The command name in `@bypass`, `@console`, or `@command` cannot start with a `{{...}}` expression to prevent running arbitrary commands based on potentially untrusted user input.
+
+```msc
+# bad
+@command /{{commandName}} arg1
+@bypass {{cmd}}
+```
+
+The quick fix deletes the offending line.
+

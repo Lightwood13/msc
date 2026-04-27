@@ -1577,8 +1577,11 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		});
 	}
 
-	if (trimmedLine.match(/^@(bypass|console|command) \/?{{.*/)) {
-		// TODO(lint): port — general command executors banned in scripts
+	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?\{\{/)) {
+		raise(diagnostics, RULES.SEC004, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineLength }
+		});
 	}
 
 	switch (firstWord) {

@@ -55,5 +55,16 @@ export const RULES: Record<string, Rule> = {
 			title: 'Delete this line',
 			edits: [{ kind: 'delete', line }]
 		})
+	},
+	SEC004: {
+		code: 'SEC004',
+		name: 'dynamic-commands-banned',
+		category: 'security',
+		severity: 'error',
+		description: 'Commands with a template-expression name are banned in scripts',
+		fix: ({ line }) => ({
+			title: 'Delete this line',
+			edits: [{ kind: 'delete', line }]
+		})
 	}
 };
