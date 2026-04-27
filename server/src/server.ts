@@ -1760,7 +1760,7 @@ function processControlStatements(firstWord: string, lineNumber: number, _lineSt
 function processLine(line: string, lineNumber: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const trimmedLine = line.trim();
 
-	if (trimmedLine === '' || trimmedLine.startsWith("# ")) {
+	if (trimmedLine === '' || trimmedLine.startsWith("# ") || trimmedLine === "#") {
 		return;
 	}
 
