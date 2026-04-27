@@ -1570,8 +1570,11 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		});
 	}
 
-	if (trimmedLine.match(/^@(bypass|console|command) \/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t) .*/)) {
-		// TODO(lint): port — chat commands executed by player prohibited in scripts
+	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t)(\s|$)/)) {
+		raise(diagnostics, RULES.SEC003, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineLength }
+		});
 	}
 
 	if (trimmedLine.match(/^@(bypass|console|command) \/?{{.*/)) {

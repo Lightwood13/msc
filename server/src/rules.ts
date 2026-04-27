@@ -44,5 +44,16 @@ export const RULES: Record<string, Rule> = {
 			title: 'Delete this line',
 			edits: [{ kind: 'delete', line }]
 		})
+	},
+	SEC003: {
+		code: 'SEC003',
+		name: 'chat-commands-banned',
+		category: 'security',
+		severity: 'error',
+		description: 'Chat commands are banned in scripts',
+		fix: ({ line }) => ({
+			title: 'Delete this line',
+			edits: [{ kind: 'delete', line }]
+		})
 	}
 };

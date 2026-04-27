@@ -103,3 +103,18 @@ Permission-changing commands are blocked in scripts whether invoked via `@bypass
 
 The quick fix deletes the offending line. Granting permissions from a script is by design impossible. You should issue these commands manually as an admin if you need them.
 
+---
+
+<a id="sec003"></a>
+### SEC003: chat-commands-banned (security error)
+
+Scripts cannot run chat commands. This covers `/chat`, `/gchat`, `/echat`, `/achat`, `/schat`, `/bchat`, `/pchat`, `/tchat`, `/alert`, `/p`, and `/t`, regardless of executor.
+
+```msc
+# bad
+@command /chat hello
+@bypass /alert important
+```
+
+The quick fix deletes the offending line.
+
