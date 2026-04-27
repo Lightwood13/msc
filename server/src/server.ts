@@ -1512,7 +1512,7 @@ function createDiagnostic(line: number, start: number, end: number, message: str
 			end: { line, character: end }
 		},
 		message,
-		source: severity === DiagnosticSeverity.Error ? 'msc-error' : 'msc-warning'
+		source: 'msc'
 	};
 }
 
