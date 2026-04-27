@@ -1559,7 +1559,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		// TODO(lint): port — permission-changing commands banned in scripts
 	}
 
-	if (trimmedLine.match(/^@bypass \/?script .*/)) {
+	if (trimmedLine.match(/^@(bypass|console)\s+\/?(script|s)(\s|$)/)) {
 		raise(diagnostics, RULES.SEC001, {
 			start: { line: lineNumber, character: lineStartIndex },
 			end: { line: lineNumber, character: lineLength }

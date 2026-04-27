@@ -40,10 +40,10 @@ export const RULES: Record<string, Rule> = {
 		name: 'bypass-script-banned',
 		category: 'security',
 		severity: 'error',
-		description: '@bypass /script is no longer allowed, use @command /script instead',
+		description: 'Calling /script via @bypass or @console is no longer allowed, use @command instead',
 		fix: ({ lineText, line }) => ({
-			title: 'Replace @bypass with @command',
-			edits: [{ kind: 'replace', line, content: lineText.replace(/@bypass\b/, '@command') }]
+			title: 'Replace with @command',
+			edits: [{ kind: 'replace', line, content: lineText.replace(/^(\s*)@(bypass|console)\b/, '$1@command') }]
 		})
 	},
 	SYN001: {
