@@ -22,6 +22,7 @@ export interface Fix {
 export interface FixContext {
 	lineText: string;
 	line: number;
+	totalLines: number;
 }
 
 export interface Rule {
@@ -33,7 +34,41 @@ export interface Rule {
 	fix?: (ctx: FixContext) => Fix | Fix[] | null;
 }
 
-export const RULES: Record<string, Rule> = {};
+export const RULES: Record<string, Rule> = {
+	SEC001: {
+		code: 'SEC001',
+		name: 'bypass-script-banned',
+		category: 'security',
+		severity: 'error',
+		description: '@bypass /script is no longer allowed, use @command /script instead',
+		fix: ({ lineText, line }) => ({
+			title: 'Replace @bypass with @command',
+			edits: [{ kind: 'replace', line, content: lineText.replace(/@bypass\b/, '@command') }]
+		})
+	},
+	SYN001: {
+		code: 'SYN001',
+		name: 'unclosed-if',
+		category: 'syntax',
+		severity: 'error',
+		description: 'Unclosed @if block',
+		fix: ({ totalLines }) => ({
+			title: 'Insert @fi at end of file',
+			edits: [{ kind: 'insert', before: totalLines, content: '@fi' }]
+		})
+	},
+	SYN002: {
+		code: 'SYN002',
+		name: 'unclosed-for',
+		category: 'syntax',
+		severity: 'error',
+		description: 'Unclosed @for block',
+		fix: ({ totalLines }) => ({
+			title: 'Insert @done at end of file',
+			edits: [{ kind: 'insert', before: totalLines, content: '@done' }]
+		})
+	}
+};
 
 const SEVERITIES: Record<RuleSeverity, DiagnosticSeverity> = {
 	error: DiagnosticSeverity.Error,

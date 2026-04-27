@@ -78,7 +78,7 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
-import { RULES, lineOpsToEdits } from './lint';
+import { RULES, lineOpsToEdits, raise } from './lint';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -1427,7 +1427,7 @@ function buildRuleFixes(doc: TextDocument, diagnostic: Diagnostic): CodeAction[]
 		start: { line, character: 0 },
 		end: { line: line + 1, character: 0 }
 	}).replace(/\r?\n$/, '');
-	const result = rule.fix({ lineText, line });
+	const result = rule.fix({ lineText, line, totalLines: doc.lineCount });
 	if (!result) return [];
 	const fixes = Array.isArray(result) ? result : [result];
 	return fixes.map(fix => ({
@@ -1533,7 +1533,10 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 	}
 
 	if (trimmedLine.match(/^@bypass \/?script .*/)) {
-		diagnostics.push(createDiagnostic(lineNumber, lineStartIndex, lineLength, '@bypass /script is no longer allowed, use @command /script instead'));
+		raise(diagnostics, RULES.SEC001, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineLength }
+		});
 	}
 
 	if (trimmedLine.match(/^@(bypass|console|command) \/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t) .*/)) {
@@ -1769,7 +1772,12 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 	if (parsingContext.blockStack.length > 0) {
 		for (const block of parsingContext.blockStack) {
 			if (block.type === 'if' || block.type === 'for') {
-				diagnostics.push(createDiagnostic(block.line, lines[block.line].indexOf(`@${block.type}`), lines[block.line].indexOf(`@${block.type}`) + `@${block.type}`.length, `Unclosed @${block.type} block`));
+				const opStart = lines[block.line].indexOf(`@${block.type}`);
+				const rule = block.type === 'if' ? RULES.SYN001 : RULES.SYN002;
+				raise(diagnostics, rule, {
+					start: { line: block.line, character: opStart },
+					end: { line: block.line, character: opStart + block.type.length + 1 }
+				});
 			}
 		}
 	}
