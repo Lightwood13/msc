@@ -1552,7 +1552,10 @@ const validStarters = [
 
 function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, diagnostics: Diagnostic[]) {
 	if (!validStarters.includes(firstWord)) {
-		// TODO(lint): port — invalid script option ${firstWord}
+		raise(diagnostics, RULES.SYN003, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+		}, { message: `Invalid script option ${firstWord}` });
 		return;
 	}
 

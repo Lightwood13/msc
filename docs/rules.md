@@ -73,6 +73,18 @@ The quick fix appends `@done` at end of file. As with `SYN001`, prefer placing i
 
 ---
 
+<a id="syn003"></a>
+### SYN003: invalid-script-option (syntax error)
+
+The first word of a non-comment line must be a recognised script operator (`@if`, `@for`, `@command`, `@delay`, etc.).
+
+```msc
+# bad
+@iff condition
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

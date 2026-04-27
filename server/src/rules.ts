@@ -23,6 +23,13 @@ export const RULES: Record<string, Rule> = {
 			edits: [{ kind: 'insert', before: totalLines, content: '@done' }]
 		})
 	},
+	SYN003: {
+		code: 'SYN003',
+		name: 'invalid-script-option',
+		category: 'syntax',
+		severity: 'error',
+		description: 'Unknown script operator'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
