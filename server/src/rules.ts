@@ -1,17 +1,6 @@
 import { Rule } from './lint';
 
 export const RULES: Record<string, Rule> = {
-	SEC001: {
-		code: 'SEC001',
-		name: 'bypass-script-banned',
-		category: 'security',
-		severity: 'error',
-		description: 'Calling /script via @bypass or @console is no longer allowed, use @command instead',
-		fix: ({ lineText, line }) => ({
-			title: 'Replace with @command',
-			edits: [{ kind: 'replace', line, content: lineText.replace(/^(\s*)@(bypass|console)\b/, '$1@command') }]
-		})
-	},
 	SYN001: {
 		code: 'SYN001',
 		name: 'unclosed-if',
@@ -32,6 +21,28 @@ export const RULES: Record<string, Rule> = {
 		fix: ({ totalLines }) => ({
 			title: 'Insert @done at end of file',
 			edits: [{ kind: 'insert', before: totalLines, content: '@done' }]
+		})
+	},
+	SEC001: {
+		code: 'SEC001',
+		name: 'bypass-script-banned',
+		category: 'security',
+		severity: 'error',
+		description: 'Calling /script via @bypass or @console is no longer allowed, use @command instead',
+		fix: ({ lineText, line }) => ({
+			title: 'Replace with @command',
+			edits: [{ kind: 'replace', line, content: lineText.replace(/^(\s*)@(bypass|console)\b/, '$1@command') }]
+		})
+	},
+	SEC002: {
+		code: 'SEC002',
+		name: 'permission-commands-banned',
+		category: 'security',
+		severity: 'error',
+		description: 'Permission-changing commands are banned in scripts',
+		fix: ({ line }) => ({
+			title: 'Delete this line',
+			edits: [{ kind: 'delete', line }]
 		})
 	}
 };

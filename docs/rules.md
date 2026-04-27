@@ -88,3 +88,18 @@ The quick fix appends `@done` at end of file. As with `SYN001`, prefer placing i
 
 The quick fix substitutes `@command` for `@bypass` or `@console` on the offending line.
 
+---
+
+<a id="sec002"></a>
+### SEC002: permission-commands-banned (security error)
+
+Permission-changing commands are blocked in scripts whether invoked via `@bypass`, `@console`, or `@command`. This covers the vanilla `/op` and `/deop`, the rank command `/rank`, and the LuckPerms aliases (`/lp`, `/luckperms`, `/permission`, `/perm`, `/perms`).
+
+```msc
+# bad
+@bypass /op someone
+@console /lp user someone permission set group.admin true
+```
+
+The quick fix deletes the offending line. Granting permissions from a script is by design impossible. You should issue these commands manually as an admin if you need them.
+

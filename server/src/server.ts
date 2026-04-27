@@ -1556,8 +1556,11 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		return;
 	}
 
-	if (trimmedLine.match(/^@(bypass|console|command) \/?(op|deop|setrank|lp|luckperms|permission|perms|perm) .*/)) {
-		// TODO(lint): port — permission-changing commands banned in scripts
+	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?(op|deop|rank|lp|luckperms|permission|perms|perm)(\s|$)/)) {
+		raise(diagnostics, RULES.SEC002, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineLength }
+		});
 	}
 
 	if (trimmedLine.match(/^@(bypass|console)\s+\/?(script|s)(\s|$)/)) {
