@@ -76,14 +76,27 @@ const SEVERITIES: Record<RuleSeverity, DiagnosticSeverity> = {
 	info: DiagnosticSeverity.Information
 };
 
-export function raise(diagnostics: Diagnostic[], rule: Rule, range: Range, message?: string): void {
-	diagnostics.push({
+export interface DiagnosticData {
+	fix?: Fix | Fix[];
+}
+
+export interface RaiseOptions {
+	// Context-dependent fix; takes precedence over rule.fix at code-action time.
+	fix?: Fix | Fix[];
+	// Override rule.description for this specific diagnostic.
+	message?: string;
+}
+
+export function raise(diagnostics: Diagnostic[], rule: Rule, range: Range, options?: RaiseOptions): void {
+	const d: Diagnostic = {
 		severity: SEVERITIES[rule.severity],
 		range,
-		message: message ?? rule.description,
+		message: options?.message ?? rule.description,
 		code: rule.code,
 		source: 'msc'
-	});
+	};
+	if (options?.fix) d.data = { fix: options.fix } satisfies DiagnosticData;
+	diagnostics.push(d);
 }
 
 export interface Suppressions {

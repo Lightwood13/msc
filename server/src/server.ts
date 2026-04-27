@@ -77,7 +77,7 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
-import { RULES, lineOpsToEdits, parseSuppressions, raise } from './lint';
+import { DiagnosticData, Fix, RULES, lineOpsToEdits, parseSuppressions, raise } from './lint';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -1461,13 +1461,18 @@ function disableErrorCheckingInFileAction(doc: TextDocument, diagnostic: Diagnos
 function buildRuleFixes(doc: TextDocument, diagnostic: Diagnostic): CodeAction[] {
 	const code = typeof diagnostic.code === 'string' ? diagnostic.code : undefined;
 	const rule = code ? RULES[code] : undefined;
-	if (!rule?.fix) return [];
-	const line = diagnostic.range.start.line;
-	const lineText = doc.getText({
-		start: { line, character: 0 },
-		end: { line: line + 1, character: 0 }
-	}).replace(/\r?\n$/, '');
-	const result = rule.fix({ lineText, line, totalLines: doc.lineCount });
+
+	const attached = (diagnostic.data as DiagnosticData | undefined)?.fix;
+	let result: Fix | Fix[] | null | undefined = attached;
+
+	if (!result && rule?.fix) {
+		const line = diagnostic.range.start.line;
+		const lineText = doc.getText({
+			start: { line, character: 0 },
+			end: { line: line + 1, character: 0 }
+		}).replace(/\r?\n$/, '');
+		result = rule.fix({ lineText, line, totalLines: doc.lineCount });
+	}
 	if (!result) return [];
 	const fixes = Array.isArray(result) ? result : [result];
 	return fixes.map(fix => ({
