@@ -87,12 +87,15 @@ export interface RaiseOptions {
 	message?: string;
 }
 
+const DOCS_BASE = 'https://github.com/Lightwood13/msc/blob/master/docs/rules.md';
+
 export function raise(diagnostics: Diagnostic[], rule: Rule, range: Range, options?: RaiseOptions): void {
 	const d: Diagnostic = {
 		severity: SEVERITIES[rule.severity],
 		range,
 		message: options?.message ?? rule.description,
 		code: rule.code,
+		codeDescription: { href: `${DOCS_BASE}#${rule.code.toLowerCase()}` },
 		source: 'msc'
 	};
 	if (options?.fix) d.data = { fix: options.fix } satisfies DiagnosticData;
