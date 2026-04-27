@@ -86,6 +86,59 @@ export function raise(diagnostics: Diagnostic[], rule: Rule, range: Range, messa
 	});
 }
 
+export interface Suppressions {
+	perLine: Map<number, Set<string> | 'any'>;
+	file: Set<string> | 'any';
+}
+
+// Recognised: # msc-ignore [file] [any|all|<CODE>...]
+// Bare `msc-ignore` and the filler tokens `any`/`all` mean "all codes".
+// Line-scope attaches to the next non-blank, non-comment line.
+export function parseSuppressions(lines: string[]): Suppressions {
+	const perLine = new Map<number, Set<string> | 'any'>();
+	let file: Set<string> | 'any' = new Set<string>();
+	const FILLER = new Set(['any', 'all']);
+
+	const isContentful = (s: string) => {
+		const t = s.trim();
+		return t !== '' && !t.startsWith('# ');
+	};
+
+	const findNextContentful = (from: number): number => {
+		for (let j = from; j < lines.length; j++) {
+			if (isContentful(lines[j])) return j;
+		}
+		return -1;
+	};
+
+	for (let i = 0; i < lines.length; i++) {
+		const m = /^\s*#\s*msc-ignore(?:\s+(.*))?$/.exec(lines[i]);
+		if (!m) continue;
+		const tokens = (m[1] ?? '').trim().split(/\s+/).filter(Boolean);
+		const isFile = tokens[0] === 'file';
+		const rest = isFile ? tokens.slice(1) : tokens;
+		const codeTokens = rest.filter(t => !FILLER.has(t));
+		const isAll = rest.some(t => FILLER.has(t)) || codeTokens.length === 0;
+
+		if (isFile) {
+			if (file === 'any') continue;
+			if (isAll) { file = 'any'; continue; }
+			for (const c of codeTokens) file.add(c);
+		} else {
+			const target = findNextContentful(i + 1);
+			if (target === -1) continue;
+			const existing = perLine.get(target);
+			if (existing === 'any') continue;
+			if (isAll) { perLine.set(target, 'any'); continue; }
+			const set = existing ?? new Set<string>();
+			for (const c of codeTokens) set.add(c);
+			perLine.set(target, set);
+		}
+	}
+
+	return { perLine, file };
+}
+
 // Apply line ops back-to-front so earlier line indices remain valid.
 export function lineOpsToEdits(ops: LineOp[]): TextEdit[] {
 	const at = (op: LineOp) => op.kind === 'insert' ? op.before : op.line;

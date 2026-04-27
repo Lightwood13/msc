@@ -77,7 +77,7 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
-import { RULES, lineOpsToEdits, raise } from './lint';
+import { RULES, lineOpsToEdits, parseSuppressions, raise } from './lint';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -1400,13 +1400,38 @@ connection.onCodeAction((params: CodeActionParams) => {
 	for (const diagnostic of params.context.diagnostics) {
 		actions.push(...buildRuleFixes(textDocument, diagnostic));
 		actions.push(ignoreThisErrorAction(textDocument, diagnostic));
-		actions.push(ignoreAllErrorsAction(textDocument, diagnostic));
+		const similar = ignoreSimilarInFileAction(textDocument, diagnostic);
+		if (similar) actions.push(similar);
+		actions.push(disableErrorCheckingInFileAction(textDocument, diagnostic));
 	}
 	return actions;
 });
 
+function diagnosticCode(diagnostic: Diagnostic): string | undefined {
+	return typeof diagnostic.code === 'string' ? diagnostic.code : undefined;
+}
+
+function insertAtTopEdit(doc: TextDocument, diagnostic: Diagnostic, title: string, marker: string): CodeAction {
+	return {
+		title,
+		kind: CodeActionKind.QuickFix,
+		diagnostics: [diagnostic],
+		edit: {
+			documentChanges: [{
+				textDocument: { uri: doc.uri, version: doc.version },
+				edits: [{
+					range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+					newText: marker + '\n'
+				}]
+			}]
+		}
+	};
+}
+
 function ignoreThisErrorAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction {
 	const line = diagnostic.range.start.line;
+	const code = diagnosticCode(diagnostic);
+	const marker = code ? `# msc-ignore ${code}` : '# msc-ignore';
 	return {
 		title: 'Ignore this error',
 		kind: CodeActionKind.QuickFix,
@@ -1416,28 +1441,21 @@ function ignoreThisErrorAction(doc: TextDocument, diagnostic: Diagnostic): CodeA
 				textDocument: { uri: doc.uri, version: doc.version },
 				edits: [{
 					range: { start: { line, character: 0 }, end: { line, character: 0 } },
-					newText: '# msc-ignore-next-line\n'
+					newText: marker + '\n'
 				}]
 			}]
 		}
 	};
 }
 
-function ignoreAllErrorsAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction {
-	return {
-		title: 'Ignore errors in this file',
-		kind: CodeActionKind.QuickFix,
-		diagnostics: [diagnostic],
-		edit: {
-			documentChanges: [{
-				textDocument: { uri: doc.uri, version: doc.version },
-				edits: [{
-					range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-					newText: '# msc-ignore-errors\n'
-				}]
-			}]
-		}
-	};
+function ignoreSimilarInFileAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction | null {
+	const code = diagnosticCode(diagnostic);
+	if (!code) return null;
+	return insertAtTopEdit(doc, diagnostic, 'Ignore this error and others like it', `# msc-ignore file ${code}`);
+}
+
+function disableErrorCheckingInFileAction(doc: TextDocument, diagnostic: Diagnostic): CodeAction {
+	return insertAtTopEdit(doc, diagnostic, 'Disable error checking in this file', '# msc-ignore file');
 }
 
 function buildRuleFixes(doc: TextDocument, diagnostic: Diagnostic): CodeAction[] {
@@ -1755,8 +1773,10 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 
 function validateAndReportDiagnostics(textDocument: TextDocument): void {
 	const text = textDocument.getText();
+	const lines = text.split('\n');
+	const suppressions = parseSuppressions(lines);
 
-	if (text.includes("# msc-ignore-errors")) {
+	if (suppressions.file === 'any') {
 		connection.sendDiagnostics({
 			uri: textDocument.uri,
 			diagnostics: []
@@ -1767,7 +1787,6 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 	const parsingContext = new ScriptParsingContext();
 	const diagnostics: Diagnostic[] = [];
 
-	const lines = text.split('\n');
 	for (let i = 0; i < lines.length; i++) {
 		processLine(lines[i], i, parsingContext, diagnostics);
 	}
@@ -1785,15 +1804,15 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 		}
 	}
 
-	const ignoredLines = new Set<number>();
-	for (let i = 0; i < lines.length - 1; i++) {
-		if (/^\s*#\s*msc-ignore-next-line\b/.test(lines[i])) {
-			ignoredLines.add(i + 1);
-		}
-	}
-	const filtered = ignoredLines.size > 0
-		? diagnostics.filter(d => !ignoredLines.has(d.range.start.line))
-		: diagnostics;
+	const fileCodes = suppressions.file;
+	const filtered = diagnostics.filter(d => {
+		const code = diagnosticCode(d);
+		if (code && fileCodes.has(code)) return false;
+		const lineSup = suppressions.perLine.get(d.range.start.line);
+		if (lineSup === 'any') return false;
+		if (lineSup && code && lineSup.has(code)) return false;
+		return true;
+	});
 
 	connection.sendDiagnostics({
 		uri: textDocument.uri,
