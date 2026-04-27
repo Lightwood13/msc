@@ -33,6 +33,7 @@ There are five categories of rule.
 
 ## Glossary of rules
 
+<a id="syn001"></a>
 ### SYN001: unclosed-if (syntax error)
 
 Every `@if` must be closed with `@fi` before the script ends. The diagnostic points at the unclosed opener.
@@ -52,6 +53,7 @@ The quick fix appends `@fi` at end of file. If the missing `@fi` belongs somewhe
 
 ---
 
+<a id="syn002"></a>
 ### SYN002: unclosed-for (syntax error)
 
 Every `@for` must be closed with `@done` before the script ends. The diagnostic points at the unclosed opener.
@@ -71,6 +73,7 @@ The quick fix appends `@done` at end of file. As with `SYN001`, prefer placing i
 
 ---
 
+<a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
 `@bypass /script` or `@console /script` allowed scripts to call other scripts unsupervised. The MSC compiler now rejects it for security reasons. Use `@command /script` instead: this has the same effect when the script is run by an operator, but is subject to permission checks otherwise.
