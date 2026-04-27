@@ -78,6 +78,7 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
+import { RULES, lineOpsToEdits } from './lint';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -1396,40 +1397,51 @@ connection.onCodeAction((params: CodeActionParams) => {
 		return [];
 	}
 
-	const diagnostics: Diagnostic[] = params.context.diagnostics;
-
-	const codeActions: CodeAction[] = diagnostics.map(diagnostic => {
-		const quickFix: CodeAction = {
+	const actions: CodeAction[] = [];
+	for (const diagnostic of params.context.diagnostics) {
+		actions.push(...buildRuleFixes(textDocument, diagnostic));
+		actions.push({
 			title: 'Ignore errors in this file',
 			kind: CodeActionKind.QuickFix,
 			diagnostics: [diagnostic],
 			edit: {
 				documentChanges: [{
-					textDocument: {
-						uri: textDocument.uri,
-						version: textDocument.version
-					},
+					textDocument: { uri: textDocument.uri, version: textDocument.version },
 					edits: [{
-						range: {
-							start: {
-								line: 0,
-								character: 0
-							},
-							end: {
-								line: 0,
-								character: 0
-							}
-						},
+						range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
 						newText: '# msc-ignore-errors\n'
 					}]
 				}]
 			}
-		};
-		return quickFix;
-	});
-
-	return codeActions;
+		});
+	}
+	return actions;
 });
+
+function buildRuleFixes(doc: TextDocument, diagnostic: Diagnostic): CodeAction[] {
+	const code = typeof diagnostic.code === 'string' ? diagnostic.code : undefined;
+	const rule = code ? RULES[code] : undefined;
+	if (!rule?.fix) return [];
+	const line = diagnostic.range.start.line;
+	const lineText = doc.getText({
+		start: { line, character: 0 },
+		end: { line: line + 1, character: 0 }
+	}).replace(/\r?\n$/, '');
+	const result = rule.fix({ lineText, line });
+	if (!result) return [];
+	const fixes = Array.isArray(result) ? result : [result];
+	return fixes.map(fix => ({
+		title: fix.title,
+		kind: CodeActionKind.QuickFix,
+		diagnostics: [diagnostic],
+		edit: {
+			documentChanges: [{
+				textDocument: { uri: doc.uri, version: doc.version },
+				edits: lineOpsToEdits(fix.edits)
+			}]
+		}
+	}));
+}
 
 interface IfScriptBlock {
 	readonly type: 'if';
