@@ -77,7 +77,8 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
-import { DiagnosticData, Fix, RULES, lineOpsToEdits, parseSuppressions, raise } from './lint';
+import { DiagnosticData, Fix, lineOpsToEdits, parseSuppressions, raise } from './lint';
+import { RULES } from './rules';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
