@@ -1510,6 +1510,7 @@ type NestedScriptBlock = IfScriptBlock | ForScriptBlock | ReturnScriptBlock;
 class ScriptParsingContext {
 	readonly blockStack: NestedScriptBlock[] = [];
 	returnCount = 0;
+	inHeader = true;
 
 	currentScopeHadReturn(): boolean {
 		return this.returnCount > 0;
@@ -1550,8 +1551,54 @@ const validStarters = [
 	'@fast', '@slow', '@return'
 ];
 
+const HEADER_OPERATORS: ReadonlySet<string> = new Set([
+	'@using', '@chatscript', '@cooldown', '@global_cooldown', '@cancel',
+	'@slow', '@fast'
+]);
+
+const HEADER_RESTRICTED_OPERATORS: ReadonlySet<string> = new Set([
+	'@cooldown', '@global_cooldown', '@cancel'
+]);
+
+const RESERVED_VARIABLE_NAMES: ReadonlySet<string> = new Set([
+	'true', 'false', 'this', 'null', 'final', 'relative', 'private', 'pi'
+]);
+
+type ScriptCommandExecutor = 'bypass' | 'command' | 'console';
+
+interface ScriptCommandInfo {
+	executor: ScriptCommandExecutor;
+	command: string;
+}
+
+function getScriptCommandInfo(trimmedLine: string): ScriptCommandInfo | null {
+	const match = /^@(bypass|command|console)\s+(.+)$/.exec(trimmedLine);
+	if (!match) return null;
+
+	let command = match[2];
+	if (command.startsWith('/')) {
+		command = command.substring(1);
+	}
+
+	command = command.replace(/^(\w+:)?/, '');
+	if (command.startsWith('c ')) {
+		command = 'checkpoint' + command.substring(1);
+	} else if (command.startsWith('cp ')) {
+		command = 'checkpoint' + command.substring(2);
+	}
+
+	return {
+		executor: match[1] as ScriptCommandExecutor,
+		command
+	};
+}
+
+function isValidVariableTag(variableName: string): boolean {
+	return /^[a-z][a-zA-Z0-9_]*$/.test(variableName) && !RESERVED_VARIABLE_NAMES.has(variableName);
+}
+
 function validateTime(str: string, lineNumber: number, startIndex: number, endIndex: number, diagnostics: Diagnostic[]) {
-	if (!str.match(/^\d+[tsmhdwy]?$/)) {
+	if (!str.match(/^\d+[smhdwy]?$/i)) {
 		raise(diagnostics, RULES.SYN010, {
 			start: { line: lineNumber, character: startIndex },
 			end: { line: lineNumber, character: endIndex }
@@ -1568,32 +1615,36 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		return;
 	}
 
-	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?(op|deop|rank|lp|luckperms|permission|perms|perm)(\s|$)/)) {
-		raise(diagnostics, RULES.SEC002, {
-			start: { line: lineNumber, character: lineStartIndex },
-			end: { line: lineNumber, character: lineLength }
-		});
-	}
+	const commandInfo = getScriptCommandInfo(trimmedLine);
+	if (commandInfo !== null) {
+		if (/^(op|deop|rank|lp|luckperms|permissions|perms|perm)(\s|$)/.test(commandInfo.command)) {
+			raise(diagnostics, RULES.SEC002, {
+				start: { line: lineNumber, character: lineStartIndex },
+				end: { line: lineNumber, character: lineLength }
+			});
+		}
 
-	if (trimmedLine.match(/^@(bypass|console)\s+\/?(script|s)(\s|$)/)) {
-		raise(diagnostics, RULES.SEC001, {
-			start: { line: lineNumber, character: lineStartIndex },
-			end: { line: lineNumber, character: lineLength }
-		});
-	}
+		if ((commandInfo.executor === 'bypass' || commandInfo.executor === 'console') && /^(script|s)(\s|$)/.test(commandInfo.command)) {
+			raise(diagnostics, RULES.SEC001, {
+				start: { line: lineNumber, character: lineStartIndex },
+				end: { line: lineNumber, character: lineLength }
+			});
+		}
 
-	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?(chat|gchat|echat|achat|schat|bchat|pchat|tchat|alert|p|t)(\s|$)/)) {
-		raise(diagnostics, RULES.SEC003, {
-			start: { line: lineNumber, character: lineStartIndex },
-			end: { line: lineNumber, character: lineLength }
-		});
-	}
+		if ((commandInfo.executor === 'command' || commandInfo.executor === 'bypass') &&
+			/^(chat|gchat|alert|echat|achat|schat|bchat|pchat|tchat|p|t)\s/.test(commandInfo.command)) {
+			raise(diagnostics, RULES.SEC003, {
+				start: { line: lineNumber, character: lineStartIndex },
+				end: { line: lineNumber, character: lineLength }
+			});
+		}
 
-	if (trimmedLine.match(/^@(bypass|console|command)\s+\/?\{\{/)) {
-		raise(diagnostics, RULES.SEC004, {
-			start: { line: lineNumber, character: lineStartIndex },
-			end: { line: lineNumber, character: lineLength }
-		});
+		if (commandInfo.command.startsWith('{{')) {
+			raise(diagnostics, RULES.SEC004, {
+				start: { line: lineNumber, character: lineStartIndex },
+				end: { line: lineNumber, character: lineLength }
+			});
+		}
 	}
 
 	switch (firstWord) {
@@ -1633,7 +1684,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			}
 
 			const [_all, _variableType, variableName, _initializer] = forMatch;
-			if (variableName[0] < 'a' || variableName[0] > 'z') {
+			if (!isValidVariableTag(variableName)) {
 				raise(diagnostics, RULES.STY001, {
 					start: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][0] },
 					end: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][1] }
@@ -1654,7 +1705,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			}
 
 			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
-			if (variableName[0] < 'a' || variableName[0] > 'z') {
+			if (!isValidVariableTag(variableName)) {
 				raise(diagnostics, RULES.STY001, {
 					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][0] },
 					end: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][1] }
@@ -1670,7 +1721,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 		}
 
 		case '@chatscript': {
-			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(\S+)$/, 'd');
+			const chatscriptRegex = RegExp(/^@chatscript\s+(\S+)\s+(\S+)\s+(.+)$/, 'd');
 			const chatscriptMatch = trimmedLine.match(chatscriptRegex);
 			if (!chatscriptMatch) {
 				raise(diagnostics, RULES.SYN009, {
@@ -1680,15 +1731,8 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 				break;
 			}
 
-			const [_all, time, _group, func] = chatscriptMatch;
+			const [_all, time, _group, _expression] = chatscriptMatch;
 			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
-
-			if (!func.includes('(') || !func.includes(')') || func.indexOf('(') >= func.indexOf(')')) {
-				raise(diagnostics, RULES.SYN011, {
-					start: { line: lineNumber, character: lineStartIndex + chatscriptMatch.indices![3][0] },
-					end: { line: lineNumber, character: lineStartIndex + chatscriptMatch.indices![3][1] }
-				});
-			}
 			break;
 		}
 
@@ -1725,6 +1769,19 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 				});
 			} else {
 				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
+			}
+			break;
+		}
+
+		case '@prompt': {
+			const promptMatch = trimmedLine.match(RegExp(/^@prompt\s+(\S+)\s+(\S+)(?:\s+.*)?$/, 'd'));
+			if (!promptMatch) {
+				raise(diagnostics, RULES.SYN011, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineLength }
+				});
+			} else {
+				validateTime(promptMatch[1], lineNumber, lineStartIndex + promptMatch.indices![1][0], lineStartIndex + promptMatch.indices![1][1], diagnostics);
 			}
 			break;
 		}
@@ -1768,6 +1825,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 
 function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
+	const duplicateReturn = firstWord === '@return' && currentScopeHadReturnBeforeThisLine;
 
 	switch (firstWord) {
 		case '@if': {
@@ -1832,16 +1890,35 @@ function processControlStatements(firstWord: string, lineNumber: number, lineSta
 		}
 
 		case '@return': {
+			if (duplicateReturn) {
+				raise(diagnostics, RULES.SYN021, {
+					start: { line: lineNumber, character: lineStartIndex },
+					end: { line: lineNumber, character: lineStartIndex + firstWord.length }
+				});
+			}
 			parsingContext.pushReturn(lineNumber);
 			break;
 		}
 	}
 
-	if ((firstWord !== '@return' && parsingContext.currentScopeHadReturn()) || (firstWord === '@return' && currentScopeHadReturnBeforeThisLine)) {
+	if ((firstWord !== '@return' && parsingContext.currentScopeHadReturn()) || (firstWord === '@return' && currentScopeHadReturnBeforeThisLine && !duplicateReturn)) {
 		raise(diagnostics, RULES.STY002, {
 			start: { line: lineNumber, character: 0 },
 			end: { line: lineNumber, character: lineLength }
 		});
+	}
+}
+
+function validateHeaderPosition(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+	if (HEADER_RESTRICTED_OPERATORS.has(firstWord) && !parsingContext.inHeader) {
+		raise(diagnostics, RULES.SYN020, {
+			start: { line: lineNumber, character: lineStartIndex },
+			end: { line: lineNumber, character: lineLength }
+		}, { message: `${firstWord} must appear in the header, before any executable statement` });
+	}
+
+	if (!HEADER_OPERATORS.has(firstWord)) {
+		parsingContext.inHeader = false;
 	}
 }
 
@@ -1857,6 +1934,7 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 
 	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, diagnostics);
 	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
+	validateHeaderPosition(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
 }
 
 function validateAndReportDiagnostics(textDocument: TextDocument): void {

@@ -78,21 +78,21 @@ export const RULES: Record<string, Rule> = {
 		name: 'chatscript-syntax',
 		category: 'syntax',
 		severity: 'error',
-		description: 'Invalid @chatscript syntax; expected `@chatscript <time> <group-name> <function>`'
+		description: 'Invalid @chatscript syntax; expected `@chatscript <time> <group-name> <expression>`'
 	},
 	SYN010: {
 		code: 'SYN010',
 		name: 'invalid-time',
 		category: 'syntax',
 		severity: 'error',
-		description: 'Time should be a number, optionally followed by one of `t`, `s`, `m`, `h`, `d`, `w`, or `y`'
+		description: 'Time should be a number, optionally followed by one of `s`, `m`, `h`, `d`, `w`, or `y`'
 	},
 	SYN011: {
 		code: 'SYN011',
-		name: 'chatscript-function',
+		name: 'prompt-syntax',
 		category: 'syntax',
 		severity: 'error',
-		description: '@chatscript requires a function call as its third argument'
+		description: 'Invalid @prompt syntax; expected `@prompt <time> <variable> [expiration-message]`'
 	},
 	SYN012: {
 		code: 'SYN012',
@@ -150,6 +150,20 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: '@else / @elseif appears after @else in the same @if-@fi block'
 	},
+	SYN020: {
+		code: 'SYN020',
+		name: 'header-operator-placement',
+		category: 'syntax',
+		severity: 'error',
+		description: '@cooldown / @global_cooldown / @cancel must appear in the script header, before executable statements'
+	},
+	SYN021: {
+		code: 'SYN021',
+		name: 'duplicate-return',
+		category: 'syntax',
+		severity: 'error',
+		description: 'Two @return statements cannot appear in the same conditional clause'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
@@ -198,8 +212,8 @@ export const RULES: Record<string, Rule> = {
 		code: 'STY001',
 		name: 'lowercase-variable-name',
 		category: 'style',
-		severity: 'warning',
-		description: 'Variable names should start with a lowercase letter'
+		severity: 'error',
+		description: 'Variable names must start with a lowercase letter and contain only letters, digits, or underscores'
 	},
 	STY002: {
 		code: 'STY002',

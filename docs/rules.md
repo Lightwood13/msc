@@ -40,11 +40,11 @@ Every `@if` must be closed with `@fi` before the script ends. The diagnostic poi
 
 ```msc
 # bad
-@if {{x > 0}}
+@if x > 0
     @command /say hi
 
 # good
-@if {{x > 0}}
+@if x > 0
     @command /say hi
 @fi
 ```
@@ -60,11 +60,11 @@ Every `@for` must be closed with `@done` before the script ends. The diagnostic 
 
 ```msc
 # bad
-@for Player p in {{onlinePlayers}}
+@for Player p in onlinePlayers
     @command /say hi {{p.name}}
 
 # good
-@for Player p in {{onlinePlayers}}
+@for Player p in onlinePlayers
     @command /say hi {{p.name}}
 @done
 ```
@@ -112,7 +112,7 @@ The quick fix removes the trailing content.
 @if
 
 # good
-@if {{player.isOp()}}
+@if player.isOp()
 ```
 
 ---
@@ -124,10 +124,10 @@ The quick fix removes the trailing content.
 
 ```msc
 # bad
-@for Player in {{onlinePlayers}}
+@for Player in onlinePlayers
 
 # good
-@for Player p in {{onlinePlayers}}
+@for Player p in onlinePlayers
 ```
 
 ---
@@ -165,7 +165,7 @@ If `@define` includes `=`, it must be followed by an initializer expression.
 <a id="syn009"></a>
 ### SYN009: chatscript-syntax (syntax error)
 
-`@chatscript` must use the form `@chatscript <time> <group-name> <function>`.
+`@chatscript` must use the form `@chatscript <time> <group-name> <expression>`.
 
 ```msc
 # bad
@@ -180,11 +180,11 @@ If `@define` includes `=`, it must be followed by an initializer expression.
 <a id="syn010"></a>
 ### SYN010: invalid-time (syntax error)
 
-Time values must be a number, optionally followed by one of these units: `t`, `s`, `m`, `h`, `d`, `w`, or `y`.
+Time values must be a number, optionally followed by one of these units: `s`, `m`, `h`, `d`, `w`, or `y`.
 
 ```msc
 # bad
-@delay soon
+@delay 10t
 
 # good
 @delay 10s
@@ -193,16 +193,16 @@ Time values must be a number, optionally followed by one of these units: `t`, `s
 ---
 
 <a id="syn011"></a>
-### SYN011: chatscript-function (syntax error)
+### SYN011: prompt-syntax (syntax error)
 
-The third argument to `@chatscript` must be a function call.
+`@prompt` must use the form `@prompt <time> <variable> [expiration-message]`.
 
 ```msc
 # bad
-@chatscript 10s group doStuff
+@prompt 10s
 
 # good
-@chatscript 10s group doStuff()
+@prompt 10s name Prompt expired
 ```
 
 ---
@@ -277,7 +277,7 @@ The third argument to `@chatscript` must be a function call.
 @done
 
 # good
-@for Player p in {{onlinePlayers}}
+@for Player p in onlinePlayers
 @done
 ```
 
@@ -290,11 +290,11 @@ Use `@fi` to close `@if`, and `@done` to close `@for`.
 
 ```msc
 # bad
-@if {{x}}
+@if x
 @done
 
 # good
-@if {{x}}
+@if x
 @fi
 ```
 
@@ -310,7 +310,7 @@ Use `@fi` to close `@if`, and `@done` to close `@for`.
 @else
 
 # good
-@if {{x}}
+@if x
 @else
 @fi
 ```
@@ -324,9 +324,41 @@ An `@if` block can have at most one `@else`, and no `@elseif` may appear after i
 
 ```msc
 # bad
-@if {{x}}
+@if x
 @else
-@elseif {{y}}
+@elseif y
+@fi
+```
+
+---
+
+<a id="syn020"></a>
+### SYN020: header-operator-placement (syntax error)
+
+`@cooldown`, `@global_cooldown`, and `@cancel` must appear in the script header, before executable statements.
+
+```msc
+# bad
+@command /say hi
+@cooldown 10s
+
+# good
+@cooldown 10s
+@command /say hi
+```
+
+---
+
+<a id="syn021"></a>
+### SYN021: duplicate-return (syntax error)
+
+Two `@return` statements cannot appear in the same conditional clause.
+
+```msc
+# bad
+@if x
+@return
+@return
 @fi
 ```
 
@@ -352,7 +384,7 @@ The quick fix substitutes `@command` for `@bypass` or `@console` on the offendin
 <a id="sec002"></a>
 ### SEC002: permission-commands-banned (security error)
 
-Permission-changing commands are blocked in scripts whether invoked via `@bypass`, `@console`, or `@command`. This covers the vanilla `/op` and `/deop`, the rank command `/rank`, and the LuckPerms aliases (`/lp`, `/luckperms`, `/permission`, `/perm`, `/perms`).
+Permission-changing commands are blocked in scripts whether invoked via `@bypass`, `@console`, or `@command`. This covers the vanilla `/op` and `/deop`, the rank command `/rank`, and the LuckPerms aliases (`/lp`, `/luckperms`, `/permissions`, `/perm`, `/perms`).
 
 ```msc
 # bad
@@ -367,7 +399,7 @@ The quick fix deletes the offending line. Granting permissions from a script is 
 <a id="sec003"></a>
 ### SEC003: chat-commands-banned (security error)
 
-Scripts cannot run chat commands. This covers `/chat`, `/gchat`, `/echat`, `/achat`, `/schat`, `/bchat`, `/pchat`, `/tchat`, `/alert`, `/p`, and `/t`, regardless of executor.
+Scripts cannot run player-executed chat commands via `@command` or `@bypass`. This covers `/chat`, `/gchat`, `/echat`, `/achat`, `/schat`, `/bchat`, `/pchat`, `/tchat`, `/alert`, `/p`, and `/t`.
 
 ```msc
 # bad
@@ -395,9 +427,9 @@ The quick fix deletes the offending line.
 ---
 
 <a id="sty001"></a>
-### STY001: lowercase-variable-name (style warning)
+### STY001: lowercase-variable-name (style error)
 
-Variable names should start with a lowercase letter.
+Variable names must start with a lowercase letter and contain only letters, digits, or underscores. Reserved names like `true`, `false`, `this`, and `null` are also invalid.
 
 ```msc
 # bad
