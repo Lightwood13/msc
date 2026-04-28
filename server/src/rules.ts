@@ -269,6 +269,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Array index must be Int'
 	},
+	SEM016: {
+		code: 'SEM016',
+		name: 'not-callable',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Cannot call a value that is not a function, method, or constructor'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

@@ -1872,6 +1872,23 @@ function splitTopLevelArgs(text: string, baseOffset: number): { text: string; st
 	return result;
 }
 
+const NON_CALLABLE_KINDS = new Set(['localVariable', 'builtinVariable', 'namespaceVariable', 'instanceField']);
+
+function validateCallableUsage(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (!NON_CALLABLE_KINDS.has(reference.symbol.kind)) continue;
+		const lineText = lines[reference.token.line];
+		if (lineText === undefined) continue;
+		let i = reference.token.range.end.character;
+		while (i < lineText.length && /\s/.test(lineText[i])) i++;
+		if (i >= lineText.length || lineText[i] !== '(') continue;
+		const kindLabel = reference.symbol.kind === 'instanceField' ? 'field' : 'variable';
+		raise(diagnostics, RULES.SEM016, reference.token.range, {
+			message: `'${reference.token.text}' is a ${kindLabel} of type ${reference.symbol.type}, not a callable`
+		});
+	}
+}
+
 function validateCallArguments(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (!reference.isCallable) continue;
@@ -2006,6 +2023,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateVarAssignments(lines, resolution, diagnostics);
 		validateInterpolations(resolution, diagnostics);
 		validateCallArguments(lines, resolution, diagnostics);
+		validateCallableUsage(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

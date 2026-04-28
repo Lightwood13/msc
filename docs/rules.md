@@ -627,6 +627,24 @@ An array index expression must produce an `Int`. There is no implicit conversion
 
 ---
 
+<a id="sem016"></a>
+### SEM016: not-callable (semantic error)
+
+You cannot apply `(...)` to a value that is not a function, method, or constructor — including local variables, fields, and namespace variables.
+
+```msc
+# bad
+@define Int count = 0
+@return count()
+@return widget.name()    # `name` is a String field, not a method
+
+# good
+@return count
+@return widget.name
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
