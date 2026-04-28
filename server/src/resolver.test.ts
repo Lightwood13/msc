@@ -81,6 +81,7 @@ describe('MSC resolver', () => {
 	const widgetUri = 'file:///widget.nms';
 	const toolsUri = 'file:///tools.nms';
 	const transmuteUri = 'file:///transmute.nms';
+	const stringUri = 'file:///string.nms';
 	const playerUri = 'file:///player.nms';
 	const widgetClass = createClass('Widget', '__default__', [
 		createMember('name', 'variable', 'String', widgetUri),
@@ -98,6 +99,9 @@ describe('MSC resolver', () => {
 		createMember('state', 'variable', 'String', transmuteUri),
 		createMember('run()', 'function', 'Void', transmuteUri)
 	]);
+	const stringClass = createClass('String', '__default__', [
+		createMember('length()', 'function', 'Int', stringUri)
+	]);
 	const namespaces = new Map<string, NamespaceInfo>([
 		['__default__', createNamespace([])],
 		['tools', createNamespace([
@@ -111,6 +115,7 @@ describe('MSC resolver', () => {
 	]);
 	const classes = new Map<string, ClassInfo>([
 		['Player', playerClass],
+		['String', stringClass],
 		['Widget', widgetClass],
 		['tools::Widget', toolsWidgetClass],
 		['transmute::Machine', transmuteMachineClass]
@@ -308,6 +313,29 @@ describe('MSC resolver', () => {
 			}).kind,
 			'none'
 		);
+	});
+
+	it('resolves operator expressions for member completion', () => {
+		const document = createDocument('@return ("a" + player).');
+		const resolution = resolveDocument({ document, namespaces, classes });
+		const context = resolution.getCompletionContext({
+			line: 0,
+			character: '@return ("a" + player).'.length
+		});
+
+		assert.strictEqual(context.kind, 'member');
+		assert.strictEqual(context.hostType, 'String');
+	});
+
+	it('reports invalid operator combinations in expression analysis', () => {
+		const document = createDocument('@return true + false');
+		const resolution = resolveDocument({ document, namespaces, classes });
+		const analysis = resolution.analyzeExpression('true + false', 0, '@return '.length);
+
+		assert.strictEqual(analysis.type, undefined);
+		assert.strictEqual(analysis.diagnostics.length, 1);
+		assert.match(analysis.diagnostics[0].message, /Operator '\+' is not applicable on types: Boolean, Boolean/);
+		assert.strictEqual(analysis.diagnostics[0].range.start.character, '@return true '.length);
 	});
 
 	it('resolves call contexts for chained calls', () => {

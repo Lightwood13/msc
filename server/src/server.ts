@@ -1513,7 +1513,161 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 	validateHeaderPosition(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
 }
 
-function validateAndReportDiagnostics(textDocument: TextDocument): void {
+interface ExtractedExpression {
+	text: string;
+	startCharacter: number;
+}
+
+function extractExpressionAfterKeyword(line: string, keyword: string): ExtractedExpression | null {
+	const keywordIndex = line.indexOf(keyword);
+	if (keywordIndex === -1) return null;
+	const startCharacter = keywordIndex + keyword.length;
+	const text = line.slice(startCharacter).trimStart();
+	if (text === '') return null;
+	return {
+		text,
+		startCharacter: startCharacter + (line.slice(startCharacter).length - text.length)
+	};
+}
+
+function findTopLevelAssignment(line: string): { left: string; operator: string; right: string; startCharacter: number } | null {
+	const candidates = [' *= ', ' /= ', ' %= ', ' += ', ' -= ', ' = '];
+	let parenDepth = 0;
+	let bracketDepth = 0;
+	let inString = false;
+
+	for (let i = 0; i < line.length; i++) {
+		const c = line[i];
+		if (c === '"') {
+			inString = !inString;
+			continue;
+		}
+		if (inString) continue;
+		if (c === '(') parenDepth++;
+		else if (c === ')') parenDepth = Math.max(0, parenDepth - 1);
+		else if (c === '[') bracketDepth++;
+		else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+
+		if (parenDepth !== 0 || bracketDepth !== 0) continue;
+
+		for (const candidate of candidates) {
+			if (!line.startsWith(candidate, i)) continue;
+			const left = line.slice(0, i).trim();
+			const right = line.slice(i + candidate.length).trim();
+			if (left === '' || right === '') return null;
+			return {
+				left,
+				operator: candidate.trim().replace('=', ''),
+				right,
+				startCharacter: i + (line.slice(0, i).length - line.slice(0, i).trimStart().length)
+			};
+		}
+	}
+
+	return null;
+}
+
+function collectSemanticExpressions(line: string, lineNumber: number, resolution: DocumentResolution): ExtractedExpression[] {
+	const trimmedLine = line.trim();
+	if (trimmedLine === '' || trimmedLine.startsWith('#')) {
+		return [];
+	}
+
+	const firstWord = trimmedLine.split(' ')[0];
+	const expressions: ExtractedExpression[] = [];
+
+	switch (firstWord) {
+		case '@if':
+		case '@elseif': {
+			const extracted = extractExpressionAfterKeyword(line, firstWord);
+			if (extracted) expressions.push(extracted);
+			break;
+		}
+
+		case '@for': {
+			const forMatch = line.match(RegExp(/^\s*@for\s+[\w:]+\s+\w+\s+in\s+(.+)$/, 'd'));
+			if (forMatch) {
+				expressions.push({
+					text: forMatch[1],
+					startCharacter: forMatch.indices![1][0]
+				});
+			}
+			break;
+		}
+
+		case '@define': {
+			const defineMatch = line.match(RegExp(/^\s*@define\s+[\w:[\]]+\s+[\w]+\s*=\s*(.+)$/, 'd'));
+			if (defineMatch) {
+				expressions.push({
+					text: defineMatch[1],
+					startCharacter: defineMatch.indices![1][0]
+				});
+			}
+			break;
+		}
+
+		case '@return': {
+			const extracted = extractExpressionAfterKeyword(line, '@return');
+			if (extracted) expressions.push(extracted);
+			break;
+		}
+
+		case '@var': {
+			const extracted = extractExpressionAfterKeyword(line, '@var');
+			if (!extracted) break;
+
+			const assignment = findTopLevelAssignment(extracted.text);
+			if (assignment && assignment.operator !== '') {
+				expressions.push({
+					text: `${assignment.left} ${assignment.operator} ${assignment.right}`,
+					startCharacter: extracted.startCharacter
+				});
+			} else if (assignment) {
+				expressions.push({
+					text: assignment.right,
+					startCharacter: extracted.startCharacter + extracted.text.indexOf(assignment.right)
+				});
+			} else {
+				expressions.push(extracted);
+			}
+			break;
+		}
+
+		case '@chatscript': {
+			const chatscriptMatch = line.match(RegExp(/^\s*@chatscript\s+\S+\s+\S+\s+(.+)$/, 'd'));
+			if (chatscriptMatch) {
+				expressions.push({
+					text: chatscriptMatch[1],
+					startCharacter: chatscriptMatch.indices![1][0]
+				});
+			}
+			break;
+		}
+	}
+
+	for (const token of resolution.tokens) {
+		if (token.line !== lineNumber || token.kind !== 'interpolation') continue;
+		expressions.push({
+			text: token.text.slice(2, -2),
+			startCharacter: token.range.start.character + 2
+		});
+	}
+
+	return expressions;
+}
+
+function validateSemanticExpressions(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		for (const expression of collectSemanticExpressions(lines[lineNumber], lineNumber, resolution)) {
+			const analysis = resolution.analyzeExpression(expression.text, lineNumber, expression.startCharacter);
+			for (const diagnostic of analysis.diagnostics) {
+				raise(diagnostics, RULES.SEM001, diagnostic.range, { message: diagnostic.message });
+			}
+		}
+	}
+}
+
+async function validateAndReportDiagnostics(textDocument: TextDocument): Promise<void> {
 	const text = textDocument.getText();
 	const lines = text.split('\n');
 	const suppressions = parseSuppressions(lines);
@@ -1528,9 +1682,14 @@ function validateAndReportDiagnostics(textDocument: TextDocument): void {
 
 	const parsingContext = new ScriptParsingContext();
 	const diagnostics: Diagnostic[] = [];
+	const resolution = await getDocumentResolution(textDocument.uri).catch(() => undefined);
 
 	for (let i = 0; i < lines.length; i++) {
 		processLine(lines[i], i, parsingContext, diagnostics);
+	}
+
+	if (resolution !== undefined) {
+		validateSemanticExpressions(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {
@@ -1568,18 +1727,18 @@ documents.listen(connection);
 
 // Register the text document validation function
 documents.onDidSave(change => {
-	validateAndReportDiagnostics(change.document);
+	void validateAndReportDiagnostics(change.document);
 });
 
 // Register the text document validation function
 documents.onDidOpen(change => {
 	void refreshDocumentResolution(change.document.uri);
-	validateAndReportDiagnostics(change.document);
+	void validateAndReportDiagnostics(change.document);
 });
 
 documents.onDidChangeContent(e => {
 	void refreshDocumentResolution(e.document.uri);
-	validateAndReportDiagnostics(e.document);
+	void validateAndReportDiagnostics(e.document);
 });
 
 documents.onDidClose(e => {

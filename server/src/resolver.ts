@@ -111,6 +111,16 @@ export interface CallContext {
 	paramNumber: number;
 }
 
+export interface ExpressionDiagnostic {
+	message: string;
+	range: Range;
+}
+
+export interface ExpressionAnalysis {
+	type?: string;
+	diagnostics: readonly ExpressionDiagnostic[];
+}
+
 export interface DocumentResolution {
 	tokens: readonly Token[];
 	references: readonly ResolvedReference[];
@@ -119,6 +129,7 @@ export interface DocumentResolution {
 	getReferenceAtPosition(position: Position): ResolvedReference | undefined;
 	getCompletionContext(position: Position): CompletionContext;
 	getCallContext(position: Position): CallContext | undefined;
+	analyzeExpression(expression: string, lineNumber: number, startCharacter: number): ExpressionAnalysis;
 }
 
 interface ResolutionInputs {
@@ -231,6 +242,17 @@ class DocumentResolutionImpl implements DocumentResolution {
 					hostType
 				};
 			}
+
+			const hostExpression = getMemberAccessHostExpression(codePrefix);
+			if (hostExpression !== undefined) {
+				const analysis = this.analyzeExpression(hostExpression.text, position.line, hostExpression.startCharacter);
+				if (analysis.diagnostics.length === 0 && analysis.type !== undefined && this.classes.has(analysis.type)) {
+					return {
+						kind: 'member',
+						hostType: analysis.type
+					};
+				}
+			}
 			return { kind: 'none' };
 		}
 
@@ -272,6 +294,16 @@ class DocumentResolutionImpl implements DocumentResolution {
 			symbol,
 			paramNumber: info.paramNumber
 		};
+	}
+
+	analyzeExpression(expression: string, lineNumber: number, startCharacter: number): ExpressionAnalysis {
+		return new ExpressionTypeParser({
+			expression,
+			lineNumber,
+			startCharacter,
+			resolveChainType: segment => this.resolveStandaloneExpressionType(segment, lineNumber),
+			normalizeType: type => this.normalizeTypeName(type, lineNumber)
+		}).analyze();
 	}
 
 	private getContextToken(position: Position): Token | undefined {
@@ -788,6 +820,31 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return this.normalizeTypeName(symbol.type, lineNumber);
 	}
 
+	private resolveStandaloneExpressionType(expression: string, lineNumber: number): string | undefined {
+		const trimmed = expression.trim();
+		if (trimmed === '') {
+			return undefined;
+		}
+
+		const nameAndType = getResolvedNameAndTypeFromExpressionText(
+			trimmed,
+			this.activeNamespaceByLine[lineNumber],
+			name => this.findVisibleBinding(name, lineNumber),
+			this.namespaces,
+			this.classes
+		);
+		if (nameAndType !== undefined) {
+			return this.normalizeTypeName(nameAndType.type, lineNumber);
+		}
+
+		const directSymbol = this.resolveCanonicalSymbol(trimmed, lineNumber);
+		if (directSymbol !== undefined) {
+			return this.resolveHostType(directSymbol, lineNumber);
+		}
+
+		return 'Unknown';
+	}
+
 	private resolveTokenSymbol(token: Token): ResolvedSymbol | undefined {
 		const lineText = this.lines[token.line];
 		const activeNamespace = this.activeNamespaceByLine[token.line];
@@ -1134,6 +1191,603 @@ function namespaceMemberToSymbol(name: string, namespaceName: string, currentMem
 	};
 }
 
+interface MemberAccessHostExpression {
+	text: string;
+	startCharacter: number;
+}
+
+type ExpressionTokenKind =
+	| 'identifier'
+	| 'number'
+	| 'string'
+	| 'operator'
+	| 'lparen'
+	| 'rparen'
+	| 'lbrack'
+	| 'rbrack'
+	| 'comma'
+	| 'dot'
+	| 'scope';
+
+interface ExpressionToken {
+	kind: ExpressionTokenKind;
+	text: string;
+	start: number;
+	end: number;
+}
+
+interface ExpressionTypeParserOptions {
+	expression: string;
+	lineNumber: number;
+	startCharacter: number;
+	resolveChainType: (segment: string) => string | undefined;
+	normalizeType: (type: string) => string;
+}
+
+type ExpressionParseResult = {
+	type?: string;
+	diagnostic?: ExpressionDiagnostic;
+};
+
+class ExpressionTypeParser {
+	private readonly expression: string;
+	private readonly lineNumber: number;
+	private readonly startCharacter: number;
+	private readonly resolveChainType: (segment: string) => string | undefined;
+	private readonly normalizeType: (type: string) => string;
+	private readonly tokens: readonly ExpressionToken[];
+	private index = 0;
+
+	constructor(options: ExpressionTypeParserOptions) {
+		this.expression = options.expression;
+		this.lineNumber = options.lineNumber;
+		this.startCharacter = options.startCharacter;
+		this.resolveChainType = options.resolveChainType;
+		this.normalizeType = options.normalizeType;
+		this.tokens = tokenizeExpression(options.expression);
+	}
+
+	analyze(): ExpressionAnalysis {
+		try {
+			if (this.tokens.length === 0) {
+				return { diagnostics: [] };
+			}
+
+			const result = this.parseOr();
+			if (result.diagnostic !== undefined) {
+				return { diagnostics: [result.diagnostic] };
+			}
+
+			if (this.peek() !== undefined) {
+				const token = this.peek()!;
+				return {
+					diagnostics: [this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No left-side arguments found.`)]
+				};
+			}
+
+			return {
+				type: result.type === undefined || result.type === 'Unknown' ? undefined : this.normalizeType(result.type),
+				diagnostics: []
+			};
+		} catch (error) {
+			if (error instanceof ExpressionParserDiagnostic) {
+				return { diagnostics: [error.diagnostic] };
+			}
+			throw error;
+		}
+	}
+
+	private parseOr(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseAnd(), ['||']);
+	}
+
+	private parseAnd(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseEquality(), ['&&']);
+	}
+
+	private parseEquality(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseRelational(), ['==', '!=']);
+	}
+
+	private parseRelational(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseAdditive(), ['<', '<=', '>', '>=']);
+	}
+
+	private parseAdditive(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseMultiplicative(), ['+', '-']);
+	}
+
+	private parseMultiplicative(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseExponent(), ['*', '/', '%']);
+	}
+
+	private parseExponent(): ExpressionParseResult {
+		return this.parseLeftAssociative(() => this.parseUnary(), ['^']);
+	}
+
+	private parseLeftAssociative(parseOperand: () => ExpressionParseResult, operators: readonly string[]): ExpressionParseResult {
+		let left = parseOperand();
+		if (left.diagnostic !== undefined) {
+			return left;
+		}
+
+		for (;;) {
+			const token = this.peek();
+			if (token === undefined || token.kind !== 'operator' || !operators.includes(token.text)) {
+				return left;
+			}
+
+			this.index++;
+			let right = parseOperand();
+			if (right.diagnostic !== undefined) {
+				return right;
+			}
+			if (right.type === undefined) {
+				return {
+					diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+				};
+			}
+
+			left = this.applyBinaryOperator(left.type, token, right.type);
+			if (left.diagnostic !== undefined) {
+				return left;
+			}
+		}
+	}
+
+	private parseUnary(): ExpressionParseResult {
+		const token = this.peek();
+		if (token !== undefined && token.kind === 'operator' && ['!', '+', '-'].includes(token.text)) {
+			this.index++;
+			const operand = this.parseUnary();
+			if (operand.diagnostic !== undefined) {
+				return operand;
+			}
+			if (operand.type === undefined) {
+				return {
+					diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+				};
+			}
+			return this.applyUnaryOperator(token, operand.type);
+		}
+
+		return this.parsePrimary();
+	}
+
+	private parsePrimary(): ExpressionParseResult {
+		const token = this.peek();
+		if (token === undefined) {
+			return {};
+		}
+
+		if (token.kind === 'lparen') {
+			this.index++;
+			const inner = this.parseOr();
+			if (inner.diagnostic !== undefined) {
+				return inner;
+			}
+			if (!this.match('rparen')) {
+				return {
+					diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+				};
+			}
+			return inner;
+		}
+
+		if (token.kind === 'string') {
+			this.index++;
+			return { type: 'String' };
+		}
+
+		if (token.kind === 'number') {
+			this.index++;
+			return { type: literalType(token.text) };
+		}
+
+		if (token.kind !== 'identifier') {
+			this.index++;
+			return {
+				diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No left-side arguments found.`)
+			};
+		}
+
+		if (token.text === 'true' || token.text === 'false') {
+			this.index++;
+			return { type: 'Boolean' };
+		}
+		if (token.text === 'null') {
+			this.index++;
+			return { type: 'Null' };
+		}
+		if (token.text === 'pi') {
+			this.index++;
+			return { type: 'Double' };
+		}
+
+		return this.parseChainExpression();
+	}
+
+	private parseChainExpression(): ExpressionParseResult {
+		const start = this.peek()!.start;
+		let end = this.peek()!.end;
+		this.index++;
+
+		if (this.match('scope')) {
+			const scoped = this.peek();
+			if (scoped?.kind === 'identifier') {
+				end = scoped.end;
+				this.index++;
+			}
+		}
+
+		for (;;) {
+			const token = this.peek();
+			if (token === undefined) {
+				break;
+			}
+
+			if (token.kind === 'lparen') {
+				const endToken = this.parseArgumentList();
+				if (endToken === undefined) {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				end = endToken.end;
+				continue;
+			}
+
+			if (token.kind === 'lbrack') {
+				this.index++;
+				const inner = this.parseOr();
+				if (inner.diagnostic !== undefined) {
+					return inner;
+				}
+				const close = this.peek();
+				if (close?.kind !== 'rbrack') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				end = close.end;
+				this.index++;
+				continue;
+			}
+
+			if (token.kind === 'dot') {
+				this.index++;
+				const member = this.peek();
+				if (member?.kind !== 'identifier') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				end = member.end;
+				this.index++;
+				continue;
+			}
+
+			break;
+		}
+
+		const type = this.resolveChainType(this.expression.slice(start, end));
+		return { type };
+	}
+
+	private parseArgumentList(): ExpressionToken | undefined {
+		const open = this.peek();
+		if (open?.kind !== 'lparen') {
+			return undefined;
+		}
+
+		this.index++;
+		if (this.peek()?.kind === 'rparen') {
+			const close = this.peek()!;
+			this.index++;
+			return close;
+		}
+
+		for (;;) {
+			const argument = this.parseOr();
+			if (argument.diagnostic !== undefined) {
+				throw new ExpressionParserDiagnostic(argument.diagnostic);
+			}
+
+			const token = this.peek();
+			if (token?.kind === 'comma') {
+				this.index++;
+				continue;
+			}
+			if (token?.kind === 'rparen') {
+				this.index++;
+				return token;
+			}
+			return undefined;
+		}
+	}
+
+	private applyUnaryOperator(token: ExpressionToken, operandType: string): ExpressionParseResult {
+		if (token.text === '!') {
+			if (operandType === 'Boolean') {
+				return { type: 'Boolean' };
+			}
+			return {
+				diagnostic: this.makeDiagnostic(token, `Operator '${token.text}' is not applicable on type: ${operandType}`)
+			};
+		}
+
+		return this.applyBinaryOperator('Int', token, operandType);
+	}
+
+	private applyBinaryOperator(leftType: string | undefined, token: ExpressionToken, rightType: string): ExpressionParseResult {
+		if (leftType === undefined) {
+			return {
+				diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No left-side arguments found.`)
+			};
+		}
+
+		const resultType = inferOperatorResultType(leftType, token.text, rightType);
+		if (resultType !== undefined) {
+			return { type: resultType };
+		}
+
+		if (leftType === 'Unknown' || rightType === 'Unknown') {
+			return {};
+		}
+
+		return {
+			diagnostic: this.makeDiagnostic(token, `Operator '${token.text}' is not applicable on types: ${leftType}, ${rightType}`)
+		};
+	}
+
+	private match(kind: ExpressionTokenKind): boolean {
+		const token = this.peek();
+		if (token?.kind !== kind) {
+			return false;
+		}
+		this.index++;
+		return true;
+	}
+
+	private peek(): ExpressionToken | undefined {
+		return this.tokens[this.index];
+	}
+
+	private makeDiagnostic(token: ExpressionToken, message: string): ExpressionDiagnostic {
+		return {
+			message,
+			range: {
+				start: { line: this.lineNumber, character: this.startCharacter + token.start },
+				end: { line: this.lineNumber, character: this.startCharacter + token.end }
+			}
+		};
+	}
+}
+
+class ExpressionParserDiagnostic extends Error {
+	readonly diagnostic: ExpressionDiagnostic;
+
+	constructor(diagnostic: ExpressionDiagnostic) {
+		super(diagnostic.message);
+		this.diagnostic = diagnostic;
+	}
+}
+
+function tokenizeExpression(expression: string): ExpressionToken[] {
+	const tokens: ExpressionToken[] = [];
+	let index = 0;
+
+	while (index < expression.length) {
+		const c = expression[index];
+		if (/\s/.test(c)) {
+			index++;
+			continue;
+		}
+
+		if (c === '"') {
+			let end = index + 1;
+			for (; end < expression.length; end++) {
+				if (expression[end] === '"') {
+					end++;
+					break;
+				}
+			}
+			tokens.push({ kind: 'string', text: expression.slice(index, end), start: index, end });
+			index = end;
+			continue;
+		}
+
+		const twoCharOperator = expression.slice(index, index + 2);
+		if (['::', '&&', '||', '<=', '>=', '==', '!='].includes(twoCharOperator)) {
+			tokens.push({
+				kind: twoCharOperator === '::' ? 'scope' : 'operator',
+				text: twoCharOperator,
+				start: index,
+				end: index + 2
+			});
+			index += 2;
+			continue;
+		}
+
+		if (/[0-9]/.test(c)) {
+			let end = index + 1;
+			while (end < expression.length && /[0-9.]/.test(expression[end])) {
+				end++;
+			}
+			if (expression[end] === '-' && expression[end - 1] === 'E') {
+				end++;
+				while (end < expression.length && /[0-9.]/.test(expression[end])) {
+					end++;
+				}
+			}
+			if (/[dDlL]/.test(expression[end] ?? '')) {
+				end++;
+			}
+			tokens.push({ kind: 'number', text: expression.slice(index, end), start: index, end });
+			index = end;
+			continue;
+		}
+
+		if (/[a-zA-Z_\u03c0]/.test(c)) {
+			let end = index + 1;
+			while (end < expression.length && /[a-zA-Z0-9_]/.test(expression[end])) {
+				end++;
+			}
+			tokens.push({ kind: 'identifier', text: expression.slice(index, end), start: index, end });
+			index = end;
+			continue;
+		}
+
+		const kind: ExpressionTokenKind | undefined = {
+			'(': 'lparen',
+			')': 'rparen',
+			'[': 'lbrack',
+			']': 'rbrack',
+			',': 'comma',
+			'.': 'dot'
+		}[c] as ExpressionTokenKind | undefined;
+		if (kind !== undefined) {
+			tokens.push({ kind, text: c, start: index, end: index + 1 });
+			index++;
+			continue;
+		}
+
+		if ('!+-*/%^<>'.includes(c)) {
+			tokens.push({ kind: 'operator', text: c, start: index, end: index + 1 });
+			index++;
+			continue;
+		}
+
+		index++;
+	}
+
+	return tokens;
+}
+
+function literalType(literal: string): string {
+	if (literal.toLowerCase().endsWith('l')) {
+		return 'Long';
+	}
+	if (literal.toLowerCase().endsWith('d') || literal === 'pi' || literal === '\u03c0') {
+		return 'Double';
+	}
+	if (literal.includes('.')) {
+		return 'Float';
+	}
+	return 'Int';
+}
+
+function inferOperatorResultType(leftType: string, operator: string, rightType: string): string | undefined {
+	if (operator === '&&' || operator === '||') {
+		return leftType === 'Boolean' && rightType === 'Boolean' ? 'Boolean' : undefined;
+	}
+
+	if (operator === '==' || operator === '!=') {
+		if (isNumericType(leftType) && isNumericType(rightType)) {
+			return 'Boolean';
+		}
+		return leftType === rightType ? 'Boolean' : undefined;
+	}
+
+	if (['<', '<=', '>', '>='].includes(operator)) {
+		return isNumericType(leftType) && isNumericType(rightType) ? 'Boolean' : undefined;
+	}
+
+	if (operator === '+' && (leftType === 'String' || rightType === 'String')) {
+		return leftType !== 'Null' && rightType !== 'Null' ? 'String' : undefined;
+	}
+
+	if (operator === '^') {
+		return isNumericType(leftType) && isNumericType(rightType) ? 'Double' : undefined;
+	}
+
+	if (['+', '-', '*', '/', '%'].includes(operator)) {
+		return inferNumericResultType(leftType, rightType, operator);
+	}
+
+	return undefined;
+}
+
+function inferNumericResultType(leftType: string, rightType: string, operator: string): string | undefined {
+	if (!isNumericType(leftType) || !isNumericType(rightType)) {
+		return undefined;
+	}
+
+	if (operator === '/' || operator === '%' || operator === '+' || operator === '-' || operator === '*') {
+		if (leftType === 'Double' || rightType === 'Double') {
+			return 'Double';
+		}
+		if (leftType === 'Float' || rightType === 'Float') {
+			return 'Float';
+		}
+		if (leftType === 'Long' || rightType === 'Long') {
+			return 'Long';
+		}
+		return 'Int';
+	}
+
+	return undefined;
+}
+
+function isNumericType(type: string): boolean {
+	return type === 'Int' || type === 'Long' || type === 'Float' || type === 'Double';
+}
+
+function getMemberAccessHostExpression(codePrefix: string): MemberAccessHostExpression | undefined {
+	const match = /(?:^|.)(?:\.([a-z][a-zA-Z0-9_]*)?)$/.exec(codePrefix);
+	if (!match) {
+		return undefined;
+	}
+
+	let dotIndex = codePrefix.length - 1;
+	if (codePrefix[dotIndex] !== '.') {
+		dotIndex -= match[1]?.length ?? 0;
+		if (codePrefix[dotIndex] !== '.') {
+			return undefined;
+		}
+	}
+
+	let start = 0;
+	for (let i = dotIndex - 1; i >= 0; i--) {
+		const c = codePrefix[i];
+		if (c === '"') {
+			const newI = skipStringBackward(codePrefix, i);
+			if (newI === undefined) {
+				return undefined;
+			}
+			i = newI;
+			continue;
+		}
+		if (c === ')') {
+			const newI = skipParenthesizedExpression(codePrefix, i, ')');
+			if (newI === undefined) {
+				return undefined;
+			}
+			i = newI;
+			continue;
+		}
+		if (c === ']') {
+			const newI = skipParenthesizedExpression(codePrefix, i, ']');
+			if (newI === undefined) {
+				return undefined;
+			}
+			i = newI;
+			continue;
+		}
+		if (/\s|[([{+\-*/%^!=<>&|,]/.test(c)) {
+			start = i + 1;
+			break;
+		}
+	}
+
+	const raw = codePrefix.slice(start, dotIndex);
+	const trimmed = raw.trimStart();
+	return trimmed === '' ? undefined : {
+		text: trimmed,
+		startCharacter: start + (raw.length - trimmed.length)
+	};
+}
+
 function skipStringBackward(line: string, pos: number): number | undefined {
 	if (line[pos] !== '"') {
 		return pos;
@@ -1374,6 +2028,21 @@ function getResolvedNameAndTypeAtToken(
 	}
 
 	const callChain = parseCallChain(parseString);
+	return getLastNameAndTypeFromCallChain(callChain, findVisibleBinding, activeNamespace, namespaces, classes);
+}
+
+function getResolvedNameAndTypeFromExpressionText(
+	expression: string,
+	activeNamespace: string | undefined,
+	findVisibleBinding: (name: string) => LocalBinding | undefined,
+	namespaces: ReadonlyMap<string, NamespaceInfo>,
+	classes: ReadonlyMap<string, ClassInfo>
+): NameAndType | undefined {
+	if (expression.trim() === '') {
+		return undefined;
+	}
+
+	const callChain = parseCallChain(expression.trim() + '.a');
 	return getLastNameAndTypeFromCallChain(callChain, findVisibleBinding, activeNamespace, namespaces, classes);
 }
 

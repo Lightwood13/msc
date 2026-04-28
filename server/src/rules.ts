@@ -164,6 +164,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Two @return statements cannot appear in the same conditional clause'
 	},
+	SEM001: {
+		code: 'SEM001',
+		name: 'invalid-operator-types',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Operator is not applicable to the surrounding expression types'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

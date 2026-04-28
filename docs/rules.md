@@ -364,6 +364,25 @@ Two `@return` statements cannot appear in the same conditional clause.
 
 ---
 
+<a id="sem001"></a>
+### SEM001: invalid-operator-types (semantic error)
+
+An operator must be valid for the types on either side of it.
+
+```msc
+# bad
+@return true + false
+@player {{player + block}}
+
+# good
+@return 1 + 2
+@player {{"Score: " + 42}}
+```
+
+This rule is based on the MSC operator semantics used by the server. For example, arithmetic operators require numeric operands.
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
