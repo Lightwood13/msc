@@ -248,6 +248,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Empty {{}} interpolation has no expression'
 	},
+	SEM013: {
+		code: 'SEM013',
+		name: 'no-matching-overload',
+		category: 'semantic',
+		severity: 'error',
+		description: 'No overload accepts the supplied arguments'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

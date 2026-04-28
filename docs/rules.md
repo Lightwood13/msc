@@ -575,6 +575,25 @@ A `{{}}` interpolation must contain an expression.
 
 ---
 
+<a id="sem013"></a>
+### SEM013: no-matching-overload (semantic error)
+
+A function, method, or constructor call must match one of the declared overloads in argument count and type. Numeric arguments widen up the chain `Int → Long → Float → Double`, and `null` is accepted for any class type. The diagnostic skips itself if any argument's type couldn't be resolved (the upstream cause is reported instead).
+
+```msc
+# bad
+@return math::abs("hello")            # no overload accepts (String)
+@return Vector3()                     # no zero-arg constructor
+@var len = "hi".length(5)             # length() takes no arguments
+
+# good
+@return math::abs(-5)
+@return Vector3(1.0d, 2.0d, 3.0d)
+@var len = "hi".length()
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

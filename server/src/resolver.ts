@@ -133,6 +133,8 @@ export interface DocumentResolution {
 	getMemberAccessHostType(position: Position): string | undefined;
 	getNamespaceQualifier(position: Position): string | undefined;
 	hasNamespace(name: string): boolean;
+	getCallableSignatures(reference: ResolvedReference): readonly SignatureInformation[];
+	normalizeType(type: string, lineNumber: number): string;
 }
 
 interface ResolutionInputs {
@@ -336,6 +338,26 @@ class DocumentResolutionImpl implements DocumentResolution {
 		const match = /([a-zA-Z][a-zA-Z0-9_]*)::$/.exec(codePrefix);
 		if (match === null) return undefined;
 		return this.namespaces.has(match[1]) ? match[1] : undefined;
+	}
+
+	getCallableSignatures(reference: ResolvedReference): readonly SignatureInformation[] {
+		const symbol = reference.symbol;
+		if (symbol.kind === 'instanceMethod' && symbol.classInfo !== undefined && symbol.member !== undefined) {
+			return symbol.classInfo.memberSignatures.get(symbol.member.name) ?? [];
+		}
+		if (symbol.kind === 'namespaceFunction' && symbol.namespaceName !== undefined && symbol.member !== undefined) {
+			const ns = this.namespaces.get(symbol.namespaceName);
+			return ns?.memberSignatures.get(symbol.member.name) ?? [];
+		}
+		if (symbol.kind === 'constructor' && symbol.classInfo !== undefined) {
+			const constructorName = symbol.name.includes('::') ? symbol.name.substring(symbol.name.indexOf('::') + 2) : symbol.name;
+			return symbol.classInfo.memberSignatures.get(constructorName) ?? [];
+		}
+		return [];
+	}
+
+	normalizeType(type: string, lineNumber: number): string {
+		return this.normalizeTypeName(type, lineNumber);
 	}
 
 	private getContextToken(position: Position): Token | undefined {

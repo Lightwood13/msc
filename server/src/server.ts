@@ -1811,6 +1811,115 @@ function validateInterpolations(resolution: DocumentResolution, diagnostics: Dia
 	}
 }
 
+const PARAM_MODIFIERS = new Set(['final', 'relative', 'private']);
+
+function extractParamType(label: string): string {
+	const tokens = label.trim().split(/\s+/);
+	for (const token of tokens) {
+		if (!PARAM_MODIFIERS.has(token)) return token;
+	}
+	return 'Unknown';
+}
+
+function normalizeSignatureParams(parameters: readonly { label: string | [number, number] }[] | undefined): string[] {
+	if (parameters === undefined) return [];
+	const labels = parameters.map(p => typeof p.label === 'string' ? p.label : '');
+	if (labels.length === 1 && labels[0].trim() === '') return [];
+	return labels.map(extractParamType);
+}
+
+function findCallSite(lineText: string, tokenEnd: number): { argsStart: number; argsEnd: number; callEnd: number } | undefined {
+	let i = tokenEnd;
+	while (i < lineText.length && /\s/.test(lineText[i])) i++;
+	if (i >= lineText.length || lineText[i] !== '(') return undefined;
+	const argsStart = i + 1;
+	let depth = 1;
+	let inString = false;
+	let j = argsStart;
+	while (j < lineText.length && depth > 0) {
+		const c = lineText[j];
+		if (c === '"') inString = !inString;
+		else if (!inString) {
+			if (c === '(' || c === '[') depth++;
+			else if (c === ')' || c === ']') depth--;
+		}
+		if (depth > 0) j++;
+	}
+	if (depth !== 0) return undefined;
+	return { argsStart, argsEnd: j, callEnd: j + 1 };
+}
+
+function splitTopLevelArgs(text: string, baseOffset: number): { text: string; startChar: number }[] {
+	if (text.trim() === '') return [];
+	const result: { text: string; startChar: number }[] = [];
+	let depth = 0;
+	let inString = false;
+	let lastStart = 0;
+	for (let i = 0; i < text.length; i++) {
+		const c = text[i];
+		if (c === '"') inString = !inString;
+		else if (!inString) {
+			if (c === '(' || c === '[') depth++;
+			else if (c === ')' || c === ']') depth--;
+			else if (c === ',' && depth === 0) {
+				result.push({ text: text.slice(lastStart, i), startChar: baseOffset + lastStart });
+				lastStart = i + 1;
+			}
+		}
+	}
+	result.push({ text: text.slice(lastStart), startChar: baseOffset + lastStart });
+	return result;
+}
+
+function validateCallArguments(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (!reference.isCallable) continue;
+		const lineText = lines[reference.token.line];
+		if (lineText === undefined) continue;
+		const callSite = findCallSite(lineText, reference.token.range.end.character);
+		if (callSite === undefined) continue;
+
+		const signatures = resolution.getCallableSignatures(reference);
+		if (signatures.length === 0) continue;
+
+		const argSplits = splitTopLevelArgs(lineText.slice(callSite.argsStart, callSite.argsEnd), callSite.argsStart);
+		const argTypes: (string | undefined)[] = argSplits.map(arg => {
+			const trimmed = arg.text.trim();
+			if (trimmed === '') return undefined;
+			const analysis = resolution.analyzeExpression(trimmed, reference.token.line, arg.startChar + (arg.text.length - arg.text.trimStart().length));
+			if (analysis.diagnostics.length > 0) return undefined;
+			return analysis.type;
+		});
+		if (argTypes.some(t => t === undefined)) continue;
+		const concreteTypes = argTypes as string[];
+
+		const candidateSignatures: string[] = [];
+		let matched = false;
+		for (const signature of signatures) {
+			const params = normalizeSignatureParams(signature.parameters);
+			candidateSignatures.push(`(${params.join(', ')})`);
+			if (params.length !== concreteTypes.length) continue;
+			let ok = true;
+			for (let i = 0; i < params.length; i++) {
+				const target = resolution.normalizeType(params[i], reference.token.line);
+				if (!isAssignableTo(target, concreteTypes[i])) { ok = false; break; }
+			}
+			if (ok) { matched = true; break; }
+		}
+		if (matched) continue;
+
+		const callRange = {
+			start: { line: reference.token.line, character: callSite.argsStart - 1 },
+			end: { line: reference.token.line, character: callSite.callEnd }
+		};
+		const got = `(${concreteTypes.join(', ')})`;
+		const expected = candidateSignatures.length === 1 ? candidateSignatures[0] : `one of ${candidateSignatures.join(', ')}`;
+		raise(diagnostics, RULES.SEM013, callRange, {
+			message: `Cannot call '${reference.symbol.name}' with arguments ${got}. Expected ${expected}.`
+		});
+	}
+}
+
 function validateForIterable(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@for\s+([\w:]+(?:\[\])?)\s+\w+\s+in\s+(.+)$/.exec(lines[lineNumber]);
@@ -1895,6 +2004,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateDefineInitializers(lines, resolution, diagnostics);
 		validateVarAssignments(lines, resolution, diagnostics);
 		validateInterpolations(resolution, diagnostics);
+		validateCallArguments(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {
