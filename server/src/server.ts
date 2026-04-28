@@ -1762,14 +1762,13 @@ function validateConditionTypes(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
-const NUMERIC_WIDTH: Record<string, number> = { Int: 0, Long: 1, Float: 2, Double: 3 };
-
+// Mirrors the server's strict equality (org.minr.server.scripts.expression.ParameterList#accepts
+// and the @define/@var setValue paths). No implicit numeric widening: Int and Long are not
+// interchangeable in assignments or function arguments. Operator dispatch is separate
+// (it's overload-based via the OPERATOR_OVERLOADS table in resolver.ts).
 function isAssignableTo(target: string, source: string): boolean {
 	if (target === source) return true;
 	if (source === 'Null' || source === 'Unknown' || target === 'Unknown') return true;
-	if (target in NUMERIC_WIDTH && source in NUMERIC_WIDTH) {
-		return NUMERIC_WIDTH[target] >= NUMERIC_WIDTH[source];
-	}
 	return false;
 }
 

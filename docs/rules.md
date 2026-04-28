@@ -558,17 +558,18 @@ The variable type declared after `@for` must match the array's element type. The
 <a id="sem010"></a>
 ### SEM010: define-type-mismatch (semantic error)
 
-The type of an `@define` initializer must match the declared type. Numeric literals widen up the chain `Int → Long → Float → Double`, and `null` is accepted for any class type.
+The type of an `@define` initializer must match the declared type exactly (modulo `null`). MSC does not implicitly widen `Int` to `Long`/`Float`/`Double` — use a typed literal or constructor.
 
 ```msc
 # bad
+@define Long x = 5         # 5 is Int, not Long
 @define Int x = "five"
-@define Boolean ok = 1
 
 # good
+@define Long x = 5l
+@define Long x = Long(5)
 @define Int x = 5
-@define Long x = 5         # Int widens to Long
-@define Player p = null    # null accepted
+@define Player p = null
 ```
 
 ---
@@ -576,16 +577,19 @@ The type of an `@define` initializer must match the declared type. Numeric liter
 <a id="sem011"></a>
 ### SEM011: assign-type-mismatch (semantic error)
 
-`@var <name> = <expr>` reuses the existing variable's declared type. The right-hand expression must be assignable to that type, with the same widening rules as SEM010.
+`@var <name> = <expr>` reuses the existing variable's declared type. The right-hand expression must match that type exactly (no implicit widening), with the same `null` allowance as SEM010.
 
 ```msc
 # bad
 @define Int count = 0
 @var count = "five"
+@define Long total = 0l
+@var total = 5            # 5 is Int
 
 # good
 @define Int count = 0
 @var count = 42
+@var total = 5l
 ```
 
 ---
@@ -608,7 +612,7 @@ A `{{}}` interpolation must contain an expression.
 <a id="sem013"></a>
 ### SEM013: no-matching-overload (semantic error)
 
-A function, method, or constructor call must match one of the declared overloads in argument count and type. Numeric arguments widen up the chain `Int → Long → Float → Double`, and `null` is accepted for any class type. The diagnostic skips itself if any argument's type couldn't be resolved (the upstream cause is reported instead).
+A function, method, or constructor call must match one of the declared overloads in argument count and type. MSC argument matching is strict — no implicit numeric widening between `Int`/`Long`/`Float`/`Double`. `null` is accepted for any class-typed parameter. The diagnostic skips itself if any argument's type couldn't be resolved (the upstream cause is reported instead).
 
 ```msc
 # bad
