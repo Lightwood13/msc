@@ -1687,6 +1687,37 @@ function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagn
 	}
 }
 
+function getExpressionRangeOnLine(lineText: string): { start: number; end: number } | undefined {
+	const match = /^(\s*)(@\S+)/.exec(lineText);
+	if (match === null) return undefined;
+	const operator = match[2];
+	const afterOperator = match[1].length + operator.length;
+
+	switch (operator) {
+		case '@if':
+		case '@elseif':
+		case '@return':
+		case '@var':
+			return { start: afterOperator, end: lineText.length };
+		case '@define': {
+			const eq = lineText.indexOf('=', afterOperator);
+			return eq === -1 ? undefined : { start: eq + 1, end: lineText.length };
+		}
+		case '@for': {
+			const inMatch = /\s+in\s+/.exec(lineText.slice(afterOperator));
+			if (inMatch?.index === undefined) return undefined;
+			return { start: afterOperator + inMatch.index + inMatch[0].length, end: lineText.length };
+		}
+		case '@chatscript': {
+			const argsMatch = /^\s+\S+\s+\S+\s+/.exec(lineText.slice(afterOperator));
+			if (argsMatch === null) return undefined;
+			return { start: afterOperator + argsMatch[0].length, end: lineText.length };
+		}
+		default:
+			return undefined;
+	}
+}
+
 function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
@@ -1695,8 +1726,14 @@ function validateUndefinedIdentifiers(lines: readonly string[], resolution: Docu
 		const startChar = reference.token.range.start.character;
 		const lineText = lines[reference.token.line] ?? '';
 		const prev = startChar > 0 ? lineText[startChar - 1] : '';
-		if (prev === '.') continue;
-		if (prev === ':') continue;
+		if (prev === '.' || prev === ':') continue;
+
+		if (!reference.token.flags?.interpolation) {
+			const range = getExpressionRangeOnLine(lineText);
+			if (range === undefined) continue;
+			if (startChar < range.start || reference.token.range.end.character > range.end) continue;
+		}
+
 		raise(diagnostics, RULES.SEM004, reference.token.range, {
 			message: `'${reference.token.text}' is not defined in the current scope`
 		});
