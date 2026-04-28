@@ -761,6 +761,23 @@ A `final` namespace variable or class field cannot be reassigned. Update the `.n
 
 ---
 
+<a id="sem022"></a>
+### SEM022: null-access (semantic error)
+
+`null` has no members. Guard with a comparison or reach for the value via a different expression.
+
+```msc
+# bad
+@var n = null.length()
+
+# good
+@if reply != null
+	@var n = reply.length()
+@fi
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

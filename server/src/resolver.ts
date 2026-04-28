@@ -1617,6 +1617,11 @@ class ExpressionTypeParser {
 						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
 					};
 				}
+				if (currentType === 'Null') {
+					return {
+						diagnostic: this.makeDiagnostic(member, `Cannot access member '${member.text}' of null`, 'SEM022')
+					};
+				}
 				this.index++;
 
 				let isCall = false;

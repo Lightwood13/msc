@@ -325,6 +325,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Cannot reassign a final variable'
 	},
+	SEM022: {
+		code: 'SEM022',
+		name: 'null-access',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Cannot access a member of null'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
