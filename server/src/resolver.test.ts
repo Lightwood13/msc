@@ -339,6 +339,40 @@ describe('MSC resolver', () => {
 		assert.strictEqual(analysis.diagnostics[0].range.start.character, '@return true '.length);
 	});
 
+	it('widens numeric arithmetic to the wider operand type', () => {
+		const document = createDocument('@define Int i\n@define Long l\n@define Float f\n@define Double d\n');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.analyzeExpression('i + l', 4, 0).type, 'Long');
+		assert.strictEqual(resolution.analyzeExpression('l + i', 4, 0).type, 'Long');
+		assert.strictEqual(resolution.analyzeExpression('l + f', 4, 0).type, 'Float');
+		assert.strictEqual(resolution.analyzeExpression('f + d', 4, 0).type, 'Double');
+		assert.strictEqual(resolution.analyzeExpression('i ^ i', 4, 0).type, 'Double');
+	});
+
+	it('respects vector and block-vector scalar overloads', () => {
+		const document = createDocument('@define Vector3 v3\n@define BlockVector3 bv3\n');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.analyzeExpression('v3 * 2.0d', 2, 0).type, 'Vector3');
+		assert.strictEqual(resolution.analyzeExpression('v3 + v3', 2, 0).type, 'Vector3');
+		assert.strictEqual(resolution.analyzeExpression('v3 * 2', 2, 0).diagnostics.length, 1);
+
+		assert.strictEqual(resolution.analyzeExpression('bv3 * 2', 2, 0).type, 'BlockVector3');
+		assert.strictEqual(resolution.analyzeExpression('bv3 + bv3', 2, 0).type, 'BlockVector3');
+		assert.strictEqual(resolution.analyzeExpression('bv3 * 2.0d', 2, 0).diagnostics.length, 1);
+	});
+
+	it('handles location subtraction and rejects spatial string concatenation', () => {
+		const document = createDocument('@define Location loc\n@define BlockLocation bloc\n@define Player p\n');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.analyzeExpression('loc - loc', 3, 0).type, 'Vector3');
+		assert.strictEqual(resolution.analyzeExpression('bloc - bloc', 3, 0).type, 'BlockVector3');
+		assert.strictEqual(resolution.analyzeExpression('p + "x"', 3, 0).type, 'String');
+		assert.strictEqual(resolution.analyzeExpression('loc + "x"', 3, 0).diagnostics.length, 1);
+	});
+
 	it('does not report a postfix-dot semantic error after parenthesized expressions', () => {
 		const document = createDocument('@return ("a" + 1).contains("a")');
 		const resolution = resolveDocument({ document, namespaces, classes });
