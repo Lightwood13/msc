@@ -1867,7 +1867,14 @@ function validateRedeclarations(lines: readonly string[], diagnostics: Diagnosti
 		for (const m of inside.matchAll(re)) {
 			if (m.index === undefined) continue;
 			const name = m[2];
-			if (topScope().has(name)) continue;
+			const nameOffset = start + 1 + m.index + m[1].length + inside.substring(m.index + m[1].length).search(/\S/);
+			if (topScope().has(name)) {
+				raise(diagnostics, RULES.SEM017, {
+					start: { line: 0, character: nameOffset },
+					end: { line: 0, character: nameOffset + name.length }
+				}, { message: `'${name}' is already declared in this scope` });
+				continue;
+			}
 			topScope().set(name, true);
 		}
 	};
