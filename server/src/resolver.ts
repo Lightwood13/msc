@@ -1,0 +1,1469 @@
+import {
+	CompletionItem,
+	CompletionItemKind,
+	ParameterInformation,
+	Position,
+	Range,
+	SignatureInformation
+} from 'vscode-languageserver/node';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+
+import {
+	ClassInfo,
+	DefinitionLocation,
+	MemberInfo,
+	NamespaceInfo,
+	newLineRegExp
+} from './parser';
+
+export type TokenKind =
+	| 'operator'
+	| 'identifier'
+	| 'typeName'
+	| 'namespaceName'
+	| 'functionName'
+	| 'variableName'
+	| 'memberName'
+	| 'stringLiteral'
+	| 'interpolation'
+	| 'commandText'
+	| 'comment'
+	| 'punctuation'
+	| 'unknown';
+
+export interface TokenFlags {
+	declaration?: boolean;
+	interpolation?: boolean;
+	commandText?: boolean;
+	stringInterpolation?: boolean;
+}
+
+export interface Token {
+	kind: TokenKind;
+	range: Range;
+	text: string;
+	line: number;
+	flags?: TokenFlags;
+}
+
+export type SymbolKind =
+	| 'localVariable'
+	| 'builtinVariable'
+	| 'namespaceVariable'
+	| 'namespaceFunction'
+	| 'classType'
+	| 'constructor'
+	| 'instanceField'
+	| 'instanceMethod'
+	| 'namespace'
+	| 'keyword'
+	| 'unresolved'
+	| 'inert';
+
+export interface ResolvedSymbol {
+	kind: SymbolKind;
+	name: string;
+	type: string;
+	definition?: DefinitionLocation;
+	documentation?: string;
+	namespaceName?: string;
+	classInfo?: ClassInfo;
+	member?: MemberInfo;
+}
+
+export interface ResolvedReference {
+	token: Token;
+	symbol: ResolvedSymbol;
+	isDeclaration: boolean;
+	isReference: boolean;
+	isCallable: boolean;
+}
+
+interface LocalBinding {
+	name: string;
+	type: string;
+	lineDeclared: number;
+	characterDeclared: number;
+	lineUndeclared?: number;
+	builtin: boolean;
+}
+
+interface ImplicitVariable {
+	name: string;
+	type: string;
+}
+
+interface NameAndType {
+	name: string;
+	type: string;
+}
+
+export interface CompletionContext {
+	kind: 'namespace' | 'command' | 'namespaceMembers' | 'member' | 'expression' | 'none';
+	namespaceName?: string;
+	hostType?: string;
+	activeNamespace?: string;
+	visibleBindings?: readonly LocalBinding[];
+}
+
+export interface CallContext {
+	symbol: ResolvedSymbol;
+	paramNumber: number;
+}
+
+export interface DocumentResolution {
+	tokens: readonly Token[];
+	references: readonly ResolvedReference[];
+	visibleBindingsByLine: readonly (readonly LocalBinding[])[];
+	getTokenAtPosition(position: Position): Token | undefined;
+	getReferenceAtPosition(position: Position): ResolvedReference | undefined;
+	getCompletionContext(position: Position): CompletionContext;
+	getCallContext(position: Position): CallContext | undefined;
+}
+
+interface ResolutionInputs {
+	document: TextDocument;
+	namespaces: ReadonlyMap<string, NamespaceInfo>;
+	classes: ReadonlyMap<string, ClassInfo>;
+	implicitVariables?: ImplicitVariable[];
+}
+
+interface SpecialSpan {
+	line: number;
+	start: number;
+	end: number;
+	kind: TokenKind;
+	flags?: TokenFlags;
+}
+
+const FIRST_LINE_PARAM_REGEXP = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g;
+const RESERVED_VARIABLE_NAMES = new Set(['true', 'false', 'this', 'null', 'final', 'relative', 'private', 'pi']);
+
+class DocumentResolutionImpl implements DocumentResolution {
+	readonly tokens: readonly Token[];
+	readonly references: readonly ResolvedReference[];
+	readonly visibleBindingsByLine: readonly (readonly LocalBinding[])[];
+
+	private readonly document: TextDocument;
+	private readonly namespaces: ReadonlyMap<string, NamespaceInfo>;
+	private readonly classes: ReadonlyMap<string, ClassInfo>;
+	private readonly lines: readonly string[];
+	private readonly activeNamespaceByLine: readonly (string | undefined)[];
+	private readonly lineTokens: readonly (readonly Token[])[];
+	private readonly lineReferences: readonly (readonly ResolvedReference[])[];
+
+	constructor(inputs: ResolutionInputs) {
+		this.document = inputs.document;
+		this.namespaces = inputs.namespaces;
+		this.classes = inputs.classes;
+		this.lines = this.document.getText().split(newLineRegExp);
+
+		const tokenMatrix = this.tokenizeDocument();
+		this.lineTokens = tokenMatrix;
+		this.tokens = tokenMatrix.flat();
+
+		const bindingState = this.buildBindings(inputs.implicitVariables ?? []);
+		this.visibleBindingsByLine = bindingState.visibleBindingsByLine;
+		this.activeNamespaceByLine = bindingState.activeNamespaceByLine;
+
+		const refs = this.buildReferences();
+		this.lineReferences = refs.lineReferences;
+		this.references = refs.references;
+	}
+
+	getTokenAtPosition(position: Position): Token | undefined {
+		const lineTokens = this.lineTokens[position.line] ?? [];
+		return smallestContaining(lineTokens, position, token => token.range);
+	}
+
+	getReferenceAtPosition(position: Position): ResolvedReference | undefined {
+		const refs = this.lineReferences[position.line] ?? [];
+		return smallestContaining(refs, position, ref => ref.token.range);
+	}
+
+	getCompletionContext(position: Position): CompletionContext {
+		const line = this.lines[position.line]?.slice(0, position.character) ?? '';
+		const activeNamespace = this.activeNamespaceByLine[position.line];
+		const contextToken = this.getContextToken(position);
+
+		if (contextToken?.kind !== 'stringLiteral' && contextToken?.kind !== 'commandText' &&
+			/^\s*@using\s+[a-zA-Z0-9_]*$/.test(line)) {
+			return { kind: 'namespace' };
+		}
+
+		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
+		if (contextToken?.kind === 'commandText' && new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`).test(line)) {
+			return { kind: 'command' };
+		}
+
+		const codePrefix = this.getResolvablePrefix(position);
+		if (codePrefix === undefined) {
+			return { kind: 'none' };
+		}
+
+		const directMemberContext = this.getDirectReferenceMemberContext(position);
+		if (directMemberContext !== undefined) {
+			return directMemberContext;
+		}
+
+		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
+		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(codePrefix);
+		if (namespaceSuggestionRegExpRes !== null) {
+			return {
+				kind: 'namespaceMembers',
+				namespaceName: namespaceSuggestionRegExpRes[1]
+			};
+		}
+
+		if (/\.([a-z][a-zA-Z0-9_]*)?$/.test(codePrefix)) {
+			const callChain = parseCallChain(codePrefix);
+			const lastNameAndType = getLastNameAndTypeFromCallChain(
+				callChain,
+				name => this.findVisibleBinding(name, position.line),
+				activeNamespace,
+				this.namespaces,
+				this.classes
+			);
+			if (lastNameAndType !== undefined) {
+				const hostType = this.normalizeTypeName(lastNameAndType.type, position.line);
+				return {
+					kind: 'member',
+					hostType
+				};
+			}
+			return { kind: 'none' };
+		}
+
+		const variableOrClassSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])(?:[a-zA-Z][a-zA-Z0-9_]*)?$/;
+		if (variableOrClassSuggestionRegExp.test(codePrefix)) {
+			return {
+				kind: 'expression',
+				activeNamespace,
+				visibleBindings: this.visibleBindingsByLine[position.line]
+			};
+		}
+
+		return { kind: 'none' };
+	}
+
+	getCallContext(position: Position): CallContext | undefined {
+		const line = this.getResolvablePrefix(position);
+		if (line === undefined) {
+			return undefined;
+		}
+		const activeNamespace = this.activeNamespaceByLine[position.line];
+		const info = parseFunctionCall(
+			line,
+			activeNamespace,
+			name => this.findVisibleBinding(name, position.line),
+			this.namespaces,
+			this.classes
+		);
+		if (info === undefined) {
+			return undefined;
+		}
+
+		const symbol = this.resolveCanonicalSymbol(info.name, position.line);
+		if (symbol === undefined) {
+			return undefined;
+		}
+
+		return {
+			symbol,
+			paramNumber: info.paramNumber
+		};
+	}
+
+	private getContextToken(position: Position): Token | undefined {
+		const lineTokens = this.lineTokens[position.line] ?? [];
+		const tokenAtPosition = smallestContaining(lineTokens, position, token => token.range);
+		if (tokenAtPosition !== undefined) {
+			return tokenAtPosition;
+		}
+
+		let bestEndingToken: Token | undefined;
+		for (const token of lineTokens) {
+			if (token.range.end.character === position.character &&
+				(bestEndingToken === undefined || token.range.start.character >= bestEndingToken.range.start.character)) {
+				bestEndingToken = token;
+			}
+		}
+		return bestEndingToken;
+	}
+
+	private getContainingInterpolation(position: Position): Token | undefined {
+		const lineTokens = this.lineTokens[position.line] ?? [];
+		return lineTokens
+			.filter(token => token.kind === 'interpolation')
+			.sort(compareRanges)
+			.find(token =>
+				token.range.start.character <= position.character &&
+				position.character < token.range.end.character);
+	}
+
+	private getResolvablePrefix(position: Position): string | undefined {
+		const lineText = this.lines[position.line] ?? '';
+		const contextToken = this.getContextToken(position);
+		if (contextToken?.kind === 'comment' || contextToken?.kind === 'stringLiteral') {
+			return undefined;
+		}
+
+		const interpolation = this.getContainingInterpolation(position);
+		if (interpolation !== undefined) {
+			const start = interpolation.range.start.character + 2;
+			const end = Math.max(start, Math.min(position.character, interpolation.range.end.character - 2));
+			return lineText.slice(start, end);
+		}
+
+		if (contextToken?.kind === 'commandText') {
+			return undefined;
+		}
+
+		return lineText.slice(0, position.character);
+	}
+
+	private getDirectReferenceMemberContext(position: Position): CompletionContext | undefined {
+		const refs = this.lineReferences[position.line] ?? [];
+		const reference = refs.find(ref =>
+			ref.token.range.end.character === position.character &&
+			!ref.isDeclaration &&
+			isDirectMemberSuggestionSymbol(ref.symbol));
+		if (reference === undefined) {
+			return undefined;
+		}
+
+		const hostType = this.resolveHostType(reference.symbol, position.line);
+		if (!this.classes.has(hostType)) {
+			return undefined;
+		}
+
+		return {
+			kind: 'member',
+			hostType
+		};
+	}
+
+	getVisibleCompletionItems(line: number): CompletionItem[] {
+		const visibleBindings = this.visibleBindingsByLine[line] ?? [];
+		return visibleBindings.map(binding => ({
+			label: binding.name,
+			kind: CompletionItemKind.Variable,
+			detail: `${binding.type} ${binding.name}`
+		}));
+	}
+
+	private tokenizeDocument(): readonly (readonly Token[])[] {
+		const result: Token[][] = [];
+		for (let line = 0; line < this.lines.length; line++) {
+			result.push(this.tokenizeLine(this.lines[line], line));
+		}
+		return result;
+	}
+
+	private tokenizeLine(lineText: string, line: number): Token[] {
+		const tokens: Token[] = [];
+		const trimmed = lineText.trim();
+
+		if (trimmed === '') {
+			return tokens;
+		}
+
+		if (trimmed.startsWith('#')) {
+			tokens.push(makeToken('comment', line, 0, lineText.length, lineText));
+			if (line === 0) {
+				this.tokenizeFirstLineParameters(lineText, line, tokens);
+			}
+			return tokens;
+		}
+
+		const firstWord = trimmed.split(/\s+/)[0];
+		const start = lineText.indexOf(firstWord);
+		tokens.push(makeToken('operator', line, start, start + firstWord.length, firstWord));
+
+		const remainderStart = start + firstWord.length;
+		const remainder = lineText.slice(remainderStart);
+
+		switch (firstWord) {
+			case '@player':
+			case '@command':
+			case '@bypass':
+			case '@console':
+				tokenizeInterpolatedText(remainder, remainderStart, line, tokens, 'commandText');
+				break;
+			case '@prompt':
+				this.tokenizePromptLine(remainder, remainderStart, line, tokens);
+				break;
+			default:
+				tokenizeCode(remainder, remainderStart, line, tokens);
+				break;
+		}
+
+		this.applySpecialSpans(lineText, line, tokens, firstWord, remainderStart);
+		return tokens.sort(compareRanges);
+	}
+
+	private tokenizePromptLine(remainder: string, offset: number, line: number, tokens: Token[]) {
+		const match = /^\s*(\S+)\s+(\S+)(.*)$/.exec(remainder);
+		if (match === null) {
+			tokenizeCode(remainder, offset, line, tokens);
+			return;
+		}
+
+		const [, time, variable, rest] = match;
+		const timeStart = remainder.indexOf(time);
+		const variableStart = remainder.indexOf(variable, timeStart + time.length);
+		tokenizeCode(remainder.slice(0, variableStart + variable.length), offset, line, tokens);
+		if (rest.length > 0) {
+			tokens.push(makeToken('commandText', line, offset + variableStart + variable.length, offset + remainder.length, remainder.slice(variableStart + variable.length), {
+				commandText: true
+			}));
+		}
+	}
+
+	private tokenizeFirstLineParameters(lineText: string, line: number, tokens: Token[]) {
+		const openingBracketPos = lineText.indexOf('(');
+		const closingBracketPos = lineText.indexOf(')');
+		const paramListStart = openingBracketPos === -1 ? lineText.indexOf('#') : openingBracketPos;
+		const paramListEnd = closingBracketPos === -1 ? lineText.length : closingBracketPos;
+		if (paramListStart === -1 || paramListEnd <= paramListStart) {
+			return;
+		}
+
+		const paramsText = lineText.substring(paramListStart + 1, paramListEnd);
+		const spans: SpecialSpan[] = [];
+		for (const match of paramsText.matchAll(FIRST_LINE_PARAM_REGEXP)) {
+			if (match.index === undefined) continue;
+			const typeStart = paramListStart + 1 + match.index;
+			const typeEnd = typeStart + match[1].length;
+			const nameStart = typeEnd + paramsText.substring(match.index + match[1].length).search(/\S/);
+			spans.push({
+				line,
+				start: typeStart,
+				end: typeEnd,
+				kind: 'typeName'
+			});
+			spans.push({
+				line,
+				start: nameStart,
+				end: nameStart + match[2].length,
+				kind: 'variableName',
+				flags: { declaration: true }
+			});
+		}
+
+		this.applySpans(tokens, spans, lineText);
+	}
+
+	private applySpecialSpans(lineText: string, line: number, tokens: Token[], firstWord: string, offset: number) {
+		const spans: SpecialSpan[] = [];
+
+		switch (firstWord) {
+			case '@using': {
+				const match = /^\s*(\S+)/.exec(lineText.slice(offset));
+				if (match?.index !== undefined) {
+					const start = offset + match.index;
+					spans.push({
+						line,
+						start,
+						end: start + match[1].length,
+						kind: 'namespaceName'
+					});
+				}
+				break;
+			}
+
+			case '@define': {
+				const match = /^@define\s+((?:[\w:]+(?:\[\])?))\s+(\w+)/.exec(lineText.trim());
+				if (match !== null) {
+					const typeStart = lineText.indexOf(match[1], offset);
+					const nameStart = lineText.indexOf(match[2], typeStart + match[1].length);
+					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName' });
+					spans.push({
+						line,
+						start: nameStart,
+						end: nameStart + match[2].length,
+						kind: 'variableName',
+						flags: { declaration: true }
+					});
+				}
+				break;
+			}
+
+			case '@for': {
+				const match = /^@for\s+((?:[\w:]+(?:\[\])?))\s+(\w+)\s+in\b/.exec(lineText.trim());
+				if (match !== null) {
+					const typeStart = lineText.indexOf(match[1], offset);
+					const nameStart = lineText.indexOf(match[2], typeStart + match[1].length);
+					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName' });
+					spans.push({
+						line,
+						start: nameStart,
+						end: nameStart + match[2].length,
+						kind: 'variableName',
+						flags: { declaration: true }
+					});
+				}
+				break;
+			}
+		}
+
+		this.applySpans(tokens, spans, lineText);
+	}
+
+	private applySpans(tokens: Token[], spans: readonly SpecialSpan[], lineText: string) {
+		if (spans.length === 0) return;
+
+		for (const span of spans) {
+			tokens.push(makeToken(span.kind, span.line, span.start, span.end, lineText.slice(span.start, span.end), span.flags));
+		}
+
+		for (const span of spans) {
+			for (let i = tokens.length - 1; i >= 0; i--) {
+				const token = tokens[i];
+				if (token.kind === span.kind && token.range.start.character === span.start && token.range.end.character === span.end) {
+					continue;
+				}
+				if (token.range.start.line !== span.line) continue;
+				if (token.range.start.character >= span.start && token.range.end.character <= span.end &&
+					(token.kind === 'identifier' || token.kind === 'punctuation')) {
+					tokens.splice(i, 1);
+				}
+			}
+		}
+	}
+
+	private buildBindings(implicitVariables: readonly ImplicitVariable[]) {
+		const globalBindings: LocalBinding[] = [
+			{ name: 'player', type: 'Player', lineDeclared: -1, characterDeclared: 0, builtin: true },
+			{ name: 'block', type: 'Block', lineDeclared: -1, characterDeclared: 0, builtin: true }
+		];
+		for (const variable of implicitVariables) {
+			globalBindings.push({
+				name: variable.name,
+				type: variable.type,
+				lineDeclared: -1,
+				characterDeclared: 0,
+				builtin: variable.name !== 'this'
+			});
+		}
+
+		const blockStack: LocalBinding[][] = [];
+		const lines = this.lines;
+		let currentNamespace: string | undefined = undefined;
+		const activeNamespaceByLine: (string | undefined)[] = new Array(lines.length).fill(undefined);
+
+		if (lines.length > 0) {
+			const firstLine = lines[0];
+			const openingBracketPos = firstLine.indexOf('(');
+			const closingBracketPos = firstLine.indexOf(')');
+			const paramListStart = openingBracketPos === -1 ? firstLine.indexOf('#') : openingBracketPos;
+			const paramListEnd = closingBracketPos === -1 ? firstLine.length : closingBracketPos;
+			if (paramListStart !== -1 && paramListEnd > paramListStart) {
+				const paramsText = firstLine.substring(paramListStart + 1, paramListEnd);
+				for (const match of paramsText.matchAll(FIRST_LINE_PARAM_REGEXP)) {
+					if (match.index === undefined) continue;
+					const type = match[1];
+					const name = match[2];
+					const nameStart = paramListStart + 1 + match.index + match[1].length + paramsText.substring(match.index + match[1].length).search(/\S/);
+					globalBindings.push({
+						name,
+						type,
+						lineDeclared: 0,
+						characterDeclared: nameStart,
+						builtin: false
+					});
+				}
+			}
+		}
+
+		for (let i = 0; i < lines.length; i++) {
+			activeNamespaceByLine[i] = currentNamespace;
+			const trimmed = lines[i].trim();
+			if (trimmed === '' || trimmed.startsWith('#')) {
+				continue;
+			}
+
+			const tokens = trimmed.split(/\s+/);
+			if (tokens[0] === '@if') {
+				blockStack.push([]);
+			} else if (tokens[0] === '@for' && tokens.length >= 3) {
+				blockStack.push([]);
+				const name = tokens[2];
+				const type = tokens[1];
+				const charDeclared = lines[i].indexOf(name);
+				const binding: LocalBinding = {
+					name,
+					type,
+					lineDeclared: i,
+					characterDeclared: charDeclared === -1 ? 0 : charDeclared,
+					builtin: false
+				};
+				if (blockStack.length > 0) {
+					blockStack[blockStack.length - 1].push(binding);
+				}
+			} else if (tokens[0] === '@fi' || tokens[0] === '@else' || tokens[0] === '@elseif' || tokens[0] === '@done') {
+				const closedBindings = blockStack.pop();
+				if (closedBindings !== undefined) {
+					for (const binding of closedBindings) {
+						binding.lineUndeclared = i;
+						globalBindings.push(binding);
+					}
+				}
+				if (tokens[0] === '@else' || tokens[0] === '@elseif') {
+					blockStack.push([]);
+				}
+			}
+
+			if (tokens[0] === '@define' && tokens.length >= 3) {
+				let name = tokens[2];
+				if (name.endsWith('=')) {
+					name = name.substring(0, name.length - 1);
+				}
+				const binding: LocalBinding = {
+					name,
+					type: tokens[1],
+					lineDeclared: i,
+					characterDeclared: Math.max(0, lines[i].indexOf(name)),
+					builtin: false
+				};
+				if (blockStack.length > 0) {
+					blockStack[blockStack.length - 1].push(binding);
+				} else {
+					globalBindings.push(binding);
+				}
+			} else if (tokens.length === 2 && tokens[0] === '@using') {
+				currentNamespace = tokens[1];
+			}
+		}
+
+		const visibleBindingsByLine: LocalBinding[][] = [];
+		for (let line = 0; line < lines.length; line++) {
+			const visibleByName = new Map<string, LocalBinding>();
+			for (const binding of globalBindings) {
+				if (binding.lineDeclared < line && (binding.lineUndeclared === undefined || binding.lineUndeclared > line)) {
+					visibleByName.set(binding.name, binding);
+				}
+			}
+			visibleBindingsByLine.push([...visibleByName.values()]);
+		}
+
+		return {
+			visibleBindingsByLine,
+			activeNamespaceByLine
+		};
+	}
+
+	private findVisibleBinding(name: string, lineNumber: number): LocalBinding | undefined {
+		const visibleBindings = this.visibleBindingsByLine[lineNumber] ?? [];
+		for (const binding of [...visibleBindings].reverse()) {
+			if (binding.name === name) return binding;
+		}
+		return undefined;
+	}
+
+	private buildReferences() {
+		const references: ResolvedReference[] = [];
+		const lineReferences: ResolvedReference[][] = this.lines.map(() => []);
+
+		for (const token of this.tokens) {
+			if (!isReferenceBearingToken(token)) {
+				continue;
+			}
+
+			const reference = this.resolveReferenceForToken(token);
+			if (reference === undefined) {
+				continue;
+			}
+
+			token.kind = classifyTokenKind(reference, token.kind);
+			references.push(reference);
+			lineReferences[token.line].push(reference);
+		}
+
+		return {
+			references,
+			lineReferences
+		};
+	}
+
+	private resolveReferenceForToken(token: Token): ResolvedReference | undefined {
+		if (token.kind === 'namespaceName' && !token.flags?.declaration) {
+			return {
+				token,
+				symbol: {
+					kind: 'namespace',
+					name: token.text,
+					type: 'Namespace',
+					namespaceName: token.text
+				},
+				isDeclaration: false,
+				isReference: true,
+				isCallable: false
+			};
+		}
+
+		if (token.kind === 'variableName' && token.flags?.declaration) {
+			const binding = this.findDeclaredBinding(token);
+			const symbol = binding === undefined ? unresolvedSymbol(token.text) : bindingToSymbol(binding, this.document.uri);
+			return {
+				token,
+				symbol,
+				isDeclaration: true,
+				isReference: false,
+				isCallable: false
+			};
+		}
+
+		if (token.kind === 'typeName') {
+			return {
+				token,
+				symbol: this.resolveTypeSymbol(token.text, token.line),
+				isDeclaration: false,
+				isReference: true,
+				isCallable: false
+			};
+		}
+
+		const symbol = this.resolveTokenSymbol(token);
+		if (symbol === undefined) {
+			return undefined;
+		}
+
+		return {
+			token,
+			symbol,
+			isDeclaration: false,
+			isReference: symbol.kind !== 'inert',
+			isCallable: symbol.kind === 'namespaceFunction' || symbol.kind === 'instanceMethod' || symbol.kind === 'constructor'
+		};
+	}
+
+	private findDeclaredBinding(token: Token): LocalBinding | undefined {
+		const visibleBindings = this.visibleBindingsByLine[token.line + 1] ?? [];
+		return visibleBindings.find(binding =>
+			binding.name === token.text &&
+			binding.lineDeclared === token.line &&
+			binding.characterDeclared === token.range.start.character);
+	}
+
+	private resolveTypeSymbol(typeText: string, lineNumber: number): ResolvedSymbol {
+		const normalizedType = this.normalizeTypeName(typeText, lineNumber);
+		const currentClass = this.classes.get(normalizedType);
+		if (currentClass === undefined) {
+			return unresolvedSymbol(typeText);
+		}
+		return {
+			kind: 'classType',
+			name: normalizedType,
+			type: normalizedType,
+			definition: currentClass.definition,
+			classInfo: currentClass
+		};
+	}
+
+	private normalizeTypeName(typeText: string, lineNumber: number): string {
+		if (this.classes.has(typeText)) {
+			return typeText;
+		}
+		const activeNamespace = this.activeNamespaceByLine[lineNumber];
+		if (activeNamespace !== undefined && this.classes.has(`${activeNamespace}::${typeText}`)) {
+			return `${activeNamespace}::${typeText}`;
+		}
+		return typeText;
+	}
+
+	private resolveHostType(symbol: ResolvedSymbol, lineNumber: number): string {
+		if ((symbol.kind === 'classType' || symbol.kind === 'constructor') && this.classes.has(symbol.type)) {
+			return symbol.type;
+		}
+
+		if (symbol.classInfo !== undefined && this.classes.has(`${symbol.classInfo.namespaceName}::${symbol.type}`)) {
+			return `${symbol.classInfo.namespaceName}::${symbol.type}`;
+		}
+
+		if (symbol.namespaceName !== undefined && this.classes.has(`${symbol.namespaceName}::${symbol.type}`)) {
+			return `${symbol.namespaceName}::${symbol.type}`;
+		}
+
+		return this.normalizeTypeName(symbol.type, lineNumber);
+	}
+
+	private resolveTokenSymbol(token: Token): ResolvedSymbol | undefined {
+		const lineText = this.lines[token.line];
+		const activeNamespace = this.activeNamespaceByLine[token.line];
+
+		const directNamespace = this.tryResolveNamespaceQualifierToken(token, lineText);
+		if (directNamespace !== undefined) {
+			return directNamespace;
+		}
+
+		const nameAndType = getResolvedNameAndTypeAtToken(
+			lineText,
+			token,
+			activeNamespace,
+			name => this.findVisibleBinding(name, token.line),
+			this.namespaces,
+			this.classes
+		);
+		if (nameAndType === undefined) {
+			const explicitScopedName = this.getExplicitScopedName(token, lineText);
+			if (explicitScopedName !== undefined) {
+				const explicitSymbol = this.resolveCanonicalSymbol(explicitScopedName, token.line);
+				if (explicitSymbol !== undefined) {
+					return explicitSymbol;
+				}
+			}
+
+			const directSymbol = this.resolveCanonicalSymbol(token.text, token.line);
+			if (directSymbol !== undefined) {
+				return directSymbol;
+			}
+
+			if (token.kind === 'identifier' && RESERVED_VARIABLE_NAMES.has(token.text)) {
+				return {
+					kind: 'keyword',
+					name: token.text,
+					type: token.text
+				};
+			}
+			return unresolvedSymbol(token.text);
+		}
+
+		return this.resolveCanonicalSymbol(nameAndType.name, token.line) ?? unresolvedSymbol(token.text);
+	}
+
+	private getExplicitScopedName(token: Token, lineText: string): string | undefined {
+		const scopeOperatorStart = token.range.start.character - 2;
+		if (scopeOperatorStart < 0 || lineText.slice(scopeOperatorStart, token.range.start.character) !== '::') {
+			return undefined;
+		}
+
+		let namespaceEnd = scopeOperatorStart;
+		let namespaceStart = namespaceEnd - 1;
+		while (namespaceStart >= 0 && /[a-zA-Z0-9_]/.test(lineText[namespaceStart])) {
+			namespaceStart--;
+		}
+		namespaceStart++;
+		if (namespaceStart >= namespaceEnd) {
+			return undefined;
+		}
+
+		return `${lineText.slice(namespaceStart, namespaceEnd)}::${token.text}`;
+	}
+
+	private tryResolveNamespaceQualifierToken(token: Token, lineText: string): ResolvedSymbol | undefined {
+		const after = lineText.slice(token.range.end.character);
+		if (!after.startsWith('::')) {
+			return undefined;
+		}
+
+		return {
+			kind: 'namespace',
+			name: token.text,
+			type: 'Namespace',
+			namespaceName: token.text
+		};
+	}
+
+	private resolveCanonicalSymbol(name: string, lineNumber: number): ResolvedSymbol | undefined {
+		const dotPosition = name.indexOf('.');
+		if (dotPosition !== -1) {
+			const currentClass = this.classes.get(name.substring(0, dotPosition));
+			const currentMember = currentClass?.members.get(name.substring(dotPosition + 1));
+			if (currentClass === undefined || currentMember === undefined) {
+				return undefined;
+			}
+			return memberToSymbol(name, currentClass, currentMember);
+		}
+
+		const scopeOperatorPosition = name.indexOf('::');
+		if (scopeOperatorPosition !== -1) {
+			const namespaceName = name.substring(0, scopeOperatorPosition);
+			const memberName = name.substring(scopeOperatorPosition + 2);
+			if (memberName.length !== 0 && /[A-Z]/.test(memberName[0])) {
+				const qualifiedName = name.endsWith('()') ? name.substring(0, name.length - 2) : name;
+				const currentClass = this.classes.get(qualifiedName);
+				if (currentClass === undefined) return undefined;
+				return {
+					kind: name.endsWith('()') ? 'constructor' : 'classType',
+					name,
+					type: qualifiedName,
+					definition: currentClass.definition,
+					classInfo: currentClass
+				};
+			}
+
+			const currentNamespace = this.namespaces.get(namespaceName);
+			const currentMember = currentNamespace?.members.get(memberName);
+			if (currentNamespace === undefined || currentMember === undefined) {
+				return undefined;
+			}
+			return namespaceMemberToSymbol(name, namespaceName, currentMember);
+		}
+
+		if (/[A-Z]/.test(name[0])) {
+			const className = name.endsWith('()') ? name.substring(0, name.length - 2) : name;
+			const currentClass = this.classes.get(className);
+			if (currentClass === undefined) return undefined;
+			return {
+				kind: name.endsWith('()') ? 'constructor' : 'classType',
+				name,
+				type: className,
+				definition: currentClass.definition,
+				classInfo: currentClass
+			};
+		}
+
+		const binding = this.findVisibleBinding(name, lineNumber);
+		if (binding !== undefined) {
+			return bindingToSymbol(binding, this.document.uri);
+		}
+
+		return undefined;
+	}
+}
+
+export function resolveDocument(inputs: ResolutionInputs): DocumentResolution {
+	return new DocumentResolutionImpl(inputs);
+}
+
+function tokenizeInterpolatedText(text: string, offset: number, line: number, tokens: Token[], commandTextKind: 'commandText' | 'stringLiteral') {
+	let index = 0;
+	while (index < text.length) {
+		const open = text.indexOf('{{', index);
+		if (open === -1) {
+			if (index < text.length) {
+				tokens.push(makeToken(commandTextKind, line, offset + index, offset + text.length, text.slice(index), {
+					commandText: commandTextKind === 'commandText'
+				}));
+			}
+			return;
+		}
+
+		if (open > index) {
+			tokens.push(makeToken(commandTextKind, line, offset + index, offset + open, text.slice(index, open), {
+				commandText: commandTextKind === 'commandText'
+			}));
+		}
+
+		const close = text.indexOf('}}', open + 2);
+		if (close === -1) {
+			tokens.push(makeToken(commandTextKind, line, offset + open, offset + text.length, text.slice(open), {
+				commandText: commandTextKind === 'commandText'
+			}));
+			return;
+		}
+
+		tokens.push(makeToken('interpolation', line, offset + open, offset + close + 2, text.slice(open, close + 2), {
+			interpolation: true,
+			stringInterpolation: commandTextKind === 'stringLiteral'
+		}));
+		tokenizeCode(text.slice(open + 2, close), offset + open + 2, line, tokens, {
+			interpolation: true,
+			stringInterpolation: commandTextKind === 'stringLiteral'
+		});
+		index = close + 2;
+	}
+}
+
+function tokenizeCode(text: string, offset: number, line: number, tokens: Token[], flags?: TokenFlags) {
+	let index = 0;
+	while (index < text.length) {
+		const c = text[index];
+		if (/\s/.test(c)) {
+			index++;
+			continue;
+		}
+
+		if (c === '"') {
+			let end = index + 1;
+			for (; end < text.length; end++) {
+				if (text[end] === '"') {
+					end++;
+					break;
+				}
+			}
+			const stringEnd = Math.min(end, text.length);
+			tokens.push(makeToken('stringLiteral', line, offset + index, offset + stringEnd, text.slice(index, stringEnd), flags));
+			if (stringEnd - index > 2) {
+				tokenizeInterpolatedText(text.slice(index + 1, stringEnd - 1), offset + index + 1, line, tokens, 'stringLiteral');
+			}
+			index = stringEnd;
+			continue;
+		}
+
+		if (/[a-zA-Z_]/.test(c)) {
+			let end = index + 1;
+			for (; end < text.length && /[a-zA-Z0-9_]/.test(text[end]); end++) {
+				// keep scanning
+			}
+			tokens.push(makeToken('identifier', line, offset + index, offset + end, text.slice(index, end), flags));
+			index = end;
+			continue;
+		}
+
+		if (c === ':' && text[index + 1] === ':') {
+			tokens.push(makeToken('punctuation', line, offset + index, offset + index + 2, '::', flags));
+			index += 2;
+			continue;
+		}
+
+		tokens.push(makeToken('punctuation', line, offset + index, offset + index + 1, c, flags));
+		index++;
+	}
+}
+
+function makeToken(kind: TokenKind, line: number, start: number, end: number, text: string, flags?: TokenFlags): Token {
+	return {
+		kind,
+		line,
+		text,
+		range: {
+			start: { line, character: start },
+			end: { line, character: end }
+		},
+		flags
+	};
+}
+
+function compareRanges(a: Token, b: Token): number {
+	return a.range.start.character - b.range.start.character || a.range.end.character - b.range.end.character;
+}
+
+function smallestContaining<T>(items: readonly T[], position: Position, getRange: (item: T) => Range = item => item as unknown as Range): T | undefined {
+	let best: T | undefined;
+	let bestLength = Number.POSITIVE_INFINITY;
+	for (const item of items) {
+		const range = getRange(item);
+		if (range.start.line !== position.line) continue;
+		if (range.start.character <= position.character && position.character < range.end.character) {
+			const length = range.end.character - range.start.character;
+			if (length <= bestLength) {
+				best = item;
+				bestLength = length;
+			}
+		}
+	}
+	return best;
+}
+
+function isReferenceBearingToken(token: Token): boolean {
+	return token.kind === 'identifier' || token.kind === 'typeName' || token.kind === 'namespaceName' || token.kind === 'variableName';
+}
+
+function classifyTokenKind(reference: ResolvedReference, fallback: TokenKind): TokenKind {
+	switch (reference.symbol.kind) {
+		case 'namespace':
+			return 'namespaceName';
+		case 'localVariable':
+		case 'builtinVariable':
+		case 'namespaceVariable':
+			return 'variableName';
+		case 'instanceField':
+			return 'memberName';
+		case 'namespaceFunction':
+		case 'instanceMethod':
+			return 'functionName';
+		case 'classType':
+		case 'constructor':
+			return 'typeName';
+		default:
+			return fallback;
+	}
+}
+
+function isDirectMemberSuggestionSymbol(symbol: ResolvedSymbol): boolean {
+	return symbol.kind === 'localVariable' ||
+		symbol.kind === 'builtinVariable' ||
+		symbol.kind === 'namespaceVariable' ||
+		symbol.kind === 'instanceField' ||
+		symbol.kind === 'classType' ||
+		symbol.kind === 'constructor';
+}
+
+function unresolvedSymbol(name: string): ResolvedSymbol {
+	return {
+		kind: 'unresolved',
+		name,
+		type: 'Unknown'
+	};
+}
+
+function bindingToSymbol(binding: LocalBinding, uri: string): ResolvedSymbol {
+	if (binding.name === 'this') {
+		return {
+			kind: 'localVariable',
+			name: binding.name,
+			type: binding.type
+		};
+	}
+
+	return {
+		kind: binding.builtin ? 'builtinVariable' : 'localVariable',
+		name: binding.name,
+		type: binding.type,
+		definition: binding.lineDeclared >= 0 ? {
+			uri,
+			line: binding.lineDeclared,
+			character: binding.characterDeclared
+		} : undefined
+	};
+}
+
+function memberToSymbol(name: string, currentClass: ClassInfo, currentMember: MemberInfo): ResolvedSymbol {
+	return {
+		kind: currentMember.kind === 'function' ? 'instanceMethod' : 'instanceField',
+		name,
+		type: currentMember.returnType || 'Void',
+		definition: currentMember.definition,
+		documentation: currentMember.documentation,
+		classInfo: currentClass,
+		member: currentMember
+	};
+}
+
+function namespaceMemberToSymbol(name: string, namespaceName: string, currentMember: MemberInfo): ResolvedSymbol {
+	return {
+		kind: currentMember.kind === 'function' ? 'namespaceFunction' : 'namespaceVariable',
+		name,
+		type: currentMember.returnType || 'Void',
+		definition: currentMember.definition,
+		documentation: currentMember.documentation,
+		namespaceName,
+		member: currentMember
+	};
+}
+
+function skipStringBackward(line: string, pos: number): number | undefined {
+	if (line[pos] !== '"') {
+		return pos;
+	}
+
+	for (pos--; pos >= 0; pos--) {
+		if (line[pos] === '"') {
+			return pos;
+		}
+	}
+	return undefined;
+}
+
+function skipParenthesizedExpression(line: string, pos: number, closingParentheses: string): number | undefined {
+	const openingParentheses = closingParentheses === ')' ? '(' : '[';
+	if (line[pos] !== closingParentheses) {
+		return pos;
+	}
+
+	let openParenthesesCount = 0;
+	for (; pos >= 0; pos--) {
+		const c = line[pos];
+		if (c === '"') {
+			const newPos = skipStringBackward(line, pos);
+			if (newPos === undefined) {
+				return undefined;
+			}
+			pos = newPos;
+		} else if (c === closingParentheses) {
+			openParenthesesCount++;
+		} else if (c === openingParentheses) {
+			openParenthesesCount--;
+			if (openParenthesesCount === 0) {
+				return pos;
+			}
+		}
+	}
+	return undefined;
+}
+
+function parseCallChain(line: string): string[] {
+	const result: string[] = [];
+
+	let i = line.length - 1;
+	for (; i >= 0; i--) {
+		if (!/[a-zA-Z0-9_.]/.test(line[i])) {
+			return [];
+		}
+		if (line[i] === '.') {
+			break;
+		}
+	}
+	if (i === -1) {
+		return [];
+	}
+
+	let scopeOperatorUsed = false;
+	while (i >= 0) {
+		if (line[i] === '.') {
+			if (i === 0) {
+				return [];
+			}
+			let hasArraySubscript = false;
+			let newI = skipParenthesizedExpression(line, i - 1, ']');
+			if (newI === undefined) {
+				return [];
+			}
+			if (newI < i - 1) {
+				hasArraySubscript = true;
+				i = newI;
+			}
+			let isFunction = false;
+			newI = skipParenthesizedExpression(line, i - 1, ')');
+			if (newI === undefined) {
+				return [];
+			}
+			if (newI < i - 1) {
+				isFunction = true;
+				i = newI;
+			}
+			if (i <= 0) {
+				return [];
+			}
+			let k = i - 1;
+			for (; k >= 0; k--) {
+				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k])) {
+					break;
+				}
+				if (!/[a-zA-Z0-9_]/.test(line[k])) {
+					return [];
+				}
+			}
+			if (hasArraySubscript) {
+				result.push('[]');
+			}
+			result.push(line.substring(k + 1, i) + (isFunction ? '()' : ''));
+			if (k === -1) {
+				return result.reverse();
+			}
+			i = k;
+		} else if (line[i] === ':') {
+			if (scopeOperatorUsed || i < 2 || line[i - 1] !== ':') {
+				return [];
+			}
+			scopeOperatorUsed = true;
+			let k = i - 2;
+			for (; k >= 0; k--) {
+				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k])) {
+					break;
+				}
+				if (!/[a-zA-Z0-9_]/.test(line[k])) {
+					return [];
+				}
+			}
+			result.push(line.substring(k + 1, i + 1));
+			if (k === -1) {
+				return result.reverse();
+			}
+			i = k;
+		} else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i])) {
+			return result.reverse();
+		} else {
+			return [];
+		}
+	}
+	return [];
+}
+
+function getLastNameAndTypeFromCallChain(
+	callChain: string[],
+	findVisibleBinding: (name: string) => LocalBinding | undefined,
+	activeNamespaceName: string | undefined,
+	namespaces: ReadonlyMap<string, NamespaceInfo>,
+	classes: ReadonlyMap<string, ClassInfo>
+): NameAndType | undefined {
+	if (callChain.length === 0) {
+		return undefined;
+	}
+
+	let currentClass = '';
+	let currentName = '';
+	let startingI = 1;
+	if (callChain[0].endsWith(':')) {
+		startingI = 2;
+		if (callChain.length === 1) {
+			return undefined;
+		}
+		currentName = callChain[0].concat(callChain[1]);
+		if (/[A-Z]/.test(callChain[1][0])) {
+			if (!callChain[1].endsWith('()')) {
+				return undefined;
+			}
+			currentClass = currentName.substring(0, currentName.length - 2);
+		} else {
+			const currentNamespaceInfo = namespaces.get(callChain[0].substring(0, callChain[0].length - 2));
+			const currentNamespaceMember = currentNamespaceInfo?.members.get(callChain[1]);
+			if (currentNamespaceMember === undefined) {
+				return undefined;
+			}
+			currentClass = currentNamespaceMember.returnType;
+		}
+	} else {
+		currentName = callChain[0];
+		if (/[A-Z]/.test(callChain[0][0])) {
+			if (!callChain[0].endsWith('()')) {
+				return undefined;
+			}
+			currentClass = callChain[0].substring(0, callChain[0].length - 2);
+		} else {
+			const currentBinding = findVisibleBinding(callChain[0]);
+			if (currentBinding !== undefined) {
+				currentClass = currentBinding.type;
+			} else {
+				if (activeNamespaceName === undefined) {
+					return undefined;
+				}
+				const activeNamespace = namespaces.get(activeNamespaceName);
+				const currentMember = activeNamespace?.members.get(callChain[0]);
+				if (currentMember === undefined) {
+					return undefined;
+				}
+				currentName = activeNamespaceName + '::' + callChain[0];
+				currentClass = currentMember.returnType;
+			}
+		}
+	}
+
+	for (let i = startingI; i < callChain.length; i++) {
+		if (callChain[i] === '[]') {
+			if (!currentClass.endsWith('[]')) {
+				return undefined;
+			}
+			currentName = currentClass;
+			currentClass = currentClass.substring(0, currentClass.length - 2);
+			continue;
+		}
+		let currentClassInfo = classes.get(currentClass);
+		if (currentClassInfo === undefined) {
+			if (i !== 1 || activeNamespaceName === undefined) {
+				return undefined;
+			}
+			currentClassInfo = classes.get(activeNamespaceName + '::' + currentClass);
+			if (currentClassInfo === undefined) {
+				return undefined;
+			}
+			currentClass = activeNamespaceName + '::' + currentClass;
+		}
+		const nextMember = currentClassInfo.members.get(callChain[i]);
+		if (nextMember === undefined) {
+			return undefined;
+		}
+		currentName = currentClass + '.' + nextMember.name;
+		currentClass = nextMember.returnType;
+	}
+
+	return {
+		name: currentName,
+		type: currentClass
+	};
+}
+
+function getResolvedNameAndTypeAtToken(
+	line: string,
+	token: Token,
+	activeNamespace: string | undefined,
+	findVisibleBinding: (name: string) => LocalBinding | undefined,
+	namespaces: ReadonlyMap<string, NamespaceInfo>,
+	classes: ReadonlyMap<string, ClassInfo>
+): NameAndType | undefined {
+	const i = token.range.end.character;
+	let parseString = line.substring(0, i);
+	if (i < line.length && line[i] === ':') {
+		return undefined;
+	} else if (i < line.length && line[i] === '(') {
+		parseString += '().a';
+	} else {
+		parseString += '.a';
+	}
+
+	const callChain = parseCallChain(parseString);
+	return getLastNameAndTypeFromCallChain(callChain, findVisibleBinding, activeNamespace, namespaces, classes);
+}
+
+function parseFunctionCall(
+	line: string,
+	activeNamespace: string | undefined,
+	findVisibleBinding: (name: string) => LocalBinding | undefined,
+	namespaces: ReadonlyMap<string, NamespaceInfo>,
+	classes: ReadonlyMap<string, ClassInfo>
+): { name: string; paramNumber: number } | undefined {
+	let i = line.length - 1;
+	let paramNumber = 0;
+	for (; i >= 0; i--) {
+		if (line[i] === '"') {
+			const j = skipStringBackward(line, i);
+			if (j === undefined) {
+				return undefined;
+			}
+			i = j;
+		} else if (line[i] === ')' || line[i] === ']') {
+			const j = skipParenthesizedExpression(line, i, line[i]);
+			if (j === undefined) {
+				return undefined;
+			}
+			i = j;
+		} else if (line[i] === '[') {
+			return undefined;
+		} else if (line[i] === ',') {
+			paramNumber++;
+		} else if (line[i] === '(') {
+			if (i === 0) {
+				return undefined;
+			}
+			if (/[\s([+\-*/%^!=<>&|,]/.test(line[i - 1])) {
+				paramNumber = 0;
+				continue;
+			}
+			if (!/[a-zA-Z0-9_]/.test(line[i - 1])) {
+				return undefined;
+			}
+			const callChain = parseCallChain(line.substring(0, i) + '().');
+			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, findVisibleBinding, activeNamespace, namespaces, classes);
+			if (lastNameAndType === undefined) {
+				return undefined;
+			}
+			return {
+				name: lastNameAndType.name,
+				paramNumber
+			};
+		}
+	}
+	return undefined;
+}
+
+export function symbolToHoverText(symbol: ResolvedSymbol, defaultNamespacesSourceUri: string): { signature: string; documentation?: string } {
+	let isBuiltIn = false;
+	if ((symbol.kind === 'namespaceFunction' || symbol.kind === 'instanceMethod') && symbol.definition?.uri === defaultNamespacesSourceUri) {
+		isBuiltIn = true;
+	}
+	return {
+		signature: `${symbol.type !== 'Void' ? symbol.type + ' ' : ''}${symbol.name}${isBuiltIn ? ' (builtin)' : ''}`,
+		documentation: symbol.documentation
+	};
+}
+
+export function symbolToSignatureInformation(symbol: ResolvedSymbol): SignatureInformation[] {
+	if (symbol.member?.signature !== undefined) {
+		return [symbol.member.signature];
+	}
+	if (symbol.classInfo !== undefined && symbol.kind === 'constructor') {
+		const constructorName = symbol.name.includes('::') ? symbol.name.substring(symbol.name.indexOf('::') + 2) : symbol.name;
+		return symbol.classInfo.memberSignatures.get(constructorName) ?? [];
+	}
+	return [];
+}
+
+export function makeCompletionItemForBinding(binding: { name: string; type: string }): CompletionItem {
+	return {
+		label: binding.name,
+		kind: CompletionItemKind.Variable,
+		detail: `${binding.type} ${binding.name}`
+	};
+}
+
+export function cloneSignature(signature: SignatureInformation, activeParameter: number): SignatureInformation {
+	const parameters: ParameterInformation[] | undefined = signature.parameters?.map(parameter => ({ ...parameter }));
+	return {
+		label: signature.label,
+		documentation: signature.documentation,
+		parameters,
+		activeParameter
+	};
+}

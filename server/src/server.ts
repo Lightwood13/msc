@@ -20,7 +20,6 @@ import {
 } from 'vscode-languageserver/node';
 
 import {
-	Position,
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 import {
@@ -56,21 +55,16 @@ import {
 } from 'url';
 
 import {
-	VariableInfo,
 	NamespaceInfo,
 	ClassInfo,
 	DefinitionLocation,
-	UsingDeclaration,
-	SourceFileData,
 	parseNamespaceFile,
 	newLineRegExp,
 	namespaceSignatureRegExp,
 	classSignatureRegExp,
 	functionSignatureRegExp,
 	constructorSignatureRegExp,
-	variableSignatureRegExp,
-	parseDocument,
-	NameAndType
+	variableSignatureRegExp
 } from './parser';
 import {
 	keywords,
@@ -79,6 +73,13 @@ import {
 } from './keywords';
 import { DiagnosticData, Fix, lineOpsToEdits, parseSuppressions, raise } from './lint';
 import { RULES } from './rules';
+import {
+	DocumentResolution,
+	makeCompletionItemForBinding,
+	resolveDocument,
+	ResolvedSymbol,
+	symbolToHoverText
+} from './resolver';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -131,7 +132,7 @@ connection.onInitialized(() => {
 	refreshNamespaceFiles();
 });
 
-const sourceFileData: Map<string, Thenable<SourceFileData>> = new Map();
+const documentResolutions: Map<string, Promise<DocumentResolution>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
@@ -143,6 +144,7 @@ function refreshNamespaceFiles() {
 	files('.', (err, files) => {
 		if (err)
 			return console.log('Unable to scan directory: ' + err);
+		documentResolutions.clear();
 		namespaces.clear();
 		implicitThisTypeCache.clear();
 		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
@@ -160,29 +162,30 @@ function refreshNamespaceFiles() {
 		});
 	}
 
-function getDocumentData(documentUri: string): Thenable<SourceFileData> {
-	let result = sourceFileData.get(documentUri);
+function getDocumentResolution(documentUri: string): Promise<DocumentResolution> {
+	let result = documentResolutions.get(documentUri);
 	if (!result)
-		result = refreshDocument(documentUri);
+		result = refreshDocumentResolution(documentUri);
 	return result;
 }
 
-function refreshDocument(documentUri: string): Promise<SourceFileData> {
+function refreshDocumentResolution(documentUri: string): Promise<DocumentResolution> {
 	const result = (async () => {
 		const document = documents.get(documentUri);
 		if (document === undefined) {
 			console.log('Couldn\'t read file ' + documentUri);
-			return {
-				variables: new Map(),
-				usingDeclarations: []
-			};
+			throw new Error(`Could not read document ${documentUri}`);
 		}
 
 		const implicitThisType = await resolveImplicitThisType(documentUri);
-		return parseDocument(document.getText(),
-			implicitThisType === undefined ? [] : [{ name: 'this', type: implicitThisType }]);
+		return resolveDocument({
+			document,
+			namespaces,
+			classes,
+			implicitVariables: implicitThisType === undefined ? [] : [{ name: 'this', type: implicitThisType }]
+		});
 	})();
-	sourceFileData.set(documentUri, result);
+	documentResolutions.set(documentUri, result);
 	return result;
 }
 
@@ -294,36 +297,6 @@ async function computeImplicitThisType(documentUri: string): Promise<string | un
 	}
 }
 
-function skipStringBackward(line: string, pos: number): number | undefined {
-	const stack: string[] = [];
-	for (; pos >= 0; pos--) {
-		if (line[pos] === '"') {
-			if (stack.length === 0 || stack[stack.length - 1] !== '"') {
-				stack.push('"');
-			} else if (pos === 0 || line[pos - 1] !== '\\') {
-				stack.pop();
-				if (stack.length === 0)
-					return pos;
-			}
-		} else if (line[pos] === '}' && pos >= 1 && line[pos - 1] === '}' &&
-			(pos === 1 || line[pos - 2] !== '\\')) {
-			if (stack.length !== 0 && stack[stack.length - 1] === '"') {
-				stack.push('}');
-			} else {
-				return undefined;
-			}
-		} else if (line[pos] === '{' && pos >= 1 && line[pos - 1] === '{' &&
-			(pos === 1 || line[pos - 2] !== '\\')) {
-			if (stack.length !== 0 && stack[stack.length - 1] === '}') {
-				stack.pop();
-			} else {
-				return undefined;
-			}
-		}
-	}
-	return undefined;
-}
-
 function skipStringForward(line: string, pos: number): number | undefined {
 	const stack: string[] = [];
 	for (; pos < line.length; pos++) {
@@ -349,30 +322,6 @@ function skipStringForward(line: string, pos: number): number | undefined {
 			} else {
 				return undefined;
 			}
-		}
-	}
-	return undefined;
-}
-
-function skipParenthesizedExpression(line: string, pos: number, closingParentheses: string): number | undefined {
-	const openingParentheses = closingParentheses === ')' ? '(' : '[';
-	if (line[pos] !== closingParentheses)
-		return pos;
-
-	let openParenthesesCount = 0;
-	for (; pos >= 0; pos--) {
-		const c = line[pos];
-		if (c === '"') {
-			const newPos = skipStringBackward(line, pos);
-			if (newPos === undefined)
-				return undefined;
-			pos = newPos;
-		} else if (c === closingParentheses)
-			openParenthesesCount++;
-		else if (c === openingParentheses) {
-			openParenthesesCount--;
-			if (openParenthesesCount === 0)
-				return pos;
 		}
 	}
 	return undefined;
@@ -407,286 +356,6 @@ function skipParenthesizedExpressionToEnd(lines: string[], startLine: number, en
 	}
 
 	return undefined;
-}
-
-function parseCallChain(line: string): string[] {
-	const result: string[] = [];
-
-	// skip what user typed at the very end after last dot
-	let i = line.length - 1;
-	for (; i >= 0; i--) {
-		if (!/[a-zA-Z0-9_.]/.test(line[i]))
-			return [];
-		if (line[i] === '.')
-			break;
-	}
-	if (i === -1)
-		return [];
-
-	let scopeOperatorUsed = false;
-	while (i >= 0) {
-		if (line[i] === '.') {
-			if (i === 0)
-				return [];
-			// skip array element access
-			let hasArraySubscript = false;
-			let newI = skipParenthesizedExpression(line, i - 1, ']');
-			if (newI === undefined)
-				return [];
-			if (newI < i - 1) {
-				hasArraySubscript = true;
-				i = newI;
-			}
-			// skip method call
-			let isFunction = false;
-			newI = skipParenthesizedExpression(line, i - 1, ')');
-			if (newI === undefined)
-				return [];
-			if (newI < i - 1) {
-				isFunction = true;
-				i = newI;
-			}
-			if (i <= 0)
-				return [];
-			let k = i - 1;
-			for (; k >= 0; k--) {
-				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k]))
-					break;
-				if (!/[a-zA-Z0-9_]/.test(line[k]))
-					return [];
-			}
-			if (k === -1)
-				return [];
-			if (hasArraySubscript)
-				result.push('[]');
-			result.push(line.substring(k + 1, i) + (isFunction ? '()' : ''));
-			i = k;
-		} else if (line[i] === ':') {
-			if (scopeOperatorUsed || i < 2 || line[i - 1] !== ':')
-				return [];
-			scopeOperatorUsed = true;
-			let k = i - 2;
-			for (; k >= 0; k--) {
-				if (/[.:\s([{+\-*/%^!=<>&|,]/.test(line[k]))
-					break;
-				if (!/[a-zA-Z0-9_]/.test(line[k]))
-					return [];
-			}
-			if (k === -1)
-				return [];
-			result.push(line.substring(k + 1, i + 1));
-			i = k;
-		} else if (/[.\s([{+\-*/%^!=<>&|,]/.test(line[i]))
-			return result.reverse();
-		else
-			return [];
-	}
-	return [];
-}
-
-function getLastNameAndTypeFromCallChain(callChain: string[], currentDocumentData: SourceFileData,
-	activeNamespaceName: string | undefined, lineNumber: number): NameAndType | undefined {
-	if (callChain.length === 0)
-		return undefined;
-
-	let currentClass = '';
-	let currentName = '';
-	let startingI = 1;
-	if (callChain[0].endsWith(':')) {
-		startingI = 2;
-		if (callChain.length === 1)
-			return undefined;
-		currentName = callChain[0].concat(callChain[1]);
-		if (/[A-Z]/.test(callChain[1][0])) {
-			if (!callChain[1].endsWith('()'))
-				return undefined;
-			currentClass = currentName.substring(0, currentName.length - 2);
-		} else {
-			const currentNamespaceInfo = namespaces.get(callChain[0].substring(0, callChain[0].length - 2));
-			if (currentNamespaceInfo === undefined)
-				return undefined;
-			const currentNamespaceMember = currentNamespaceInfo.members.get(callChain[1]);
-			if (currentNamespaceMember === undefined)
-				return undefined;
-			currentClass = currentNamespaceMember.returnType;
-		}
-	} else {
-		currentName = callChain[0];
-		if (/[A-Z]/.test(callChain[0][0])) {
-			if (!callChain[0].endsWith('()'))
-				return undefined;
-			currentClass = callChain[0].substring(0, callChain[0].length - 2);
-		} else {
-			const currentVariables = currentDocumentData.variables.get(callChain[0]);
-			let currentVariable: VariableInfo | undefined = undefined;
-			if (currentVariables !== undefined)
-				for (const variable of currentVariables)
-					if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
-						variable.lineUndeclared > lineNumber))
-						currentVariable = variable;
-			if (currentVariable !== undefined) {
-				currentClass = currentVariable.type;
-			} else {
-				if (activeNamespaceName === undefined)
-					return undefined;
-				const activeNamespace = namespaces.get(activeNamespaceName);
-				if (activeNamespace === undefined)
-					return undefined;
-				const currentMember = activeNamespace.members.get(callChain[0]);
-				if (currentMember === undefined)
-					return undefined;
-				currentName = activeNamespaceName + '::' + callChain[0];
-				currentClass = currentMember.returnType;
-			}
-
-		}
-	}
-
-	for (let i = startingI; i < callChain.length; i++) {
-		if (callChain[i] === '[]') {
-			if (!currentClass.endsWith('[]'))
-				return undefined;
-			currentName = currentClass;
-			currentClass = currentClass.substring(0, currentClass.length - 2);
-			continue;
-		}
-		let currentClassInfo = classes.get(currentClass);
-		if (currentClassInfo === undefined) {
-			if (i !== 1 || activeNamespaceName === undefined)
-				return undefined;
-			currentClassInfo = classes.get(activeNamespaceName + '::' + currentClass);
-			if (currentClassInfo === undefined)
-				return undefined;
-			currentClass = activeNamespaceName + '::' + currentClass;
-		}
-		const nextMember = currentClassInfo.members.get(callChain[i]);
-		if (nextMember === undefined)
-			return undefined;
-		currentName = currentClass + '.' + nextMember.name;
-		currentClass = nextMember.returnType;
-	}
-
-	let currentClassWithoutArray = currentClass;
-	if (currentClass.endsWith('[]'))
-		currentClassWithoutArray = currentClass.substring(0, currentClass.length - 2);
-	if (!classes.has(currentClassWithoutArray)) {
-		if (activeNamespaceName !== undefined && classes.has(activeNamespaceName + '::' + currentClassWithoutArray))
-			currentClass = activeNamespaceName + '::' + currentClass;
-		else
-			return undefined;
-	}
-
-	return {
-		name: currentName,
-		type: currentClass
-	};
-}
-
-interface FunctionCallInfo {
-	name: string,
-	paramNumber: number
-}
-
-function parseFunctionCall(line: string, currentDocumentData: SourceFileData,
-	activeNamespace: string | undefined, lineNumber: number): FunctionCallInfo | undefined {
-	let i = line.length - 1;
-	let paramNumber = 0;
-	for (; i >= 0; i--) {
-		if (line[i] === '"') {
-			const j = skipStringBackward(line, i);
-			if (j === undefined)
-				return undefined;
-			i = j;
-		} else if (line[i] === ')' || line[i] === ']') {
-			const j = skipParenthesizedExpression(line, i, line[i]);
-			if (j === undefined)
-				return undefined;
-			i = j;
-		} else if (line[i] === '[')
-			return undefined;
-		else if (line[i] === ',')
-			paramNumber++;
-		else if (line[i] === '(') {
-			if (i === 0)
-				return undefined;
-			if (/[\s([+\-*/%^!=<>&|,]/.test(line[i - 1])) {
-				paramNumber = 0;
-				continue;
-			}
-			if (!/[a-zA-Z0-9_]/.test(line[i - 1]))
-				return undefined;
-			const callChain = parseCallChain(line.substring(0, i) + '().');
-			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, currentDocumentData, activeNamespace, lineNumber);
-			if (lastNameAndType === undefined)
-				return undefined;
-			return {
-				name: lastNameAndType.name,
-				paramNumber: paramNumber
-			};
-		}
-	}
-	return undefined;
-}
-
-function findActiveNamespace(usingDeclarations: UsingDeclaration[], line: number): string | undefined {
-	let closestUsingLine = -1;
-	let result: string | undefined = undefined;
-	for (const usingDeclaration of usingDeclarations) {
-		if (usingDeclaration.lineDeclared > closestUsingLine && usingDeclaration.lineDeclared < line) {
-			closestUsingLine = usingDeclaration.lineDeclared;
-			result = usingDeclaration.namespace;
-		}
-	}
-	return result;
-}
-
-function getLineText(document: TextDocument, lineNumber: number): string {
-	return document.getText({
-		start: {
-			line: lineNumber,
-			character: 0
-		},
-		end: {
-			line: lineNumber + 1,
-			character: 0
-		}
-	}).trimEnd();
-}
-
-function getResolvedNameAndTypeAtPosition(document: TextDocument, position: Position,
-	documentData: SourceFileData, activeNamespace: string | undefined): NameAndType | undefined {
-	const line = getLineText(document, position.line);
-	let i = position.character;
-	if ((i >= line.length || !/[a-zA-Z0-9_]/.test(line[i])) && i > 0 && /[a-zA-Z0-9_]/.test(line[i - 1]))
-		i--;
-	if (i < 0 || i >= line.length || !/[a-zA-Z0-9_]/.test(line[i]))
-		return undefined;
-	for (; i < line.length; i++) {
-		if (!/[a-zA-Z0-9_]/.test(line[i]))
-			break;
-	}
-
-	let parseString = line.substring(0, i);
-	if (i < line.length && line[i] === ':')
-		return undefined;
-	else if (i < line.length && line[i] === '(')
-		parseString += '().a';
-	else
-		parseString += '.a';
-
-	const callChain = parseCallChain(parseString);
-	return getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, position.line);
-}
-
-function findVisibleVariable(variableName: string, documentData: SourceFileData, lineNumber: number): VariableInfo | undefined {
-	const currentVariables = documentData.variables.get(variableName);
-	let currentVariable: VariableInfo | undefined = undefined;
-	if (currentVariables !== undefined)
-		for (const variable of currentVariables)
-			if (variable.lineDeclared < lineNumber && (variable.lineUndeclared === undefined ||
-				variable.lineUndeclared > lineNumber))
-				currentVariable = variable;
-	return currentVariable;
 }
 
 function createLocation(uri: string, line: number, character: number): Location {
@@ -758,77 +427,72 @@ async function getImplementationLocationForClassMember(currentClass: ClassInfo, 
 	return undefined;
 }
 
-async function getDefinitionLocationForResolvedName(nameAndType: NameAndType, document: TextDocument,
-	documentData: SourceFileData, lineNumber: number): Promise<Location | undefined> {
-	const dotPosition = nameAndType.name.indexOf('.');
-	if (dotPosition !== -1) {
-		const currentClass = classes.get(nameAndType.name.substring(0, dotPosition));
-		if (currentClass === undefined)
-			return undefined;
-		const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
-		if (currentMember === undefined)
-			return undefined;
-		const currentMemberName = currentMember.name.endsWith('()') ?
-			currentMember.name.substring(0, currentMember.name.length - 2) : currentMember.name;
-		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
-			return undefined;
-		const implementationLocation = await getImplementationLocationForClassMember(currentClass, currentMemberName,
-			currentMember.kind, currentMember.definition?.uri, currentMember.signature?.label);
-		if (implementationLocation !== undefined)
-			return implementationLocation;
-		return getMemberDefinitionLocation(currentMember.definition);
-	}
-
-	const scopeOperatorPosition = nameAndType.name.indexOf('::');
-	if (scopeOperatorPosition !== -1) {
-		const qualifiedName = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
-		const memberName = nameAndType.name.substring(scopeOperatorPosition + 2);
-		if (memberName.length !== 0 && /[A-Z]/.test(memberName[0]))
-			return getMemberDefinitionLocation(classes.get(qualifiedName)?.definition);
-
-		const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
-		if (currentNamespace === undefined)
-			return undefined;
-		const currentMember = currentNamespace.members.get(memberName);
-		if (currentMember === undefined)
-			return undefined;
-		if (currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri))
-			return undefined;
-		if (currentMember.kind === 'function') {
-			const functionName = currentMember.name.substring(0, currentMember.name.length - 2);
-			const implementationLocation = await getImplementationLocationForNamespaceFunction(
-				nameAndType.name.substring(0, scopeOperatorPosition), functionName, currentMember.definition?.uri);
-			if (implementationLocation !== undefined)
-				return implementationLocation;
+async function getDefinitionLocationForSymbol(symbol: ResolvedSymbol): Promise<Location | undefined> {
+	switch (symbol.kind) {
+		case 'instanceMethod':
+		case 'instanceField': {
+			if (symbol.classInfo === undefined || symbol.member === undefined) {
+				return undefined;
+			}
+			const currentMemberName = symbol.member.name.endsWith('()') ?
+				symbol.member.name.substring(0, symbol.member.name.length - 2) : symbol.member.name;
+			if (symbol.member.kind === 'function' && isBuiltInDefinition(symbol.member.definition?.uri)) {
+				return undefined;
+			}
+			const implementationLocation = await getImplementationLocationForClassMember(
+				symbol.classInfo,
+				currentMemberName,
+				symbol.member.kind,
+				symbol.member.definition?.uri,
+				symbol.member.signature?.label
+			);
+			return implementationLocation ?? getMemberDefinitionLocation(symbol.member.definition);
 		}
-		return getMemberDefinitionLocation(currentMember.definition);
-	}
 
-	if (nameAndType.name.length !== 0 && /[A-Z]/.test(nameAndType.name[0])) {
-		const className = nameAndType.name.endsWith('()') ? nameAndType.name.substring(0, nameAndType.name.length - 2) : nameAndType.name;
-		const currentClass = classes.get(className);
-		if (currentClass === undefined)
+		case 'namespaceFunction':
+		case 'namespaceVariable': {
+			if (symbol.member === undefined) {
+				return undefined;
+			}
+			if (symbol.member.kind === 'function' && isBuiltInDefinition(symbol.member.definition?.uri)) {
+				return undefined;
+			}
+			if (symbol.kind === 'namespaceFunction' && symbol.namespaceName !== undefined) {
+				const functionName = symbol.member.name.substring(0, symbol.member.name.length - 2);
+				const implementationLocation = await getImplementationLocationForNamespaceFunction(
+					symbol.namespaceName,
+					functionName,
+					symbol.member.definition?.uri
+				);
+				if (implementationLocation !== undefined) {
+					return implementationLocation;
+				}
+			}
+			return getMemberDefinitionLocation(symbol.member.definition);
+		}
+
+		case 'classType':
+		case 'constructor':
+			return getMemberDefinitionLocation(symbol.classInfo?.definition ?? symbol.definition);
+
+		case 'localVariable':
+		case 'builtinVariable':
+			if (symbol.definition !== undefined) {
+				return getMemberDefinitionLocation(symbol.definition);
+			}
+			if (symbol.name === 'this') {
+				return getMemberDefinitionLocation(classes.get(symbol.type)?.definition);
+			}
 			return undefined;
-		return getMemberDefinitionLocation(currentClass.definition);
-	}
 
-	const currentVariable = findVisibleVariable(nameAndType.name, documentData, lineNumber);
-	if (currentVariable === undefined)
-		return undefined;
-	if (currentVariable.lineDeclared >= 0) {
-		const lineText = getLineText(document, currentVariable.lineDeclared);
-		const character = lineText.indexOf(currentVariable.name);
-		return createLocation(document.uri, currentVariable.lineDeclared, character === -1 ? 0 : character);
+		default:
+			return symbol.definition === undefined ? undefined : getMemberDefinitionLocation(symbol.definition);
 	}
-	if (currentVariable.name === 'this')
-		return getMemberDefinitionLocation(classes.get(currentVariable.type)?.definition);
-	return undefined;
 }
 
 connection.onSignatureHelp(
 	async (textDocumentPosition: SignatureHelpParams): Promise<SignatureHelp> => {
-		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
-		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
+		const resolution = await getDocumentResolution(textDocumentPosition.textDocument.uri);
 
 		const result: SignatureHelp = {
 			signatures: [],
@@ -836,121 +500,55 @@ connection.onSignatureHelp(
 			activeParameter: 0
 		};
 
-		const document = documents.get(textDocumentPosition.textDocument.uri);
-		if (document === undefined)
+		const callContext = resolution.getCallContext(textDocumentPosition.position);
+		if (callContext === undefined) {
 			return result;
-		const line = document.getText({
-			start: {
-				line: textDocumentPosition.position.line,
-				character: 0
-			},
-			end: {
-				line: textDocumentPosition.position.line,
-				character: textDocumentPosition.position.character
+		}
+
+		if (callContext.symbol.kind === 'namespaceFunction' && callContext.symbol.namespaceName !== undefined && callContext.symbol.member !== undefined) {
+			const currentNamespace = namespaces.get(callContext.symbol.namespaceName);
+			const signatures = currentNamespace?.memberSignatures.get(callContext.symbol.member.name);
+			if (signatures !== undefined) {
+				result.signatures = signatures.map(signature => ({ ...signature, activeParameter: callContext.paramNumber }));
 			}
-		});
-
-		const info = parseFunctionCall(line, documentData, activeNamespace, textDocumentPosition.position.line);
-		if (info === undefined)
-			return result;
-		let name = info.name;
-
-		for (let i = 0; i < 2; i++) {
-			if (i === 1 && activeNamespace !== undefined)
-				name = activeNamespace + '::' + name;
-			const scopeOperatorPosition = name.indexOf('::');
-			const dotPosition = name.indexOf('.');
-			if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2 &&
-				/[a-z]/.test(name[scopeOperatorPosition + 2])) {
-				// namespace function call
-				const namespaceName = name.substring(0, scopeOperatorPosition);
-				const functionName = name.substring(scopeOperatorPosition + 2);
-				const currentNamespace = namespaces.get(namespaceName);
-				if (currentNamespace === undefined)
-					break;
-				const signatures = currentNamespace.memberSignatures.get(functionName);
-				if (signatures !== undefined)
-					result.signatures = signatures;
-				break;
-			} else if (dotPosition !== -1) {
-				// class method call
-				const className = name.substring(0, dotPosition);
-				const methodName = name.substring(dotPosition + 1);
-				const currentClass = classes.get(className);
-				if (currentClass === undefined)
-					break;
-				const signatures = currentClass.memberSignatures.get(methodName);
-				if (signatures !== undefined)
-					result.signatures = signatures;
-				break;
-			} else {
-				// class constructor call
-				const className = name.substring(0, name.length - 2);
-				const currentClass = classes.get(className);
-				if (currentClass === undefined)
-					continue;
-
-				let constructorName = name;
-				if (scopeOperatorPosition !== -1 && scopeOperatorPosition < name.length - 2)
-					constructorName = constructorName.substring(scopeOperatorPosition + 2);
-				const signatures = currentClass.memberSignatures.get(constructorName);
-				if (signatures !== undefined)
-					result.signatures = signatures;
-				break;
+		} else if (callContext.symbol.kind === 'instanceMethod' && callContext.symbol.classInfo !== undefined && callContext.symbol.member !== undefined) {
+			const signatures = callContext.symbol.classInfo.memberSignatures.get(callContext.symbol.member.name);
+			if (signatures !== undefined) {
+				result.signatures = signatures.map(signature => ({ ...signature, activeParameter: callContext.paramNumber }));
+			}
+		} else if (callContext.symbol.kind === 'constructor' && callContext.symbol.classInfo !== undefined) {
+			const constructorName = callContext.symbol.name.includes('::')
+				? callContext.symbol.name.substring(callContext.symbol.name.indexOf('::') + 2)
+				: callContext.symbol.name;
+			const signatures = callContext.symbol.classInfo.memberSignatures.get(constructorName);
+			if (signatures !== undefined) {
+				result.signatures = signatures.map(signature => ({ ...signature, activeParameter: callContext.paramNumber }));
 			}
 		}
 
-		for (const signature of result.signatures)
-			signature.activeParameter = info.paramNumber;
+		for (const signature of result.signatures) {
+			signature.activeParameter = callContext.paramNumber;
+		}
 		return result;
 	}
 );
 
 connection.onHover(
 	async (textDocumentPosition: HoverParams): Promise<Hover | undefined> => {
-		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
-		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-
-		const document = documents.get(textDocumentPosition.textDocument.uri);
-		if (document === undefined)
+		const resolution = await getDocumentResolution(textDocumentPosition.textDocument.uri);
+		const reference = resolution.getReferenceAtPosition(textDocumentPosition.position);
+		if (reference === undefined)
 			return undefined;
-		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
-		if (nameAndType === undefined)
-			return undefined;
-
-		let documentation: string | undefined = undefined;
-		let isBuiltIn = false;
-
-		const dotPosition = nameAndType.name.indexOf('.');
-		const scopeOperatorPosition = nameAndType.name.indexOf('::');
-		if (dotPosition !== -1) {
-			const currentClass = classes.get(nameAndType.name.substring(0, dotPosition));
-			if (currentClass === undefined)
-				return undefined;
-			const currentMember = currentClass.members.get(nameAndType.name.substring(dotPosition + 1));
-			if (currentMember !== undefined) {
-				documentation = currentMember.documentation;
-				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
-			}
-		} else if (scopeOperatorPosition !== -1) {
-			const currentNamespace = namespaces.get(nameAndType.name.substring(0, scopeOperatorPosition));
-			if (currentNamespace === undefined)
-				return undefined;
-			const currentMember = currentNamespace.members.get(nameAndType.name.substring(scopeOperatorPosition + 2));
-			if (currentMember !== undefined) {
-				documentation = currentMember.documentation;
-				isBuiltIn = currentMember.kind === 'function' && isBuiltInDefinition(currentMember.definition?.uri);
-			}
-		}
+		const hoverText = symbolToHoverText(reference.symbol, defaultNamespacesSourceUri);
 
 		return {
 			contents: {
 				kind: MarkupKind.Markdown,
 				value: [
 					'```msc',
-					(nameAndType.type !== 'Void' ? nameAndType.type + ' ' : '') + nameAndType.name + (isBuiltIn ? ' (builtin)' : ''),
+					hoverText.signature,
 					'```'
-				].join('\n') + (documentation === undefined ? '' : '\n' + documentation)
+				].join('\n') + (hoverText.documentation === undefined ? '' : '\n' + hoverText.documentation)
 			}
 		};
 	}
@@ -958,41 +556,21 @@ connection.onHover(
 
 connection.onDefinition(
 	async (textDocumentPosition: DefinitionParams): Promise<Definition | undefined> => {
-		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
-		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
-
-		const document = documents.get(textDocumentPosition.textDocument.uri);
-		if (document === undefined)
+		const resolution = await getDocumentResolution(textDocumentPosition.textDocument.uri);
+		const reference = resolution.getReferenceAtPosition(textDocumentPosition.position);
+		if (reference === undefined)
 			return undefined;
-
-		const nameAndType = getResolvedNameAndTypeAtPosition(document, textDocumentPosition.position, documentData, activeNamespace);
-		if (nameAndType === undefined)
-			return undefined;
-
-		return await getDefinitionLocationForResolvedName(nameAndType, document, documentData, textDocumentPosition.position.line);
+		return await getDefinitionLocationForSymbol(reference.symbol);
 	}
 );
 
 connection.onCompletion(
 	async (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> => {
-		const documentData = await getDocumentData(textDocumentPosition.textDocument.uri);
-		const activeNamespace = findActiveNamespace(documentData.usingDeclarations, textDocumentPosition.position.line);
+		const resolution = await getDocumentResolution(textDocumentPosition.textDocument.uri);
+		const completionContext = resolution.getCompletionContext(textDocumentPosition.position);
 
-		const document = documents.get(textDocumentPosition.textDocument.uri);
-		if (document === undefined)
-			return [];
-		const line = document.getText({
-			start: {
-				line: textDocumentPosition.position.line,
-				character: 0
-			},
-			end: {
-				line: textDocumentPosition.position.line,
-				character: textDocumentPosition.position.character
-			}
-		});
-		const usingSuggestionRegExp = /^\s*@using\s+[a-zA-Z0-9_]*$/;
-		if (usingSuggestionRegExp.test(line)) {
+		switch (completionContext.kind) {
+		case 'namespace': {
 			const result: CompletionItem[] = [];
 			for (const [namespaceName, _namespaceInfo] of namespaces) {
 				if (namespaceName !== '__default__') {
@@ -1004,40 +582,33 @@ connection.onCompletion(
 			}
 			return result;
 		}
-		const commandPrefixes = ['@bypass \\/', '@command \\/', '@console \\/'];
-		const commandSuggestionRegExp = new RegExp(`^\\s*(${commandPrefixes.join('|')})[a-z]*$`);
-		const commandSuggestionRegExpRes = commandSuggestionRegExp.exec(line);
-		if (commandSuggestionRegExpRes !== null) {
+
+		case 'command':
 			return minecraftCommands;
-		}
-		const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
-		const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
-		if (keywordSuggestionRegExpRes !== null) {
-			if (keywordSuggestionRegExpRes[1] === '@') {
-				return keywordsWithoutAtSymbol;
-			} else {
-				return keywords;
-			}
-		}
-		const namespaceSuggestionRegExp = /(?:^|[\s([{+\-*/!=<>&|,])([a-zA-Z][a-zA-Z0-9_]*)::[a-zA-Z0-9_]*$/;
-		const namespaceSuggestionRegExpRes = namespaceSuggestionRegExp.exec(line);
-		if (namespaceSuggestionRegExpRes !== null) {
-			const namespaceData = namespaces.get(namespaceSuggestionRegExpRes[1]);
-			if (namespaceData === undefined)
+
+		case 'namespaceMembers': {
+			if (completionContext.namespaceName === undefined) {
 				return [];
-			return namespaceData.memberSuggestions;
+			}
+			const namespaceData = namespaces.get(completionContext.namespaceName);
+			return namespaceData?.memberSuggestions ?? [];
 		}
-		const variableOrClassSuggestionRegExp = /(?:[\s([{+\-*/!=<>&|,])(?:[a-zA-Z][a-zA-Z0-9_]*)?$/;
-		const variableOrClassSuggestionRegExpRes = variableOrClassSuggestionRegExp.exec(line);
-		if (variableOrClassSuggestionRegExpRes !== null) {
+
+		case 'member': {
+			if (completionContext.hostType === undefined) {
+				return [];
+			}
+			const currentClassInfo = classes.get(completionContext.hostType);
+			return currentClassInfo?.memberSuggestions ?? [];
+		}
+
+		case 'expression': {
 			let result: CompletionItem[] = [];
-			for (const [_variableName, variableArray] of documentData.variables.entries())
-				for (const variable of variableArray)
-					if (variable.lineDeclared < textDocumentPosition.position.line &&
-						(variable.lineUndeclared === undefined || variable.lineUndeclared > textDocumentPosition.position.line))
-						result.push(variable.suggestion);
-			if (activeNamespace !== undefined) {
-				const currentNamespace = namespaces.get(activeNamespace);
+			for (const binding of completionContext.visibleBindings ?? []) {
+				result.push(makeCompletionItemForBinding(binding));
+			}
+			if (completionContext.activeNamespace !== undefined) {
+				const currentNamespace = namespaces.get(completionContext.activeNamespace);
 				if (currentNamespace !== undefined) {
 					result = result.concat(currentNamespace.memberSuggestions);
 				}
@@ -1060,20 +631,24 @@ connection.onCompletion(
 				result = result.concat(defaultClasses.memberSuggestions);
 			return result;
 		}
-		const classMemberSuggestionRegExp = /\.([a-z][a-zA-Z0-9_]*)?$/;
-		const classMemberSuggestionRegExpRes = classMemberSuggestionRegExp.exec(line);
-		if (classMemberSuggestionRegExpRes !== null) {
-			const callChain = parseCallChain(line);
-			const lastNameAndType = getLastNameAndTypeFromCallChain(callChain, documentData, activeNamespace, textDocumentPosition.position.line);
-			if (lastNameAndType === undefined)
-				return [];
 
-			const currentClassInfo = classes.get(lastNameAndType.type);
-			if (currentClassInfo === undefined)
+		default: {
+			const document = documents.get(textDocumentPosition.textDocument.uri);
+			if (document === undefined) {
 				return [];
-			return currentClassInfo.memberSuggestions;
+			}
+			const line = document.getText({
+				start: { line: textDocumentPosition.position.line, character: 0 },
+				end: { line: textDocumentPosition.position.line, character: textDocumentPosition.position.character }
+			});
+			const keywordSuggestionRegExp = /^\s*(@)?[a-z]+$/;
+			const keywordSuggestionRegExpRes = keywordSuggestionRegExp.exec(line);
+			if (keywordSuggestionRegExpRes !== null) {
+				return keywordSuggestionRegExpRes[1] === '@' ? keywordsWithoutAtSymbol : keywords;
+			}
+			return [];
 		}
-		return [];
+		}
 	}
 );
 
@@ -1088,6 +663,7 @@ connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespace
 	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
 		namespaces.set(key, value);
 	});
+	documentResolutions.clear();
 });
 
 interface NamespaceFunction {
@@ -1997,17 +1573,17 @@ documents.onDidSave(change => {
 
 // Register the text document validation function
 documents.onDidOpen(change => {
-	void refreshDocument(change.document.uri);
+	void refreshDocumentResolution(change.document.uri);
 	validateAndReportDiagnostics(change.document);
 });
 
 documents.onDidChangeContent(e => {
-	void refreshDocument(e.document.uri);
+	void refreshDocumentResolution(e.document.uri);
 	validateAndReportDiagnostics(e.document);
 });
 
 documents.onDidClose(e => {
-	sourceFileData.delete(e.document.uri);
+	documentResolutions.delete(e.document.uri);
 });
 
 connection.onDidChangeWatchedFiles(_ => {
