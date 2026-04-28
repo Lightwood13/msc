@@ -1728,6 +1728,17 @@ function validateNamespaceReferences(resolution: DocumentResolution, diagnostics
 	}
 }
 
+function validateNamespaceMembers(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.symbol.kind !== 'unresolved') continue;
+		const namespaceName = resolution.getNamespaceQualifier(reference.token.range.start);
+		if (namespaceName === undefined) continue;
+		raise(diagnostics, RULES.SEM006, reference.token.range, {
+			message: `Namespace '${namespaceName}' has no member named '${reference.token.text}'`
+		});
+	}
+}
+
 function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
@@ -1777,6 +1788,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateMemberAccess(resolution, diagnostics);
 		validateUndefinedIdentifiers(lines, resolution, diagnostics);
 		validateNamespaceReferences(resolution, diagnostics);
+		validateNamespaceMembers(resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

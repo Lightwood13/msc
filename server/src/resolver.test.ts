@@ -453,6 +453,20 @@ describe('MSC resolver', () => {
 		assert.strictEqual(resolution.hasNamespace('mystery'), false);
 	});
 
+	it('exposes the namespace qualifier preceding a member token', () => {
+		const known = createDocument('@return tools::bogus');
+		const knownResolution = resolveDocument({ document: known, namespaces, classes });
+		assert.strictEqual(knownResolution.getNamespaceQualifier(positionOf(known, 'bogus')), 'tools');
+
+		const unknown = createDocument('@return mystery::bogus');
+		const unknownResolution = resolveDocument({ document: unknown, namespaces, classes });
+		assert.strictEqual(unknownResolution.getNamespaceQualifier(positionOf(unknown, 'bogus')), undefined);
+
+		const free = createDocument('@return mystery');
+		const freeResolution = resolveDocument({ document: free, namespaces, classes });
+		assert.strictEqual(freeResolution.getNamespaceQualifier(positionOf(free, 'mystery')), undefined);
+	});
+
 	it('reports member-access host types when the host resolves to a known class', () => {
 		const document = createDocument('@define Widget w\n@return w.bogus');
 		const resolution = resolveDocument({ document, namespaces, classes });

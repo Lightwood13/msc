@@ -199,6 +199,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Unknown namespace'
 	},
+	SEM006: {
+		code: 'SEM006',
+		name: 'unknown-namespace-member',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Namespace has no member with this name'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

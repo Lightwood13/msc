@@ -131,6 +131,7 @@ export interface DocumentResolution {
 	getCallContext(position: Position): CallContext | undefined;
 	analyzeExpression(expression: string, lineNumber: number, startCharacter: number): ExpressionAnalysis;
 	getMemberAccessHostType(position: Position): string | undefined;
+	getNamespaceQualifier(position: Position): string | undefined;
 	hasNamespace(name: string): boolean;
 }
 
@@ -327,6 +328,14 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 	hasNamespace(name: string): boolean {
 		return this.namespaces.has(name);
+	}
+
+	getNamespaceQualifier(position: Position): string | undefined {
+		const lineText = this.lines[position.line] ?? '';
+		const codePrefix = lineText.slice(0, position.character);
+		const match = /([a-zA-Z][a-zA-Z0-9_]*)::$/.exec(codePrefix);
+		if (match === null) return undefined;
+		return this.namespaces.has(match[1]) ? match[1] : undefined;
 	}
 
 	private getContextToken(position: Position): Token | undefined {

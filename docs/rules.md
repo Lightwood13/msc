@@ -453,6 +453,21 @@ A namespace referenced in `@using` or in a `Name::member` qualifier must be eith
 
 ---
 
+<a id="sem006"></a>
+### SEM006: unknown-namespace-member (semantic error)
+
+A `namespace::member` reference must point at a real member of that namespace. The namespace must be known (otherwise SEM005 fires instead).
+
+```msc
+# bad
+@return math::sqaure(3)
+
+# good
+@return math::square(3)
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
