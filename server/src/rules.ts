@@ -255,6 +255,20 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'No overload accepts the supplied arguments'
 	},
+	SEM014: {
+		code: 'SEM014',
+		name: 'index-non-array',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Cannot index a non-array type'
+	},
+	SEM015: {
+		code: 'SEM015',
+		name: 'non-int-index',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Array index must be Int'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

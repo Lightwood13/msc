@@ -114,6 +114,7 @@ export interface CallContext {
 export interface ExpressionDiagnostic {
 	message: string;
 	range: Range;
+	code?: string;
 }
 
 export interface ExpressionAnalysis {
@@ -1519,6 +1520,12 @@ class ExpressionTypeParser {
 			}
 
 			if (token.kind === 'lbrack') {
+				const hostType = this.resolveChainType(this.expression.slice(start, end));
+				if (hostType !== undefined && hostType !== 'Unknown' && !hostType.endsWith('[]')) {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Cannot index a non-array type ${hostType}`, 'SEM014')
+					};
+				}
 				this.index++;
 				const inner = this.parseOr();
 				if (inner.diagnostic !== undefined) {
@@ -1528,6 +1535,11 @@ class ExpressionTypeParser {
 				if (close?.kind !== 'rbrack') {
 					return {
 						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				if (inner.type !== undefined && inner.type !== 'Unknown' && inner.type !== 'Int') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Array index must be Int, got ${inner.type}`, 'SEM015')
 					};
 				}
 				end = close.end;
@@ -1574,6 +1586,16 @@ class ExpressionTypeParser {
 				if (close?.kind !== 'rbrack') {
 					return {
 						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				if (inner.type !== undefined && inner.type !== 'Unknown' && inner.type !== 'Int') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Array index must be Int, got ${inner.type}`, 'SEM015')
+					};
+				}
+				if (currentType !== undefined && currentType !== 'Unknown' && !currentType.endsWith('[]')) {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Cannot index a non-array type ${currentType}`, 'SEM014')
 					};
 				}
 				this.index++;
@@ -1689,13 +1711,14 @@ class ExpressionTypeParser {
 		return this.tokens[this.index];
 	}
 
-	private makeDiagnostic(token: ExpressionToken, message: string): ExpressionDiagnostic {
+	private makeDiagnostic(token: ExpressionToken, message: string, code?: string): ExpressionDiagnostic {
 		return {
 			message,
 			range: {
 				start: { line: this.lineNumber, character: this.startCharacter + token.start },
 				end: { line: this.lineNumber, character: this.startCharacter + token.end }
-			}
+			},
+			code
 		};
 	}
 }

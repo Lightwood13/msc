@@ -1661,7 +1661,8 @@ function validateSemanticExpressions(lines: readonly string[], resolution: Docum
 		for (const expression of collectSemanticExpressions(lines[lineNumber], lineNumber, resolution)) {
 			const analysis = resolution.analyzeExpression(expression.text, lineNumber, expression.startCharacter);
 			for (const diagnostic of analysis.diagnostics) {
-				raise(diagnostics, RULES.SEM001, diagnostic.range, { message: diagnostic.message });
+				const rule = (diagnostic.code && RULES[diagnostic.code]) || RULES.SEM001;
+				raise(diagnostics, rule, diagnostic.range, { message: diagnostic.message });
 			}
 		}
 	}

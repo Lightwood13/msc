@@ -594,6 +594,39 @@ A function, method, or constructor call must match one of the declared overloads
 
 ---
 
+<a id="sem014"></a>
+### SEM014: index-non-array (semantic error)
+
+The `[...]` index operator only applies to array types (`Int[]`, `Player[]`, ...).
+
+```msc
+# bad
+@define Int n = 5
+@return n[0]
+
+# good
+@define Int[] xs = newInts()
+@return xs[0]
+```
+
+---
+
+<a id="sem015"></a>
+### SEM015: non-int-index (semantic error)
+
+An array index expression must produce an `Int`. There is no implicit conversion from `Long`/`Float`/`Double`/`String`/etc.
+
+```msc
+# bad
+@define Int[] xs = newInts()
+@return xs["zero"]
+
+# good
+@return xs[0]
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
