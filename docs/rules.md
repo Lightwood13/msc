@@ -727,6 +727,21 @@ A class name on its own is a type, not a value. To call its constructor, append 
 
 ---
 
+<a id="sem020"></a>
+### SEM020: missing-method-parens (semantic error)
+
+Methods must be called with `()` even when no arguments are needed. Bare `obj.method` is treated as an unknown member.
+
+```msc
+# bad
+@var n = "hi".length
+
+# good
+@var n = "hi".length()
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

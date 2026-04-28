@@ -311,6 +311,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: '@prompt target must be an existing String variable'
 	},
+	SEM020: {
+		code: 'SEM020',
+		name: 'missing-method-parens',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Method must be called with ()'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

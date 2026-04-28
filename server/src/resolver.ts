@@ -136,6 +136,7 @@ export interface DocumentResolution {
 	hasNamespace(name: string): boolean;
 	getCallableSignatures(reference: ResolvedReference): readonly SignatureInformation[];
 	normalizeType(type: string, lineNumber: number): string;
+	hasMember(typeName: string, memberName: string): boolean;
 }
 
 interface ResolutionInputs {
@@ -359,6 +360,10 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 	normalizeType(type: string, lineNumber: number): string {
 		return this.normalizeTypeName(type, lineNumber);
+	}
+
+	hasMember(typeName: string, memberName: string): boolean {
+		return this.classes.get(typeName)?.members.has(memberName) ?? false;
 	}
 
 	private getContextToken(position: Position): Token | undefined {

@@ -1682,6 +1682,12 @@ function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagn
 		if (reference.symbol.kind !== 'unresolved') continue;
 		const hostType = resolution.getMemberAccessHostType(reference.token.range.start);
 		if (hostType === undefined) continue;
+		if (resolution.hasMember(hostType, reference.token.text + '()')) {
+			raise(diagnostics, RULES.SEM020, reference.token.range, {
+				message: `'${reference.token.text}' is a method on ${hostType}; call it with ()`
+			});
+			continue;
+		}
 		raise(diagnostics, RULES.SEM003, reference.token.range, {
 			message: `Type '${hostType}' has no member named '${reference.token.text}'`
 		});
