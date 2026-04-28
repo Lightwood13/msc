@@ -468,6 +468,25 @@ A `namespace::member` reference must point at a real member of that namespace. T
 
 ---
 
+<a id="sem007"></a>
+### SEM007: non-boolean-condition (semantic error)
+
+The condition expression after `@if` and `@elseif` must produce a `Boolean`. Truthy/falsy coercion is not supported.
+
+```msc
+# bad
+@if count
+	@return 1
+@fi
+
+# good
+@if count > 0
+	@return 1
+@fi
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

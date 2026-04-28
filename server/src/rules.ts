@@ -206,6 +206,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Namespace has no member with this name'
 	},
+	SEM007: {
+		code: 'SEM007',
+		name: 'non-boolean-condition',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Condition must evaluate to Boolean'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

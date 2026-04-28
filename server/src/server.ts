@@ -1739,6 +1739,22 @@ function validateNamespaceMembers(resolution: DocumentResolution, diagnostics: D
 	}
 }
 
+function validateConditionTypes(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		const match = /^(\s*)@(if|elseif)\s+(.+)$/.exec(lines[lineNumber]);
+		if (match === null) continue;
+		const conditionStart = match[1].length + 1 + match[2].length + 1;
+		const conditionText = lines[lineNumber].slice(conditionStart).trimEnd();
+		const analysis = resolution.analyzeExpression(conditionText, lineNumber, conditionStart);
+		if (analysis.diagnostics.length > 0) continue;
+		if (analysis.type === undefined || analysis.type === 'Boolean') continue;
+		raise(diagnostics, RULES.SEM007, {
+			start: { line: lineNumber, character: conditionStart },
+			end: { line: lineNumber, character: conditionStart + conditionText.length }
+		}, { message: `Condition must be Boolean, got ${analysis.type}` });
+	}
+}
+
 function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
@@ -1789,6 +1805,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateUndefinedIdentifiers(lines, resolution, diagnostics);
 		validateNamespaceReferences(resolution, diagnostics);
 		validateNamespaceMembers(resolution, diagnostics);
+		validateConditionTypes(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {
