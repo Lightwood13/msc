@@ -1948,18 +1948,19 @@ function validateStringLiterals(resolution: DocumentResolution, diagnostics: Dia
 
 function validatePromptTarget(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let i = 0; i < lines.length; i++) {
-		const m = /^(\s*)@prompt\s+\S+\s+(\w+)/.exec(lines[i]);
+		const m = /^(\s*)@prompt\s+\S+\s+([\w:]+)/.exec(lines[i]);
 		if (m === null) continue;
 		const name = m[2];
 		const start = lines[i].indexOf(name, m[1].length + '@prompt'.length);
 		const range = { start: { line: i, character: start }, end: { line: i, character: start + name.length } };
-		const binding = resolution.visibleBindingsByLine[i + 1]?.find(b => b.name === name);
-		if (binding === undefined) {
+		const analysis = resolution.analyzeExpression(name, i, start);
+		if (analysis.diagnostics.length > 0) continue;
+		if (analysis.type === undefined) {
 			raise(diagnostics, RULES.SEM019, range, { message: `'${name}' is not a defined String variable` });
 			continue;
 		}
-		if (binding.type !== 'String') {
-			raise(diagnostics, RULES.SEM019, range, { message: `'${name}' has type ${binding.type}; @prompt requires a String variable` });
+		if (analysis.type !== 'String') {
+			raise(diagnostics, RULES.SEM019, range, { message: `'${name}' has type ${analysis.type}; @prompt requires a String variable` });
 		}
 	}
 }
