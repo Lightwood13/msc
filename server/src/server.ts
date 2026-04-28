@@ -1755,6 +1755,35 @@ function validateConditionTypes(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
+function validateForIterable(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		const match = /^(\s*)@for\s+([\w:]+(?:\[\])?)\s+\w+\s+in\s+(.+)$/.exec(lines[lineNumber]);
+		if (match === null) continue;
+		const declaredType = match[2];
+		const iterableText = match[3].trimEnd();
+		const iterableStart = lines[lineNumber].length - match[3].length;
+		const analysis = resolution.analyzeExpression(iterableText, lineNumber, iterableStart);
+		if (analysis.diagnostics.length > 0 || analysis.type === undefined) continue;
+		const iterableType = analysis.type;
+		const range = {
+			start: { line: lineNumber, character: iterableStart },
+			end: { line: lineNumber, character: iterableStart + iterableText.length }
+		};
+		if (!iterableType.endsWith('[]')) {
+			raise(diagnostics, RULES.SEM008, range, {
+				message: `@for iterable must be an array type, got ${iterableType}`
+			});
+			continue;
+		}
+		const elementType = iterableType.slice(0, -2);
+		if (elementType !== declaredType) {
+			raise(diagnostics, RULES.SEM009, range, {
+				message: `@for variable is ${declaredType} but iterable element type is ${elementType}`
+			});
+		}
+	}
+}
+
 function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
@@ -1806,6 +1835,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateNamespaceReferences(resolution, diagnostics);
 		validateNamespaceMembers(resolution, diagnostics);
 		validateConditionTypes(lines, resolution, diagnostics);
+		validateForIterable(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

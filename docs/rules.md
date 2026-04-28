@@ -487,6 +487,44 @@ The condition expression after `@if` and `@elseif` must produce a `Boolean`. Tru
 
 ---
 
+<a id="sem008"></a>
+### SEM008: non-array-iterable (semantic error)
+
+The expression after `in` in a `@for` loop must have an array type.
+
+```msc
+# bad
+@for Int x in count
+	@return x
+@done
+
+# good
+@for Int x in onlinePlayerCounts
+	@return x
+@done
+```
+
+---
+
+<a id="sem009"></a>
+### SEM009: for-element-type-mismatch (semantic error)
+
+The variable type declared after `@for` must match the array's element type. The declared type is verbatim — no implicit numeric widening.
+
+```msc
+# bad
+@for String name in onlinePlayerCounts    # array of Int, not String
+	@return name
+@done
+
+# good
+@for Int count in onlinePlayerCounts
+	@return count
+@done
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

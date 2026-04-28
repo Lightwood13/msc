@@ -213,6 +213,20 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Condition must evaluate to Boolean'
 	},
+	SEM008: {
+		code: 'SEM008',
+		name: 'non-array-iterable',
+		category: 'semantic',
+		severity: 'error',
+		description: '@for iterable must be an array type'
+	},
+	SEM009: {
+		code: 'SEM009',
+		name: 'for-element-type-mismatch',
+		category: 'semantic',
+		severity: 'error',
+		description: '@for variable type does not match the array element type'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
