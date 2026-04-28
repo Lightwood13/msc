@@ -171,6 +171,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Operator is not applicable to the surrounding expression types'
 	},
+	SEM002: {
+		code: 'SEM002',
+		name: 'unknown-type',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Unknown type'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

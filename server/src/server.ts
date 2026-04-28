@@ -1667,6 +1667,15 @@ function validateSemanticExpressions(lines: readonly string[], resolution: Docum
 	}
 }
 
+function validateDeclaredTypes(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.token.kind !== 'typeName' || reference.symbol.kind !== 'unresolved') continue;
+		raise(diagnostics, RULES.SEM002, reference.token.range, {
+			message: `Unknown type: ${reference.token.text}`
+		});
+	}
+}
+
 async function validateAndReportDiagnostics(textDocument: TextDocument): Promise<void> {
 	const text = textDocument.getText();
 	const lines = text.split('\n');
@@ -1690,6 +1699,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 
 	if (resolution !== undefined) {
 		validateSemanticExpressions(lines, resolution, diagnostics);
+		validateDeclaredTypes(resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

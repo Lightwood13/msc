@@ -397,4 +397,33 @@ describe('MSC resolver', () => {
 		assert.ok(reference);
 		assert.strictEqual(reference!.symbol.kind, 'unresolved');
 	});
+
+	it('produces unresolved typeName references for unknown declared types', () => {
+		const defineDocument = createDocument('@define Mystery x');
+		const defineResolution = resolveDocument({ document: defineDocument, namespaces, classes });
+		const defineRef = defineResolution.getReferenceAtPosition(positionOf(defineDocument, 'Mystery'));
+		assert.ok(defineRef);
+		assert.strictEqual(defineRef!.token.kind, 'typeName');
+		assert.strictEqual(defineRef!.symbol.kind, 'unresolved');
+
+		const forDocument = createDocument('@for Mystery x in items\n@done');
+		const forResolution = resolveDocument({ document: forDocument, namespaces, classes });
+		const forRef = forResolution.getReferenceAtPosition(positionOf(forDocument, 'Mystery'));
+		assert.ok(forRef);
+		assert.strictEqual(forRef!.token.kind, 'typeName');
+		assert.strictEqual(forRef!.symbol.kind, 'unresolved');
+
+		const paramDocument = createDocument('#(Mystery thing)\n@return thing');
+		const paramResolution = resolveDocument({ document: paramDocument, namespaces, classes });
+		const paramRef = paramResolution.getReferenceAtPosition(positionOf(paramDocument, 'Mystery'));
+		assert.ok(paramRef);
+		assert.strictEqual(paramRef!.token.kind, 'typeName');
+		assert.strictEqual(paramRef!.symbol.kind, 'unresolved');
+
+		const knownDocument = createDocument('@define Widget w');
+		const knownResolution = resolveDocument({ document: knownDocument, namespaces, classes });
+		const knownRef = knownResolution.getReferenceAtPosition(positionOf(knownDocument, 'Widget'));
+		assert.ok(knownRef);
+		assert.strictEqual(knownRef!.symbol.kind, 'classType');
+	});
 });
