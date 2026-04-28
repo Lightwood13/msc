@@ -276,6 +276,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Cannot call a value that is not a function, method, or constructor'
 	},
+	SEM017: {
+		code: 'SEM017',
+		name: 'duplicate-declaration',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Variable already declared in this scope'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

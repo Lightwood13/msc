@@ -645,6 +645,25 @@ You cannot apply `(...)` to a value that is not a function, method, or construct
 
 ---
 
+<a id="sem017"></a>
+### SEM017: duplicate-declaration (semantic error)
+
+A variable cannot be declared twice in the same scope. Re-declaring the same name in a nested `@if`/`@for` block is allowed (the inner binding shadows the outer).
+
+```msc
+# bad
+@define Int x = 1
+@define Int x = 2
+
+# good
+@define Int x = 1
+@if check
+	@define Int x = 2
+@fi
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

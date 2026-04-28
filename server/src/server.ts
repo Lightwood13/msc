@@ -1803,6 +1803,78 @@ function validateVarAssignments(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
+function validateRedeclarations(lines: readonly string[], diagnostics: Diagnostic[]) {
+	const stack: Map<string, true>[] = [new Map()];
+	const topScope = () => stack[stack.length - 1];
+
+	const collectFirstLineParams = (line: string) => {
+		const open = line.indexOf('(');
+		const close = line.indexOf(')');
+		const start = open === -1 ? line.indexOf('#') : open;
+		const end = close === -1 ? line.length : close;
+		if (start === -1 || end <= start) return;
+		const inside = line.substring(start + 1, end);
+		const re = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g;
+		for (const m of inside.matchAll(re)) {
+			if (m.index === undefined) continue;
+			const name = m[2];
+			if (topScope().has(name)) continue;
+			topScope().set(name, true);
+		}
+	};
+
+	if (lines.length > 0) collectFirstLineParams(lines[0]);
+
+	for (let i = (lines.length > 0 ? 1 : 0); i < lines.length; i++) {
+		const lineText = lines[i];
+		const trimmed = lineText.trim();
+		if (trimmed === '' || trimmed.startsWith('#')) continue;
+		const op = trimmed.split(/\s+/)[0];
+
+		if (op === '@if' || op === '@for') {
+			stack.push(new Map());
+		}
+
+		if (op === '@for') {
+			const m = /^@for\s+[\w:]+(?:\[\])?\s+(\w+)\s+in\b/.exec(trimmed);
+			if (m !== null) {
+				const name = m[1];
+				if (topScope().has(name)) {
+					const start = lineText.indexOf(name, lineText.indexOf('@for') + 4);
+					raise(diagnostics, RULES.SEM017, {
+						start: { line: i, character: start },
+						end: { line: i, character: start + name.length }
+					}, { message: `'${name}' is already declared in this scope` });
+				} else {
+					topScope().set(name, true);
+				}
+			}
+		} else if (op === '@define') {
+			const m = /^@define\s+[\w:]+(?:\[\])?\s+(\w+)/.exec(trimmed);
+			if (m !== null) {
+				const name = m[1];
+				if (topScope().has(name)) {
+					const start = lineText.indexOf(name, lineText.indexOf('@define') + 7);
+					raise(diagnostics, RULES.SEM017, {
+						start: { line: i, character: start },
+						end: { line: i, character: start + name.length }
+					}, { message: `'${name}' is already declared in this scope` });
+				} else {
+					topScope().set(name, true);
+				}
+			}
+		}
+
+		if (op === '@fi' || op === '@done') {
+			if (stack.length > 1) stack.pop();
+		}
+		if (op === '@else' || op === '@elseif') {
+			if (stack.length > 1) stack.pop();
+			stack.push(new Map());
+		}
+	}
+}
+
 function validateInterpolations(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const token of resolution.tokens) {
 		if (token.kind !== 'interpolation') continue;
@@ -2025,6 +2097,8 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateCallArguments(lines, resolution, diagnostics);
 		validateCallableUsage(lines, resolution, diagnostics);
 	}
+
+	validateRedeclarations(lines, diagnostics);
 
 	if (parsingContext.blockStack.length > 0) {
 		for (const block of parsingContext.blockStack) {
