@@ -1789,6 +1789,27 @@ function validateDefineInitializers(lines: readonly string[], resolution: Docume
 	}
 }
 
+function validateFinalReassignment(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let i = 0; i < lines.length; i++) {
+		if (!lines[i].trim().startsWith('@var')) continue;
+		for (const reference of resolution.references) {
+			if (reference.token.line !== i) continue;
+			if (reference.symbol.member?.isFinal !== true) continue;
+			const lineText = lines[i];
+			let pos = reference.token.range.end.character;
+			while (pos < lineText.length && /\s/.test(lineText[pos])) pos++;
+			if (pos >= lineText.length) continue;
+			const ch = lineText[pos];
+			const next = lineText[pos + 1];
+			const isAssignment = (ch === '=' && next !== '=') || ('+-*/%'.includes(ch) && next === '=');
+			if (!isAssignment) continue;
+			raise(diagnostics, RULES.SEM021, reference.token.range, {
+				message: `'${reference.symbol.name}' is final and cannot be reassigned`
+			});
+		}
+	}
+}
+
 function validateVarAssignments(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@var\s+(\w+)\s*=\s*(.+)$/.exec(lines[lineNumber]);
@@ -2259,6 +2280,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateCallableUsage(lines, resolution, diagnostics);
 		validateClassAsValue(resolution, diagnostics);
 		validatePromptTarget(lines, resolution, diagnostics);
+		validateFinalReassignment(lines, resolution, diagnostics);
 	}
 
 	validateRedeclarations(lines, diagnostics);

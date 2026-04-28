@@ -318,6 +318,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Method must be called with ()'
 	},
+	SEM021: {
+		code: 'SEM021',
+		name: 'final-reassignment',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Cannot reassign a final variable'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

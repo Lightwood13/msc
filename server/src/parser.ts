@@ -21,6 +21,7 @@ export interface MemberInfo {
 	suggestion: CompletionItem | undefined
 	signature: SignatureInformation | undefined
 	definition: DefinitionLocation | undefined
+	isFinal: boolean
 }
 export interface NamespaceInfo {
 	members: Map<string, MemberInfo>
@@ -206,7 +207,8 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		},
 		signature: undefined,
 		documentation: undefined,
-		definition: undefined
+		definition: undefined,
+		isFinal: false
 	};
 
 	if (functionRegExpRes !== null) {
@@ -257,6 +259,7 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		result.name = variableRegExpRes[6];
 		result.kind = 'variable';
 		result.returnType = variableRegExpRes[5];
+		result.isFinal = variableRegExpRes[3] !== undefined;
 		result.suggestion = {
 			label: variableRegExpRes[6],
 			kind: CompletionItemKind.Variable,

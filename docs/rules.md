@@ -746,6 +746,21 @@ Methods must be called with `()` even when no arguments are needed. Bare `obj.me
 
 ---
 
+<a id="sem021"></a>
+### SEM021: final-reassignment (semantic error)
+
+A `final` namespace variable or class field cannot be reassigned. Update the `.nms` declaration to drop `final` if the field really should be mutable.
+
+```msc
+# bad — assuming `tools::version` was declared `final String version = "1.0"`
+@var tools::version = "2.0"
+
+# good
+@var tools::label = "main"
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

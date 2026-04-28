@@ -22,7 +22,8 @@ function createMember(name: string, kind: 'variable' | 'function' | 'constructor
 			detail: label
 		},
 		signature: kind === 'function' || kind === 'constructor' ? SignatureInformation.create(label, undefined) : undefined,
-		definition: createDefinition(uri, 0, 0)
+		definition: createDefinition(uri, 0, 0),
+		isFinal: false
 	};
 }
 
