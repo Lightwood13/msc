@@ -527,7 +527,8 @@ class DocumentResolutionImpl implements DocumentResolution {
 				line,
 				start: typeStart,
 				end: typeEnd,
-				kind: 'typeName'
+				kind: 'typeName',
+				flags: { declaration: true }
 			});
 			spans.push({
 				line,
@@ -564,7 +565,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 				if (match !== null) {
 					const typeStart = lineText.indexOf(match[1], offset);
 					const nameStart = lineText.indexOf(match[2], typeStart + match[1].length);
-					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName' });
+					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName', flags: { declaration: true } });
 					spans.push({
 						line,
 						start: nameStart,
@@ -581,7 +582,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 				if (match !== null) {
 					const typeStart = lineText.indexOf(match[1], offset);
 					const nameStart = lineText.indexOf(match[2], typeStart + match[1].length);
-					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName' });
+					spans.push({ line, start: typeStart, end: typeStart + match[1].length, kind: 'typeName', flags: { declaration: true } });
 					spans.push({
 						line,
 						start: nameStart,

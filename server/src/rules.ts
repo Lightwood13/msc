@@ -283,6 +283,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Variable already declared in this scope'
 	},
+	SEM018: {
+		code: 'SEM018',
+		name: 'class-as-value',
+		category: 'semantic',
+		severity: 'error',
+		description: 'A class name cannot be used as a value'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

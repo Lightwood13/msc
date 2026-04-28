@@ -1803,6 +1803,16 @@ function validateVarAssignments(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
+function validateClassAsValue(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.symbol.kind !== 'classType') continue;
+		if (reference.token.flags?.declaration) continue;
+		raise(diagnostics, RULES.SEM018, reference.token.range, {
+			message: `'${reference.token.text}' is a class name, not a value. Did you mean '${reference.token.text}(...)' to call the constructor?`
+		});
+	}
+}
+
 function validateRedeclarations(lines: readonly string[], diagnostics: Diagnostic[]) {
 	const stack: Map<string, true>[] = [new Map()];
 	const topScope = () => stack[stack.length - 1];
@@ -2096,6 +2106,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateInterpolations(resolution, diagnostics);
 		validateCallArguments(lines, resolution, diagnostics);
 		validateCallableUsage(lines, resolution, diagnostics);
+		validateClassAsValue(resolution, diagnostics);
 	}
 
 	validateRedeclarations(lines, diagnostics);

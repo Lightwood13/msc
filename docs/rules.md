@@ -664,6 +664,21 @@ A variable cannot be declared twice in the same scope. Re-declaring the same nam
 
 ---
 
+<a id="sem018"></a>
+### SEM018: class-as-value (semantic error)
+
+A class name on its own is a type, not a value. To call its constructor, append `(...)`.
+
+```msc
+# bad
+@var p = Player
+
+# good
+@var p = Player(someUuid)
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
