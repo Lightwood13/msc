@@ -302,7 +302,9 @@ class DocumentResolutionImpl implements DocumentResolution {
 			lineNumber,
 			startCharacter,
 			resolveChainType: segment => this.resolveStandaloneExpressionType(segment, lineNumber),
-			normalizeType: type => this.normalizeTypeName(type, lineNumber)
+			normalizeType: type => this.normalizeTypeName(type, lineNumber),
+			resolveMemberType: (hostType, memberName, isCall) => this.resolveMemberType(hostType, memberName, isCall, lineNumber),
+			resolveIndexType: hostType => this.resolveIndexedType(hostType, lineNumber)
 		}).analyze();
 	}
 
@@ -845,6 +847,25 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return 'Unknown';
 	}
 
+	private resolveMemberType(hostType: string, memberName: string, isCall: boolean, lineNumber: number): string | undefined {
+		const normalizedHostType = this.normalizeTypeName(hostType, lineNumber);
+		const currentClass = this.classes.get(normalizedHostType);
+		if (currentClass === undefined) {
+			return undefined;
+		}
+
+		const member = currentClass.members.get(isCall ? `${memberName}()` : memberName);
+		return member?.returnType === undefined ? undefined : this.normalizeTypeName(member.returnType, lineNumber);
+	}
+
+	private resolveIndexedType(hostType: string, lineNumber: number): string | undefined {
+		const normalizedHostType = this.normalizeTypeName(hostType, lineNumber);
+		if (!normalizedHostType.endsWith('[]')) {
+			return undefined;
+		}
+		return this.normalizeTypeName(normalizedHostType.slice(0, -2), lineNumber);
+	}
+
 	private resolveTokenSymbol(token: Token): ResolvedSymbol | undefined {
 		const lineText = this.lines[token.line];
 		const activeNamespace = this.activeNamespaceByLine[token.line];
@@ -1222,6 +1243,8 @@ interface ExpressionTypeParserOptions {
 	startCharacter: number;
 	resolveChainType: (segment: string) => string | undefined;
 	normalizeType: (type: string) => string;
+	resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
+	resolveIndexType: (hostType: string) => string | undefined;
 }
 
 type ExpressionParseResult = {
@@ -1235,6 +1258,8 @@ class ExpressionTypeParser {
 	private readonly startCharacter: number;
 	private readonly resolveChainType: (segment: string) => string | undefined;
 	private readonly normalizeType: (type: string) => string;
+	private readonly resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
+	private readonly resolveIndexType: (hostType: string) => string | undefined;
 	private readonly tokens: readonly ExpressionToken[];
 	private index = 0;
 
@@ -1244,6 +1269,8 @@ class ExpressionTypeParser {
 		this.startCharacter = options.startCharacter;
 		this.resolveChainType = options.resolveChainType;
 		this.normalizeType = options.normalizeType;
+		this.resolveMemberType = options.resolveMemberType;
+		this.resolveIndexType = options.resolveIndexType;
 		this.tokens = tokenizeExpression(options.expression);
 	}
 
@@ -1366,22 +1393,24 @@ class ExpressionTypeParser {
 			if (inner.diagnostic !== undefined) {
 				return inner;
 			}
-			if (!this.match('rparen')) {
+			const close = this.peek();
+			if (close?.kind !== 'rparen') {
 				return {
 					diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
 				};
 			}
-			return inner;
+			this.index++;
+			return this.parsePostfix(inner.type);
 		}
 
 		if (token.kind === 'string') {
 			this.index++;
-			return { type: 'String' };
+			return this.parsePostfix('String');
 		}
 
 		if (token.kind === 'number') {
 			this.index++;
-			return { type: literalType(token.text) };
+			return this.parsePostfix(literalType(token.text));
 		}
 
 		if (token.kind !== 'identifier') {
@@ -1393,15 +1422,15 @@ class ExpressionTypeParser {
 
 		if (token.text === 'true' || token.text === 'false') {
 			this.index++;
-			return { type: 'Boolean' };
+			return this.parsePostfix('Boolean');
 		}
 		if (token.text === 'null') {
 			this.index++;
-			return { type: 'Null' };
+			return this.parsePostfix('Null');
 		}
 		if (token.text === 'pi') {
 			this.index++;
-			return { type: 'Double' };
+			return this.parsePostfix('Double');
 		}
 
 		return this.parseChainExpression();
@@ -1471,7 +1500,62 @@ class ExpressionTypeParser {
 		}
 
 		const type = this.resolveChainType(this.expression.slice(start, end));
-		return { type };
+		return this.parsePostfix(type);
+	}
+
+	private parsePostfix(baseType: string | undefined): ExpressionParseResult {
+		let currentType = baseType;
+
+		for (;;) {
+			const token = this.peek();
+			if (token === undefined) {
+				return { type: currentType };
+			}
+
+			if (token.kind === 'lbrack') {
+				this.index++;
+				const inner = this.parseOr();
+				if (inner.diagnostic !== undefined) {
+					return inner;
+				}
+				const close = this.peek();
+				if (close?.kind !== 'rbrack') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				this.index++;
+				currentType = currentType === undefined ? undefined : this.resolveIndexType(currentType) ?? 'Unknown';
+				continue;
+			}
+
+			if (token.kind === 'dot') {
+				this.index++;
+				const member = this.peek();
+				if (member?.kind !== 'identifier') {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+					};
+				}
+				this.index++;
+
+				let isCall = false;
+				if (this.peek()?.kind === 'lparen') {
+					const endToken = this.parseArgumentList();
+					if (endToken === undefined) {
+						return {
+							diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
+						};
+					}
+					isCall = true;
+				}
+
+				currentType = currentType === undefined ? undefined : this.resolveMemberType(currentType, member.text, isCall) ?? 'Unknown';
+				continue;
+			}
+
+			return { type: currentType };
+		}
 	}
 
 	private parseArgumentList(): ExpressionToken | undefined {

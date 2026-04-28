@@ -100,7 +100,8 @@ describe('MSC resolver', () => {
 		createMember('run()', 'function', 'Void', transmuteUri)
 	]);
 	const stringClass = createClass('String', '__default__', [
-		createMember('length()', 'function', 'Int', stringUri)
+		createMember('length()', 'function', 'Int', stringUri),
+		createMember('contains()', 'function', 'Boolean', stringUri)
 	]);
 	const namespaces = new Map<string, NamespaceInfo>([
 		['__default__', createNamespace([])],
@@ -336,6 +337,15 @@ describe('MSC resolver', () => {
 		assert.strictEqual(analysis.diagnostics.length, 1);
 		assert.match(analysis.diagnostics[0].message, /Operator '\+' is not applicable on types: Boolean, Boolean/);
 		assert.strictEqual(analysis.diagnostics[0].range.start.character, '@return true '.length);
+	});
+
+	it('does not report a postfix-dot semantic error after parenthesized expressions', () => {
+		const document = createDocument('@return ("a" + 1).contains("a")');
+		const resolution = resolveDocument({ document, namespaces, classes });
+		const analysis = resolution.analyzeExpression('("a" + 1).contains("a")', 0, '@return '.length);
+
+		assert.strictEqual(analysis.diagnostics.length, 0);
+		assert.strictEqual(analysis.type, 'Boolean');
 	});
 
 	it('resolves call contexts for chained calls', () => {

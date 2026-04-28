@@ -379,8 +379,6 @@ An operator must be valid for the types on either side of it.
 @player {{"Score: " + 42}}
 ```
 
-This rule is based on the MSC operator semantics used by the server. For example, arithmetic operators require numeric operands.
-
 ---
 
 <a id="sec001"></a>
