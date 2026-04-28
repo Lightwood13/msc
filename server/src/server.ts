@@ -1755,6 +1755,53 @@ function validateConditionTypes(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
+const NUMERIC_WIDTH: Record<string, number> = { Int: 0, Long: 1, Float: 2, Double: 3 };
+
+function isAssignableTo(target: string, source: string): boolean {
+	if (target === source) return true;
+	if (source === 'Null' || source === 'Unknown' || target === 'Unknown') return true;
+	if (target in NUMERIC_WIDTH && source in NUMERIC_WIDTH) {
+		return NUMERIC_WIDTH[target] >= NUMERIC_WIDTH[source];
+	}
+	return false;
+}
+
+function validateDefineInitializers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		const match = /^(\s*)@define\s+([\w:]+(?:\[\])?)\s+\w+\s*=\s*(.+)$/.exec(lines[lineNumber]);
+		if (match === null) continue;
+		const declaredType = match[2];
+		const initializerText = match[3].trimEnd();
+		const initializerStart = lines[lineNumber].length - match[3].length;
+		const analysis = resolution.analyzeExpression(initializerText, lineNumber, initializerStart);
+		if (analysis.diagnostics.length > 0 || analysis.type === undefined) continue;
+		if (isAssignableTo(declaredType, analysis.type)) continue;
+		raise(diagnostics, RULES.SEM010, {
+			start: { line: lineNumber, character: initializerStart },
+			end: { line: lineNumber, character: initializerStart + initializerText.length }
+		}, { message: `Cannot assign ${analysis.type} to ${declaredType}` });
+	}
+}
+
+function validateVarAssignments(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		const match = /^(\s*)@var\s+(\w+)\s*=\s*(.+)$/.exec(lines[lineNumber]);
+		if (match === null) continue;
+		const targetName = match[2];
+		const targetBinding = resolution.visibleBindingsByLine[lineNumber + 1]?.find(b => b.name === targetName);
+		if (targetBinding === undefined) continue;
+		const expressionText = match[3].trimEnd();
+		const expressionStart = lines[lineNumber].length - match[3].length;
+		const analysis = resolution.analyzeExpression(expressionText, lineNumber, expressionStart);
+		if (analysis.diagnostics.length > 0 || analysis.type === undefined) continue;
+		if (isAssignableTo(targetBinding.type, analysis.type)) continue;
+		raise(diagnostics, RULES.SEM011, {
+			start: { line: lineNumber, character: expressionStart },
+			end: { line: lineNumber, character: expressionStart + expressionText.length }
+		}, { message: `Cannot assign ${analysis.type} to ${targetBinding.type} variable '${targetName}'` });
+	}
+}
+
 function validateForIterable(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@for\s+([\w:]+(?:\[\])?)\s+\w+\s+in\s+(.+)$/.exec(lines[lineNumber]);
@@ -1836,6 +1883,8 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateNamespaceMembers(resolution, diagnostics);
 		validateConditionTypes(lines, resolution, diagnostics);
 		validateForIterable(lines, resolution, diagnostics);
+		validateDefineInitializers(lines, resolution, diagnostics);
+		validateVarAssignments(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

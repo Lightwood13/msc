@@ -525,6 +525,41 @@ The variable type declared after `@for` must match the array's element type. The
 
 ---
 
+<a id="sem010"></a>
+### SEM010: define-type-mismatch (semantic error)
+
+The type of an `@define` initializer must match the declared type. Numeric literals widen up the chain `Int → Long → Float → Double`, and `null` is accepted for any class type.
+
+```msc
+# bad
+@define Int x = "five"
+@define Boolean ok = 1
+
+# good
+@define Int x = 5
+@define Long x = 5         # Int widens to Long
+@define Player p = null    # null accepted
+```
+
+---
+
+<a id="sem011"></a>
+### SEM011: assign-type-mismatch (semantic error)
+
+`@var <name> = <expr>` reuses the existing variable's declared type. The right-hand expression must be assignable to that type, with the same widening rules as SEM010.
+
+```msc
+# bad
+@define Int count = 0
+@var count = "five"
+
+# good
+@define Int count = 0
+@var count = 42
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

@@ -227,6 +227,20 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: '@for variable type does not match the array element type'
 	},
+	SEM010: {
+		code: 'SEM010',
+		name: 'define-type-mismatch',
+		category: 'semantic',
+		severity: 'error',
+		description: '@define initializer type does not match the declared type'
+	},
+	SEM011: {
+		code: 'SEM011',
+		name: 'assign-type-mismatch',
+		category: 'semantic',
+		severity: 'error',
+		description: '@var assignment type does not match the variable type'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
