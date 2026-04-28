@@ -241,6 +241,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: '@var assignment type does not match the variable type'
 	},
+	SEM012: {
+		code: 'SEM012',
+		name: 'empty-interpolation',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Empty {{}} interpolation has no expression'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

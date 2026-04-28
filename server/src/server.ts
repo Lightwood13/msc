@@ -1802,6 +1802,15 @@ function validateVarAssignments(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
+function validateInterpolations(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const token of resolution.tokens) {
+		if (token.kind !== 'interpolation') continue;
+		const inner = token.text.slice(2, -2);
+		if (inner.trim() !== '') continue;
+		raise(diagnostics, RULES.SEM012, token.range);
+	}
+}
+
 function validateForIterable(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@for\s+([\w:]+(?:\[\])?)\s+\w+\s+in\s+(.+)$/.exec(lines[lineNumber]);
@@ -1885,6 +1894,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateForIterable(lines, resolution, diagnostics);
 		validateDefineInitializers(lines, resolution, diagnostics);
 		validateVarAssignments(lines, resolution, diagnostics);
+		validateInterpolations(resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

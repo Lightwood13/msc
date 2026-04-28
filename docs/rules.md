@@ -560,6 +560,21 @@ The type of an `@define` initializer must match the declared type. Numeric liter
 
 ---
 
+<a id="sem012"></a>
+### SEM012: empty-interpolation (semantic error)
+
+A `{{}}` interpolation must contain an expression.
+
+```msc
+# bad
+@command /say {{}}
+
+# good
+@command /say {{player.name}}
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
