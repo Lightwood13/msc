@@ -364,6 +364,36 @@ Two `@return` statements cannot appear in the same conditional clause.
 
 ---
 
+<a id="syn022"></a>
+### SYN022: unterminated-string (lexical error)
+
+A `"` opens a string literal that must be closed on the same line.
+
+```msc
+# bad
+@command /say "hello
+
+# good
+@command /say "hello"
+```
+
+---
+
+<a id="syn023"></a>
+### SYN023: unterminated-interpolation (lexical error)
+
+A `{{` opens an interpolation that must be closed with `}}` on the same line.
+
+```msc
+# bad
+@command /say {{player.name
+
+# good
+@command /say {{player.name}}
+```
+
+---
+
 <a id="sem001"></a>
 ### SEM001: invalid-operator-types (semantic error)
 
@@ -679,6 +709,24 @@ A class name on its own is a type, not a value. To call its constructor, append 
 
 ---
 
+<a id="sem019"></a>
+### SEM019: prompt-variable-not-string (semantic error)
+
+`@prompt <time> <variable> [message]` writes the user's chat reply into an existing `String` variable. The named variable must already be defined and must have type `String`.
+
+```msc
+# bad
+@prompt 30s missingVar
+@define Int counter = 0
+@prompt 30s counter
+
+# good
+@define String reply = ""
+@prompt 30s reply
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
@@ -765,4 +813,21 @@ Code after `@return` in the same block is unreachable.
 # bad
 @return
 @command /say never runs
+```
+
+---
+
+<a id="sty003"></a>
+### STY003: constant-condition (style warning)
+
+`@if true` and `@if false` (or `@elseif`) always take the same branch. The `@if` is dead code or should be removed.
+
+```msc
+# bad
+@if true
+	@command /say always
+@fi
+
+# good
+@command /say always
 ```

@@ -164,6 +164,20 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Two @return statements cannot appear in the same conditional clause'
 	},
+	SYN022: {
+		code: 'SYN022',
+		name: 'unterminated-string',
+		category: 'lexical',
+		severity: 'error',
+		description: 'Unterminated string literal'
+	},
+	SYN023: {
+		code: 'SYN023',
+		name: 'unterminated-interpolation',
+		category: 'lexical',
+		severity: 'error',
+		description: 'Unterminated {{...}} interpolation'
+	},
 	SEM001: {
 		code: 'SEM001',
 		name: 'invalid-operator-types',
@@ -290,6 +304,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'A class name cannot be used as a value'
 	},
+	SEM019: {
+		code: 'SEM019',
+		name: 'prompt-variable-not-string',
+		category: 'semantic',
+		severity: 'error',
+		description: '@prompt target must be an existing String variable'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
@@ -347,5 +368,12 @@ export const RULES: Record<string, Rule> = {
 		category: 'style',
 		severity: 'warning',
 		description: 'Code after @return in the same block is unreachable'
+	},
+	STY003: {
+		code: 'STY003',
+		name: 'constant-condition',
+		category: 'style',
+		severity: 'warning',
+		description: 'Condition is a constant Boolean literal'
 	}
 };

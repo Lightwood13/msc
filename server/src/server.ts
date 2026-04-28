@@ -1888,9 +1888,52 @@ function validateRedeclarations(lines: readonly string[], diagnostics: Diagnosti
 function validateInterpolations(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const token of resolution.tokens) {
 		if (token.kind !== 'interpolation') continue;
+		if (!token.text.endsWith('}}')) {
+			raise(diagnostics, RULES.SYN023, token.range);
+			continue;
+		}
 		const inner = token.text.slice(2, -2);
 		if (inner.trim() !== '') continue;
 		raise(diagnostics, RULES.SEM012, token.range);
+	}
+}
+
+function validateStringLiterals(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const token of resolution.tokens) {
+		if (token.kind !== 'stringLiteral') continue;
+		if (!token.text.startsWith('"')) continue;
+		if (token.text.length >= 2 && token.text.endsWith('"')) continue;
+		raise(diagnostics, RULES.SYN022, token.range);
+	}
+}
+
+function validatePromptTarget(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let i = 0; i < lines.length; i++) {
+		const m = /^(\s*)@prompt\s+\S+\s+(\w+)/.exec(lines[i]);
+		if (m === null) continue;
+		const name = m[2];
+		const start = lines[i].indexOf(name, m[1].length + '@prompt'.length);
+		const range = { start: { line: i, character: start }, end: { line: i, character: start + name.length } };
+		const binding = resolution.visibleBindingsByLine[i + 1]?.find(b => b.name === name);
+		if (binding === undefined) {
+			raise(diagnostics, RULES.SEM019, range, { message: `'${name}' is not a defined String variable` });
+			continue;
+		}
+		if (binding.type !== 'String') {
+			raise(diagnostics, RULES.SEM019, range, { message: `'${name}' has type ${binding.type}; @prompt requires a String variable` });
+		}
+	}
+}
+
+function validateConstantConditions(lines: readonly string[], diagnostics: Diagnostic[]) {
+	for (let i = 0; i < lines.length; i++) {
+		const m = /^(\s*)@(if|elseif)\s+(true|false)\s*$/.exec(lines[i]);
+		if (m === null) continue;
+		const start = lines[i].indexOf(m[3], m[1].length + 1 + m[2].length);
+		raise(diagnostics, RULES.STY003, {
+			start: { line: i, character: start },
+			end: { line: i, character: start + m[3].length }
+		}, { message: `Condition is constant '${m[3]}'` });
 	}
 }
 
@@ -2104,12 +2147,15 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateDefineInitializers(lines, resolution, diagnostics);
 		validateVarAssignments(lines, resolution, diagnostics);
 		validateInterpolations(resolution, diagnostics);
+		validateStringLiterals(resolution, diagnostics);
 		validateCallArguments(lines, resolution, diagnostics);
 		validateCallableUsage(lines, resolution, diagnostics);
 		validateClassAsValue(resolution, diagnostics);
+		validatePromptTarget(lines, resolution, diagnostics);
 	}
 
 	validateRedeclarations(lines, diagnostics);
+	validateConstantConditions(lines, diagnostics);
 
 	if (parsingContext.blockStack.length > 0) {
 		for (const block of parsingContext.blockStack) {
