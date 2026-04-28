@@ -367,16 +367,71 @@ Two `@return` statements cannot appear in the same conditional clause.
 <a id="sem001"></a>
 ### SEM001: invalid-operator-types (semantic error)
 
-An operator must be valid for the types on either side of it.
+An operator must be valid for the types on either side of it. The resolver mirrors the server's `@Operation` overloads: dispatch is on the left-hand type only, with no implicit numeric promotion or operator commutativity.
 
 ```msc
 # bad
 @return true + false
-@player {{player + block}}
+@player {{loc + " is the spawn"}}    # Location has no `+ String`
+@var v3 = vec3 * 2                    # Vector3 needs Double, not Int
 
 # good
 @return 1 + 2
-@player {{"Score: " + 42}}
+@var concat = "Score: " + 42
+@var v3 = vec3 * 2.0d
+```
+
+---
+
+<a id="sem002"></a>
+### SEM002: unknown-type (semantic error)
+
+A type written in a `@define`, `@for`, or first-line parameter declaration must resolve to a known class. Typos and missing `@using` lines are the usual cause.
+
+```msc
+# bad
+@define Wdiget w
+@for Mystery x in items
+@done
+#(Foo bar)
+
+# good
+@define Widget w
+```
+
+---
+
+<a id="sem003"></a>
+### SEM003: unknown-member (semantic error)
+
+A `.member` access only fires this rule when the host's type is a known class — that way a broken receiver (`mystery.field`, `bogusFn().sub`) is reported once at the upstream cause rather than chained downstream.
+
+```msc
+# bad
+@var name = widget.namee     # Widget has no `namee`
+
+# good
+@var name = widget.name
+```
+
+---
+
+<a id="sem004"></a>
+### SEM004: undefined-identifier (semantic error)
+
+A bare identifier in an expression position must resolve to a local binding, namespace member, or class. Member access (`x.y`) and namespace-qualified names (`tools::y`) are handled by their own rules, and identifiers inside operator-syntax positions like `@cooldown 5s` or `@for Int x in xs` are not flagged.
+
+```msc
+# bad
+@if mystery
+@fi
+@var count = bogusFn()
+@command /say {{undeclaredVariable}}
+
+# good
+@define Int count = 0
+@if count > 0
+@fi
 ```
 
 ---
