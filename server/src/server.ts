@@ -1687,6 +1687,22 @@ function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagn
 	}
 }
 
+function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.symbol.kind !== 'unresolved') continue;
+		if (reference.token.kind !== 'identifier') continue;
+		if (reference.isDeclaration) continue;
+		const startChar = reference.token.range.start.character;
+		const lineText = lines[reference.token.line] ?? '';
+		const prev = startChar > 0 ? lineText[startChar - 1] : '';
+		if (prev === '.') continue;
+		if (prev === ':') continue;
+		raise(diagnostics, RULES.SEM004, reference.token.range, {
+			message: `'${reference.token.text}' is not defined in the current scope`
+		});
+	}
+}
+
 async function validateAndReportDiagnostics(textDocument: TextDocument): Promise<void> {
 	const text = textDocument.getText();
 	const lines = text.split('\n');
@@ -1712,6 +1728,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateSemanticExpressions(lines, resolution, diagnostics);
 		validateDeclaredTypes(resolution, diagnostics);
 		validateMemberAccess(resolution, diagnostics);
+		validateUndefinedIdentifiers(lines, resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

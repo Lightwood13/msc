@@ -430,6 +430,18 @@ describe('MSC resolver', () => {
 
 		assert.ok(reference);
 		assert.strictEqual(reference!.symbol.kind, 'unresolved');
+		assert.strictEqual(reference!.token.kind, 'identifier');
+	});
+
+	it('classifies @using namespace tokens at the namespace name only', () => {
+		const document = createDocument('@using unknownNs');
+		const resolution = resolveDocument({ document, namespaces, classes });
+		const tokensOnLine = resolution.tokens.filter(t => t.line === 0);
+
+		const namespaceToken = tokensOnLine.find(t => t.kind === 'namespaceName');
+		assert.ok(namespaceToken);
+		assert.strictEqual(namespaceToken!.text, 'unknownNs');
+		assert.strictEqual(tokensOnLine.some(t => t.kind === 'identifier' && t.text === 'unknownNs'), false);
 	});
 
 	it('reports member-access host types when the host resolves to a known class', () => {
