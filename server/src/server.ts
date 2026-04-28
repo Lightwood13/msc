@@ -1676,6 +1676,17 @@ function validateDeclaredTypes(resolution: DocumentResolution, diagnostics: Diag
 	}
 }
 
+function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.symbol.kind !== 'unresolved') continue;
+		const hostType = resolution.getMemberAccessHostType(reference.token.range.start);
+		if (hostType === undefined) continue;
+		raise(diagnostics, RULES.SEM003, reference.token.range, {
+			message: `Type '${hostType}' has no member named '${reference.token.text}'`
+		});
+	}
+}
+
 async function validateAndReportDiagnostics(textDocument: TextDocument): Promise<void> {
 	const text = textDocument.getText();
 	const lines = text.split('\n');
@@ -1700,6 +1711,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 	if (resolution !== undefined) {
 		validateSemanticExpressions(lines, resolution, diagnostics);
 		validateDeclaredTypes(resolution, diagnostics);
+		validateMemberAccess(resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {

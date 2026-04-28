@@ -432,6 +432,27 @@ describe('MSC resolver', () => {
 		assert.strictEqual(reference!.symbol.kind, 'unresolved');
 	});
 
+	it('reports member-access host types when the host resolves to a known class', () => {
+		const document = createDocument('@define Widget w\n@return w.bogus');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.getMemberAccessHostType(positionOf(document, 'bogus')), 'Widget');
+	});
+
+	it('returns no host type when the receiver itself is unknown', () => {
+		const unknownReceiver = createDocument('@return mystery.field');
+		const unknownResolution = resolveDocument({ document: unknownReceiver, namespaces, classes });
+		assert.strictEqual(unknownResolution.getMemberAccessHostType(positionOf(unknownReceiver, 'field')), undefined);
+
+		const brokenChain = createDocument('@define Widget w\n@return w.bogus().subfield');
+		const brokenResolution = resolveDocument({ document: brokenChain, namespaces, classes });
+		assert.strictEqual(brokenResolution.getMemberAccessHostType(positionOf(brokenChain, 'subfield')), undefined);
+
+		const freeIdentifier = createDocument('@return mystery');
+		const freeResolution = resolveDocument({ document: freeIdentifier, namespaces, classes });
+		assert.strictEqual(freeResolution.getMemberAccessHostType(positionOf(freeIdentifier, 'mystery')), undefined);
+	});
+
 	it('produces unresolved typeName references for unknown declared types', () => {
 		const defineDocument = createDocument('@define Mystery x');
 		const defineResolution = resolveDocument({ document: defineDocument, namespaces, classes });

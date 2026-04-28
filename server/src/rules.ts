@@ -178,6 +178,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Unknown type'
 	},
+	SEM003: {
+		code: 'SEM003',
+		name: 'unknown-member',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Unknown member'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

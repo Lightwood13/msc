@@ -130,6 +130,7 @@ export interface DocumentResolution {
 	getCompletionContext(position: Position): CompletionContext;
 	getCallContext(position: Position): CallContext | undefined;
 	analyzeExpression(expression: string, lineNumber: number, startCharacter: number): ExpressionAnalysis;
+	getMemberAccessHostType(position: Position): string | undefined;
 }
 
 interface ResolutionInputs {
@@ -306,6 +307,21 @@ class DocumentResolutionImpl implements DocumentResolution {
 			resolveMemberType: (hostType, memberName, isCall) => this.resolveMemberType(hostType, memberName, isCall, lineNumber),
 			resolveIndexType: hostType => this.resolveIndexedType(hostType, lineNumber)
 		}).analyze();
+	}
+
+	getMemberAccessHostType(position: Position): string | undefined {
+		const lineText = this.lines[position.line] ?? '';
+		const codePrefix = lineText.slice(0, position.character);
+		if (!codePrefix.endsWith('.')) return undefined;
+
+		const hostExpression = getMemberAccessHostExpression(codePrefix);
+		if (hostExpression === undefined) return undefined;
+
+		const analysis = this.analyzeExpression(hostExpression.text, position.line, hostExpression.startCharacter);
+		if (analysis.diagnostics.length > 0 || analysis.type === undefined) return undefined;
+
+		const normalized = this.normalizeTypeName(analysis.type, position.line);
+		return this.classes.has(normalized) ? normalized : undefined;
 	}
 
 	private getContextToken(position: Position): Token | undefined {
