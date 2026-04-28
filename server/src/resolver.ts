@@ -509,13 +509,13 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 		switch (firstWord) {
 			case '@using': {
-				const match = /^\s*(\S+)/.exec(lineText.slice(offset));
-				if (match?.index !== undefined) {
-					const start = offset + match.index;
+				const match = /^(\s*)(\S+)/.exec(lineText.slice(offset));
+				if (match !== null) {
+					const start = offset + match[1].length;
 					spans.push({
 						line,
 						start,
-						end: start + match[1].length,
+						end: start + match[2].length,
 						kind: 'namespaceName'
 					});
 				}
