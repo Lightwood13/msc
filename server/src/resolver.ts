@@ -1761,60 +1761,92 @@ function literalType(literal: string): string {
 	return 'Int';
 }
 
+interface OperatorOverload {
+	readonly op: string;
+	readonly rhs: string;
+	readonly result: string;
+}
+
+// Mirrors the @Operation overloads on each builtin *Value class in the server
+// (org.minr.server.scripts.builtin.types.**). Server dispatch is strict: it
+// looks up the operator on the LEFT type only, with no implicit conversion
+// or operator commutativity.
+const OPERATOR_OVERLOADS: ReadonlyMap<string, readonly OperatorOverload[]> = (() => {
+	const out = new Map<string, OperatorOverload[]>();
+	const add = (lhs: string, op: string, rhs: string, result: string) => {
+		const list = out.get(lhs);
+		if (list === undefined) out.set(lhs, [{ op, rhs, result }]);
+		else list.push({ op, rhs, result });
+	};
+
+	const NUMERICS = ['Int', 'Long', 'Float', 'Double'] as const;
+	const NUMERIC_RANK: Record<string, number> = { Int: 0, Long: 1, Float: 2, Double: 3 };
+	const widerNumeric = (a: string, b: string) => NUMERIC_RANK[a] >= NUMERIC_RANK[b] ? a : b;
+
+	for (const lhs of NUMERICS) {
+		add(lhs, '+', 'String', 'String');
+		for (const rhs of NUMERICS) {
+			const wider = widerNumeric(lhs, rhs);
+			for (const op of ['+', '-', '*', '/', '%']) add(lhs, op, rhs, wider);
+			add(lhs, '^', rhs, 'Double');
+			for (const op of ['==', '!=', '<', '<=', '>', '>=']) add(lhs, op, rhs, 'Boolean');
+		}
+	}
+
+	add('Boolean', '+', 'String', 'String');
+	for (const op of ['&&', '||', '==', '!=']) add('Boolean', op, 'Boolean', 'Boolean');
+
+	for (const rhs of ['String', 'Int', 'Long', 'Float', 'Double', 'Boolean', 'Player', 'Entity', 'Block', 'Item']) {
+		add('String', '+', rhs, 'String');
+	}
+	add('String', '==', 'String', 'Boolean');
+	add('String', '!=', 'String', 'Boolean');
+
+	for (const lhs of ['Player', 'Entity', 'Block', 'Item']) {
+		add(lhs, '+', 'String', 'String');
+		add(lhs, '==', lhs, 'Boolean');
+		add(lhs, '!=', lhs, 'Boolean');
+	}
+
+	// Vector2/Vector3 take a Double scalar; BlockVector2/BlockVector3 take an Int scalar.
+	for (const [lhs, scalar] of [['Vector2', 'Double'], ['Vector3', 'Double'], ['BlockVector2', 'Int'], ['BlockVector3', 'Int']] as const) {
+		for (const op of ['+', '-']) add(lhs, op, lhs, lhs);
+		for (const op of ['*', '/']) {
+			add(lhs, op, scalar, lhs);
+			add(lhs, op, lhs, lhs);
+		}
+		for (const op of ['==', '!=', '<', '<=', '>', '>=']) add(lhs, op, lhs, 'Boolean');
+	}
+
+	add('Location', '-', 'Location', 'Vector3');
+	add('BlockLocation', '-', 'BlockLocation', 'BlockVector3');
+	for (const lhs of ['Location', 'BlockLocation', 'Position', 'Region']) {
+		add(lhs, '==', lhs, 'Boolean');
+		add(lhs, '!=', lhs, 'Boolean');
+	}
+
+	return out;
+})();
+
 function inferOperatorResultType(leftType: string, operator: string, rightType: string): string | undefined {
-	if (operator === '&&' || operator === '||') {
-		return leftType === 'Boolean' && rightType === 'Boolean' ? 'Boolean' : undefined;
+	const overloads = OPERATOR_OVERLOADS.get(leftType);
+	if (overloads !== undefined) {
+		const matching = overloads.filter(o => o.op === operator);
+		if (matching.length === 0) return undefined;
+		// `null` matches any single-arg parameter slot; multiple overloads make
+		// it ambiguous and the server rejects.
+		if (rightType === 'Null') return matching.length === 1 ? matching[0].result : undefined;
+		return matching.find(o => o.rhs === rightType)?.result;
 	}
 
-	if (operator === '==' || operator === '!=') {
-		if (isNumericType(leftType) && isNumericType(rightType)) {
-			return 'Boolean';
-		}
-		return leftType === rightType ? 'Boolean' : undefined;
-	}
-
-	if (['<', '<=', '>', '>='].includes(operator)) {
-		return isNumericType(leftType) && isNumericType(rightType) ? 'Boolean' : undefined;
-	}
-
-	if (operator === '+' && (leftType === 'String' || rightType === 'String')) {
-		return leftType !== 'Null' && rightType !== 'Null' ? 'String' : undefined;
-	}
-
-	if (operator === '^') {
-		return isNumericType(leftType) && isNumericType(rightType) ? 'Double' : undefined;
-	}
-
-	if (['+', '-', '*', '/', '%'].includes(operator)) {
-		return inferNumericResultType(leftType, rightType, operator);
+	// Types not in the table: user-defined classes have == and != auto-generated
+	// between same-type instances (see UserType in the server). Other operators
+	// require explicit definitions that the resolver doesn't track yet.
+	if ((operator === '==' || operator === '!=') && leftType === rightType && leftType !== 'Null' && leftType !== 'Unknown') {
+		return 'Boolean';
 	}
 
 	return undefined;
-}
-
-function inferNumericResultType(leftType: string, rightType: string, operator: string): string | undefined {
-	if (!isNumericType(leftType) || !isNumericType(rightType)) {
-		return undefined;
-	}
-
-	if (operator === '/' || operator === '%' || operator === '+' || operator === '-' || operator === '*') {
-		if (leftType === 'Double' || rightType === 'Double') {
-			return 'Double';
-		}
-		if (leftType === 'Float' || rightType === 'Float') {
-			return 'Float';
-		}
-		if (leftType === 'Long' || rightType === 'Long') {
-			return 'Long';
-		}
-		return 'Int';
-	}
-
-	return undefined;
-}
-
-function isNumericType(type: string): boolean {
-	return type === 'Int' || type === 'Long' || type === 'Float' || type === 'Double';
 }
 
 function getMemberAccessHostExpression(codePrefix: string): MemberAccessHostExpression | undefined {
