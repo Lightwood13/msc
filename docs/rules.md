@@ -850,3 +850,58 @@ Code after `@return` in the same block is unreachable.
 # good
 @command /say always
 ```
+
+---
+
+<a id="sty004"></a>
+### STY004: redundant-using (style warning)
+
+`@using <namespace>` only needs to appear once per script. Subsequent imports of the same namespace are no-ops.
+
+```msc
+# bad
+@using tools
+@using tools
+
+# good
+@using tools
+```
+
+---
+
+<a id="sty005"></a>
+### STY005: empty-block (style warning)
+
+An `@if`, `@elseif`, `@else`, or `@for` block has no executable statements between its opener and closer.
+
+```msc
+# bad
+@if check
+@fi
+
+# good
+@if check
+	@command /say running
+@fi
+```
+
+---
+
+<a id="sty006"></a>
+### STY006: variable-shadowing (style warning)
+
+A `@define` (or `@for` variable) inside a nested block has the same name as a variable in an outer scope. The inner binding silently overrides the outer one until the inner block closes; rename one of them to make the intent obvious.
+
+```msc
+# bad
+@define Int count = 0
+@if go
+	@define Int count = 5
+@fi
+
+# good
+@define Int count = 0
+@if go
+	@define Int innerCount = 5
+@fi
+```

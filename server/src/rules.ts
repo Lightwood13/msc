@@ -382,5 +382,26 @@ export const RULES: Record<string, Rule> = {
 		category: 'style',
 		severity: 'warning',
 		description: 'Condition is a constant Boolean literal'
+	},
+	STY004: {
+		code: 'STY004',
+		name: 'redundant-using',
+		category: 'style',
+		severity: 'warning',
+		description: 'Namespace has already been imported earlier in the script'
+	},
+	STY005: {
+		code: 'STY005',
+		name: 'empty-block',
+		category: 'style',
+		severity: 'warning',
+		description: 'Block has no executable statements'
+	},
+	STY006: {
+		code: 'STY006',
+		name: 'variable-shadowing',
+		category: 'style',
+		severity: 'warning',
+		description: 'Variable shadows another in an outer scope'
 	}
 };

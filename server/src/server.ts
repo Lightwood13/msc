@@ -1942,6 +1942,108 @@ function validateConstantConditions(lines: readonly string[], diagnostics: Diagn
 	}
 }
 
+function validateRedundantUsing(lines: readonly string[], diagnostics: Diagnostic[]) {
+	const seen = new Set<string>();
+	for (let i = 0; i < lines.length; i++) {
+		const m = /^(\s*)@using\s+(\w+)\s*$/.exec(lines[i]);
+		if (m === null) continue;
+		const name = m[2];
+		if (seen.has(name)) {
+			const start = lines[i].indexOf(name, m[1].length + '@using'.length);
+			raise(diagnostics, RULES.STY004, {
+				start: { line: i, character: start },
+				end: { line: i, character: start + name.length }
+			}, { message: `Namespace '${name}' has already been imported earlier` });
+		}
+		seen.add(name);
+	}
+}
+
+function validateEmptyBlocks(lines: readonly string[], diagnostics: Diagnostic[]) {
+	const stack: { type: 'if' | 'for' | 'else'; line: number }[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		const trimmed = lines[i].trim();
+		if (trimmed === '' || trimmed.startsWith('#')) continue;
+		const op = trimmed.split(/\s+/)[0];
+		if (op === '@if') stack.push({ type: 'if', line: i });
+		else if (op === '@for') stack.push({ type: 'for', line: i });
+		else if (op === '@else' || op === '@elseif') {
+			const top = stack[stack.length - 1];
+			if (top !== undefined && i === top.line + 1) {
+				raise(diagnostics, RULES.STY005, {
+					start: { line: top.line, character: 0 },
+					end: { line: top.line, character: lines[top.line].length }
+				}, { message: 'Empty @if branch' });
+			}
+			if (top !== undefined) top.line = i;
+		} else if (op === '@fi' || op === '@done') {
+			const top = stack.pop();
+			if (top !== undefined && i === top.line + 1) {
+				raise(diagnostics, RULES.STY005, {
+					start: { line: top.line, character: 0 },
+					end: { line: top.line, character: lines[top.line].length }
+				}, { message: `Empty ${top.type === 'if' ? '@if/@else' : '@for'} branch` });
+			}
+		}
+	}
+}
+
+function validateShadowing(lines: readonly string[], diagnostics: Diagnostic[]) {
+	const stack: Map<string, true>[] = [new Map()];
+	const top = () => stack[stack.length - 1];
+
+	const collectFirstLineParams = (line: string) => {
+		const open = line.indexOf('(');
+		const close = line.indexOf(')');
+		const start = open === -1 ? line.indexOf('#') : open;
+		const end = close === -1 ? line.length : close;
+		if (start === -1 || end <= start) return;
+		const inside = line.substring(start + 1, end);
+		for (const m of inside.matchAll(/((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g)) {
+			top().set(m[2], true);
+		}
+	};
+
+	if (lines.length > 0) collectFirstLineParams(lines[0]);
+
+	for (let i = (lines.length > 0 ? 1 : 0); i < lines.length; i++) {
+		const trimmed = lines[i].trim();
+		if (trimmed === '' || trimmed.startsWith('#')) continue;
+		const op = trimmed.split(/\s+/)[0];
+
+		if (op === '@if' || op === '@for') stack.push(new Map());
+
+		const flag = (name: string, lineText: string, opName: string) => {
+			for (let j = 0; j < stack.length - 1; j++) {
+				if (!stack[j].has(name)) continue;
+				const start = lineText.indexOf(name, lineText.indexOf(opName) + opName.length);
+				raise(diagnostics, RULES.STY006, {
+					start: { line: i, character: start },
+					end: { line: i, character: start + name.length }
+				}, { message: `'${name}' shadows a variable in an outer scope` });
+				return;
+			}
+			top().set(name, true);
+		};
+
+		if (op === '@for') {
+			const m = /^@for\s+[\w:]+(?:\[\])?\s+(\w+)\s+in\b/.exec(trimmed);
+			if (m !== null) flag(m[1], lines[i], '@for');
+		} else if (op === '@define') {
+			const m = /^@define\s+[\w:]+(?:\[\])?\s+(\w+)/.exec(trimmed);
+			if (m !== null) flag(m[1], lines[i], '@define');
+		}
+
+		if (op === '@fi' || op === '@done') {
+			if (stack.length > 1) stack.pop();
+		}
+		if (op === '@else' || op === '@elseif') {
+			if (stack.length > 1) stack.pop();
+			stack.push(new Map());
+		}
+	}
+}
+
 const PARAM_MODIFIERS = new Set(['final', 'relative', 'private']);
 
 function extractParamType(label: string): string {
@@ -2161,6 +2263,9 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 
 	validateRedeclarations(lines, diagnostics);
 	validateConstantConditions(lines, diagnostics);
+	validateRedundantUsing(lines, diagnostics);
+	validateEmptyBlocks(lines, diagnostics);
+	validateShadowing(lines, diagnostics);
 
 	if (parsingContext.blockStack.length > 0) {
 		for (const block of parsingContext.blockStack) {
