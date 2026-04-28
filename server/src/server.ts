@@ -1812,20 +1812,33 @@ function validateFinalReassignment(lines: readonly string[], resolution: Documen
 
 function validateVarAssignments(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
-		const match = /^(\s*)@var\s+(\w+)\s*=\s*(.+)$/.exec(lines[lineNumber]);
-		if (match === null) continue;
-		const targetName = match[2];
-		const targetBinding = resolution.visibleBindingsByLine[lineNumber + 1]?.find(b => b.name === targetName);
-		if (targetBinding === undefined) continue;
-		const expressionText = match[3].trimEnd();
-		const expressionStart = lines[lineNumber].length - match[3].length;
-		const analysis = resolution.analyzeExpression(expressionText, lineNumber, expressionStart);
-		if (analysis.diagnostics.length > 0 || analysis.type === undefined) continue;
-		if (isAssignableTo(targetBinding.type, analysis.type)) continue;
+		const lineText = lines[lineNumber];
+		const m = /^(\s*)@var\s+/.exec(lineText);
+		if (m === null) continue;
+		const afterOp = m[0].length;
+		const tail = lineText.slice(afterOp);
+		const opMatch = / (=|\+=|-=|\*=|\/=|%=) /.exec(tail);
+		if (opMatch === null) continue;
+
+		const opText = opMatch[1];
+		const targetText = tail.slice(0, opMatch.index).trimEnd();
+		const targetStart = afterOp;
+		const targetAnalysis = resolution.analyzeExpression(targetText, lineNumber, targetStart);
+		if (targetAnalysis.diagnostics.length > 0 || targetAnalysis.type === undefined) continue;
+
+		const exprStart = afterOp + opMatch.index + opMatch[0].length;
+		const exprText = lineText.slice(exprStart).trimEnd();
+		if (exprText === '') continue;
+
+		const valueText = opText === '=' ? exprText : `${targetText} ${opText.charAt(0)} ${exprText}`;
+		const valueAnalysis = resolution.analyzeExpression(valueText, lineNumber, opText === '=' ? exprStart : targetStart);
+		if (valueAnalysis.diagnostics.length > 0 || valueAnalysis.type === undefined) continue;
+
+		if (isAssignableTo(targetAnalysis.type, valueAnalysis.type)) continue;
 		raise(diagnostics, RULES.SEM011, {
-			start: { line: lineNumber, character: expressionStart },
-			end: { line: lineNumber, character: expressionStart + expressionText.length }
-		}, { message: `Cannot assign ${analysis.type} to ${targetBinding.type} variable '${targetName}'` });
+			start: { line: lineNumber, character: exprStart },
+			end: { line: lineNumber, character: exprStart + exprText.length }
+		}, { message: `Cannot assign ${valueAnalysis.type} to ${targetAnalysis.type}` });
 	}
 }
 
