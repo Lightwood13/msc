@@ -468,6 +468,51 @@ describe('MSC resolver', () => {
 		assert.strictEqual(freeResolution.getNamespaceQualifier(positionOf(free, 'mystery')), undefined);
 	});
 
+	it('marks declaration-site type tokens with the declaration flag', () => {
+		const defineDocument = createDocument('@define Widget w');
+		const defineResolution = resolveDocument({ document: defineDocument, namespaces, classes });
+		const defineRef = defineResolution.getReferenceAtPosition(positionOf(defineDocument, 'Widget'));
+		assert.strictEqual(defineRef!.token.flags?.declaration, true);
+
+		const expressionDocument = createDocument('@return Widget');
+		const expressionResolution = resolveDocument({ document: expressionDocument, namespaces, classes });
+		const expressionRef = expressionResolution.getReferenceAtPosition(positionOf(expressionDocument, 'Widget'));
+		assert.strictEqual(expressionRef!.token.kind, 'typeName');
+		assert.notStrictEqual(expressionRef!.token.flags?.declaration, true);
+	});
+
+	it('exposes class member presence via hasMember', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.hasMember('Widget', 'name'), true);
+		assert.strictEqual(resolution.hasMember('Widget', 'size()'), true);
+		assert.strictEqual(resolution.hasMember('Widget', 'bogus'), false);
+		assert.strictEqual(resolution.hasMember('NotAClass', 'name'), false);
+	});
+
+	it('flags non-Int array indices and non-array indexing through analyzeExpression', () => {
+		const document = createDocument('@define Int[] arr\n@define Int n\n');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const wrongIndex = resolution.analyzeExpression('arr["zero"]', 2, 0);
+		assert.strictEqual(wrongIndex.diagnostics.length, 1);
+		assert.strictEqual(wrongIndex.diagnostics[0].code, 'SEM015');
+
+		const wrongHost = resolution.analyzeExpression('n[0]', 2, 0);
+		assert.strictEqual(wrongHost.diagnostics.length, 1);
+		assert.strictEqual(wrongHost.diagnostics[0].code, 'SEM014');
+	});
+
+	it('flags member access on null literal', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const analysis = resolution.analyzeExpression('null.length()', 0, 0);
+		assert.strictEqual(analysis.diagnostics.length, 1);
+		assert.strictEqual(analysis.diagnostics[0].code, 'SEM022');
+	});
+
 	it('reports member-access host types when the host resolves to a known class', () => {
 		const document = createDocument('@define Widget w\n@return w.bogus');
 		const resolution = resolveDocument({ document, namespaces, classes });
