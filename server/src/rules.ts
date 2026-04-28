@@ -192,6 +192,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Identifier is not defined in the current scope'
 	},
+	SEM005: {
+		code: 'SEM005',
+		name: 'unknown-namespace',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Unknown namespace'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

@@ -131,6 +131,7 @@ export interface DocumentResolution {
 	getCallContext(position: Position): CallContext | undefined;
 	analyzeExpression(expression: string, lineNumber: number, startCharacter: number): ExpressionAnalysis;
 	getMemberAccessHostType(position: Position): string | undefined;
+	hasNamespace(name: string): boolean;
 }
 
 interface ResolutionInputs {
@@ -322,6 +323,10 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 		const normalized = this.normalizeTypeName(analysis.type, position.line);
 		return this.classes.has(normalized) ? normalized : undefined;
+	}
+
+	hasNamespace(name: string): boolean {
+		return this.namespaces.has(name);
 	}
 
 	private getContextToken(position: Position): Token | undefined {

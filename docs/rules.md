@@ -436,6 +436,23 @@ A bare identifier in an expression position must resolve to a local binding, nam
 
 ---
 
+<a id="sem005"></a>
+### SEM005: unknown-namespace (semantic error)
+
+A namespace referenced in `@using` or in a `Name::member` qualifier must be either the default namespace or a `.nms` file the workspace has loaded.
+
+```msc
+# bad
+@using nottools
+@return nottools::makeWidget()
+
+# good
+@using tools
+@return tools::makeWidget()
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

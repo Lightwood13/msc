@@ -444,6 +444,15 @@ describe('MSC resolver', () => {
 		assert.strictEqual(tokensOnLine.some(t => t.kind === 'identifier' && t.text === 'unknownNs'), false);
 	});
 
+	it('reports namespace presence via hasNamespace', () => {
+		const document = createDocument('@using tools');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.hasNamespace('tools'), true);
+		assert.strictEqual(resolution.hasNamespace('__default__'), true);
+		assert.strictEqual(resolution.hasNamespace('mystery'), false);
+	});
+
 	it('reports member-access host types when the host resolves to a known class', () => {
 		const document = createDocument('@define Widget w\n@return w.bogus');
 		const resolution = resolveDocument({ document, namespaces, classes });

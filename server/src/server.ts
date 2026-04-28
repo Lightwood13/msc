@@ -1718,6 +1718,16 @@ function getExpressionRangeOnLine(lineText: string): { start: number; end: numbe
 	}
 }
 
+function validateNamespaceReferences(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (const reference of resolution.references) {
+		if (reference.symbol.kind !== 'namespace') continue;
+		if (resolution.hasNamespace(reference.symbol.name)) continue;
+		raise(diagnostics, RULES.SEM005, reference.token.range, {
+			message: `Unknown namespace: '${reference.symbol.name}'`
+		});
+	}
+}
+
 function validateUndefinedIdentifiers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
@@ -1766,6 +1776,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateDeclaredTypes(resolution, diagnostics);
 		validateMemberAccess(resolution, diagnostics);
 		validateUndefinedIdentifiers(lines, resolution, diagnostics);
+		validateNamespaceReferences(resolution, diagnostics);
 	}
 
 	if (parsingContext.blockStack.length > 0) {
