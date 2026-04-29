@@ -156,6 +156,9 @@ interface ResolutionInputs {
 	namespaces: ReadonlyMap<string, NamespaceInfo>;
 	classes: ReadonlyMap<string, ClassInfo>;
 	implicitVariables?: ImplicitVariable[];
+	// Namespace active before any `@using` line — used for function/method/
+	// constructor bodies, which inherit the enclosing `.nms`'s namespace.
+	implicitNamespace?: string;
 }
 
 interface SpecialSpan {
@@ -192,7 +195,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 		this.lineTokens = tokenMatrix;
 		this.tokens = tokenMatrix.flat();
 
-		const bindingState = this.buildBindings(inputs.implicitVariables ?? []);
+		const bindingState = this.buildBindings(inputs.implicitVariables ?? [], inputs.implicitNamespace);
 		this.visibleBindingsByLine = bindingState.visibleBindingsByLine;
 		this.activeNamespaceByLine = bindingState.activeNamespaceByLine;
 
@@ -618,7 +621,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 		}
 	}
 
-	private buildBindings(implicitVariables: readonly ImplicitVariable[]) {
+	private buildBindings(implicitVariables: readonly ImplicitVariable[], implicitNamespace?: string) {
 		const globalBindings: LocalBinding[] = [
 			{ name: 'player', type: 'Player', lineDeclared: -1, characterDeclared: 0, builtin: true },
 			{ name: 'block', type: 'Block', lineDeclared: -1, characterDeclared: 0, builtin: true }
@@ -638,7 +641,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 		const blockStack: LocalBinding[][] = [];
 		const lines = this.lines;
-		let currentNamespace: string | undefined = undefined;
+		let currentNamespace: string | undefined = implicitNamespace;
 		const activeNamespaceByLine: (string | undefined)[] = new Array(lines.length).fill(undefined);
 
 		for (let i = 0; i < lines.length; i++) {
@@ -958,6 +961,15 @@ class DocumentResolutionImpl implements DocumentResolution {
 				}
 			}
 
+			// parseCallChain only knows chains rooted at an identifier; for
+			// hosts that are string literals or parenthesized expressions
+			// (e.g. `"abc".split(...)`, `(a + b).length()`) fall back to the
+			// expression analyzer, which already resolves their type.
+			const memberSymbol = this.tryResolveExpressionHostMember(token, lineText);
+			if (memberSymbol !== undefined) {
+				return memberSymbol;
+			}
+
 			const directSymbol = this.resolveCanonicalSymbol(token.text, token.line);
 			if (directSymbol !== undefined) {
 				return directSymbol;
@@ -974,6 +986,31 @@ class DocumentResolutionImpl implements DocumentResolution {
 		}
 
 		return this.resolveCanonicalSymbol(nameAndType.name, token.line) ?? unresolvedSymbol(token.text);
+	}
+
+	private tryResolveExpressionHostMember(token: Token, lineText: string): ResolvedSymbol | undefined {
+		const startChar = token.range.start.character;
+		if (startChar === 0 || lineText[startChar - 1] !== '.') return undefined;
+
+		const codePrefix = lineText.slice(0, startChar);
+		const hostExpression = getMemberAccessHostExpression(codePrefix);
+		if (hostExpression === undefined) return undefined;
+
+		const analysis = this.analyzeExpression(hostExpression.text, token.line, hostExpression.startCharacter);
+		if (analysis.diagnostics.length > 0 || analysis.type === undefined) return undefined;
+
+		const hostType = this.normalizeTypeName(analysis.type, token.line);
+		const currentClass = this.classes.get(hostType);
+		if (currentClass === undefined) return undefined;
+
+		let i = token.range.end.character;
+		while (i < lineText.length && /\s/.test(lineText[i])) i++;
+		const isCall = lineText[i] === '(';
+		const memberKey = isCall ? `${token.text}()` : token.text;
+		const member = currentClass.members.get(memberKey);
+		if (member === undefined) return undefined;
+
+		return memberToSymbol(`${hostType}.${member.name}`, currentClass, member);
 	}
 
 	private getExplicitScopedName(token: Token, lineText: string): string | undefined {

@@ -153,6 +153,10 @@ interface ScriptParameter {
 
 interface ScriptContext {
 	thisType?: string;
+	// Namespace the script body is implicitly inside (the enclosing `.nms`).
+	// Mirrors the server's parse context: a function/method/constructor body
+	// runs with its own namespace active without a leading `@using`.
+	implicitNamespace?: string;
 	parameters: readonly ScriptParameter[];
 }
 
@@ -272,7 +276,8 @@ function refreshDocumentResolution(documentUri: string): Promise<DocumentResolut
 			document,
 			namespaces,
 			classes,
-			implicitVariables
+			implicitVariables,
+			implicitNamespace: context.implicitNamespace
 		});
 	})();
 	documentResolutions.set(documentUri, result);
@@ -351,6 +356,7 @@ function collectScriptContext(namespaceDefinitionPath: string, text: string, tar
 
 		const namespaceName = namespaceMatch[1];
 		const namespaceFolderPath = join(dirname(namespaceDefinitionPath), namespaceName);
+		const implicitNamespace = namespaceName === '__default__' ? undefined : namespaceName;
 
 		for (let j = i + 1; j < namespaceEndLine; j++) {
 			if (expectedKind === 'namespace') {
@@ -358,7 +364,7 @@ function collectScriptContext(namespaceDefinitionPath: string, text: string, tar
 				if (fnMatch === null) continue;
 				const fnPath = normalize(join(namespaceFolderPath, `${fnMatch[2]}.msc`));
 				if (fnPath !== normalizedTargetPath) continue;
-				return { parameters: parseSignatureParameters(lines[j], namespaceUri, j) };
+				return { implicitNamespace, parameters: parseSignatureParameters(lines[j], namespaceUri, j) };
 			}
 
 			const classMatch = classSignatureRegExp.exec(lines[j]);
@@ -382,6 +388,7 @@ function collectScriptContext(namespaceDefinitionPath: string, text: string, tar
 					if (methodPath === normalizedTargetPath) {
 						return {
 							thisType: classType,
+							implicitNamespace,
 							parameters: parseSignatureParameters(lines[k], namespaceUri, k)
 						};
 					}
@@ -391,6 +398,7 @@ function collectScriptContext(namespaceDefinitionPath: string, text: string, tar
 					if (constructorPath === normalizedTargetPath) {
 						return {
 							thisType: classType,
+							implicitNamespace,
 							parameters: parseSignatureParameters(lines[k], namespaceUri, k)
 						};
 					}
@@ -1716,7 +1724,7 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 		const hashIndex = line.indexOf('#');
 		raise(diagnostics, RULES.SYN024, {
 			start: { line: lineNumber, character: hashIndex },
-			end: { line: lineNumber, character: hashIndex + 1 }
+			end: { line: lineNumber, character: line.length }
 		}, {
 			fix: {
 				title: 'Insert space after #',

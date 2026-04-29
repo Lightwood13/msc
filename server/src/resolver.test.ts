@@ -745,6 +745,44 @@ describe('MSC resolver', () => {
 		assert.match(floatNoDecimal.diagnostics[0].message, /decimal point/);
 	});
 
+	it('treats `implicitNamespace` as active without an explicit `@using`', () => {
+		const document = createDocument('@define Machine m\n@return machine10a');
+		const resolution = resolveDocument({
+			document,
+			namespaces,
+			classes,
+			implicitNamespace: 'transmute'
+		});
+
+		// Bare `Machine` resolves to `transmute::Machine`.
+		const typeRef = resolution.getReferenceAtPosition(positionOf(document, 'Machine'));
+		assert.ok(typeRef);
+		assert.strictEqual(typeRef!.symbol.kind, 'classType');
+		assert.strictEqual(typeRef!.symbol.type, 'transmute::Machine');
+
+		// Bare `machine10a` resolves to the namespace variable.
+		const memberRef = resolution.getReferenceAtPosition(positionOf(document, 'machine10a'));
+		assert.ok(memberRef);
+		assert.strictEqual(memberRef!.symbol.kind, 'namespaceVariable');
+		assert.strictEqual(memberRef!.symbol.name, 'transmute::machine10a');
+	});
+
+	it('resolves member access on string literals and parenthesized expressions', () => {
+		const document = createDocument('@return "abc".length()\n@return (player).name');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const lengthRef = resolution.getReferenceAtPosition(positionOf(document, 'length'));
+		assert.ok(lengthRef);
+		assert.strictEqual(lengthRef!.symbol.kind, 'instanceMethod');
+		assert.strictEqual(lengthRef!.symbol.type, 'Int');
+		assert.strictEqual(lengthRef!.isCallable, true);
+
+		const nameRef = resolution.getReferenceAtPosition(positionOf(document, 'name'));
+		assert.ok(nameRef);
+		assert.strictEqual(nameRef!.symbol.kind, 'instanceField');
+		assert.strictEqual(nameRef!.symbol.type, 'String');
+	});
+
 	it('flags member access on null literal', () => {
 		const document = createDocument('@return 1');
 		const resolution = resolveDocument({ document, namespaces, classes });
