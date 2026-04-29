@@ -578,6 +578,76 @@ describe('MSC resolver', () => {
 		assert.strictEqual(chain.type, 'String');
 	});
 
+	it('tokenizes Double/Long literal suffixes as part of the number, not as identifiers', () => {
+		const document = createDocument('@define Double scale = 2.0D\n@define Long big = 10L\n');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		// `D`/`L` should not appear as identifier tokens — they are part of the literal.
+		const dToken = resolution.getTokenAtPosition(positionOf(document, '2.0D'));
+		assert.ok(dToken);
+		assert.strictEqual(dToken!.kind, 'numberLiteral');
+		assert.strictEqual(dToken!.text, '2.0D');
+
+		const lToken = resolution.getTokenAtPosition(positionOf(document, '10L'));
+		assert.ok(lToken);
+		assert.strictEqual(lToken!.kind, 'numberLiteral');
+		assert.strictEqual(lToken!.text, '10L');
+
+		// Nothing on these lines should resolve as a free reference.
+		const unresolvedRefs = resolution.references.filter(ref =>
+			ref.symbol.kind === 'unresolved' && (ref.token.text === 'D' || ref.token.text === 'L'));
+		assert.deepStrictEqual(unresolvedRefs, []);
+	});
+
+	it('infers types for well-formed numeric literals', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const cases: [string, string][] = [
+			['1', 'Int'],
+			['2147483647', 'Int'],
+			['1L', 'Long'],
+			['9223372036854775807L', 'Long'],
+			['1.5', 'Float'],
+			['1.5D', 'Double'],
+			['2.0d', 'Double'],
+			['10l', 'Long']
+		];
+		for (const [literal, expectedType] of cases) {
+			const analysis = resolution.analyzeExpression(literal, 0, 0);
+			assert.deepStrictEqual(analysis.diagnostics, [], `unexpected diagnostics for ${literal}`);
+			assert.strictEqual(analysis.type, expectedType, `wrong type for ${literal}`);
+		}
+	});
+
+	it('flags out-of-range and malformed numeric literals', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		// Fits in Long but not Int — the hint should suggest the L suffix.
+		const fitsInLong = resolution.analyzeExpression('5000000000', 0, 0);
+		assert.strictEqual(fitsInLong.diagnostics.length, 1);
+		assert.strictEqual(fitsInLong.diagnostics[0].code, 'SEM024');
+		assert.match(fitsInLong.diagnostics[0].message, /out of range/);
+		assert.match(fitsInLong.diagnostics[0].message, /'L' suffix/);
+
+		// User's reported case: 10^19 exceeds even Long.
+		const tooBigForLongToo = resolution.analyzeExpression('10000000000000000000', 0, 0);
+		assert.strictEqual(tooBigForLongToo.diagnostics.length, 1);
+		assert.strictEqual(tooBigForLongToo.diagnostics[0].code, 'SEM024');
+		// Hint about Long suffix should not appear when even Long can't hold it.
+		assert.doesNotMatch(tooBigForLongToo.diagnostics[0].message, /'L' suffix/);
+
+		const longOverflow = resolution.analyzeExpression('99999999999999999999L', 0, 0);
+		assert.strictEqual(longOverflow.diagnostics.length, 1);
+		assert.strictEqual(longOverflow.diagnostics[0].code, 'SEM024');
+
+		const decimalLong = resolution.analyzeExpression('1.5L', 0, 0);
+		assert.strictEqual(decimalLong.diagnostics.length, 1);
+		assert.strictEqual(decimalLong.diagnostics[0].code, 'SEM024');
+		assert.match(decimalLong.diagnostics[0].message, /decimal point/);
+	});
+
 	it('flags member access on null literal', () => {
 		const document = createDocument('@return 1');
 		const resolution = resolveDocument({ document, namespaces, classes });

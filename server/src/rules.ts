@@ -339,6 +339,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Array literal must be prefixed with its element type, e.g. Int[] or Player[a, b]'
 	},
+	SEM024: {
+		code: 'SEM024',
+		name: 'literal-out-of-range',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Number literal is out of range or malformed for its type'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',

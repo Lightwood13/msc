@@ -24,6 +24,7 @@ export type TokenKind =
 	| 'functionName'
 	| 'variableName'
 	| 'memberName'
+	| 'numberLiteral'
 	| 'stringLiteral'
 	| 'interpolation'
 	| 'commandText'
@@ -1144,6 +1145,27 @@ function tokenizeCode(text: string, offset: number, line: number, tokens: Token[
 			continue;
 		}
 
+		if (/[0-9]/.test(c)) {
+			let end = index + 1;
+			while (end < text.length && /[0-9.]/.test(text[end])) {
+				end++;
+			}
+			if (text[end] === '-' && text[end - 1] === 'E') {
+				end++;
+				while (end < text.length && /[0-9.]/.test(text[end])) {
+					end++;
+				}
+			}
+			// `dDlL` are MSC's Double/Long literal suffixes (see ExpressionParser.parseLiteral).
+			// Consuming them here keeps the suffix from being lexed as a free identifier.
+			if (/[dDlL]/.test(text[end] ?? '')) {
+				end++;
+			}
+			tokens.push(makeToken('numberLiteral', line, offset + index, offset + end, text.slice(index, end), flags));
+			index = end;
+			continue;
+		}
+
 		if (/[a-zA-Z_]/.test(c)) {
 			let end = index + 1;
 			for (; end < text.length && /[a-zA-Z0-9_]/.test(text[end]); end++) {
@@ -1487,6 +1509,12 @@ class ExpressionTypeParser {
 
 		if (token.kind === 'number') {
 			this.index++;
+			const literalIssue = checkNumberLiteral(token.text);
+			if (literalIssue !== undefined) {
+				return {
+					diagnostic: this.makeDiagnostic(token, literalIssue, 'SEM024')
+				};
+			}
 			return this.parsePostfix(literalType(token.text));
 		}
 
@@ -1922,6 +1950,64 @@ function literalType(literal: string): string {
 		return 'Float';
 	}
 	return 'Int';
+}
+
+const INT_MIN = -2147483648n;
+const INT_MAX = 2147483647n;
+const LONG_MIN = -9223372036854775808n;
+const LONG_MAX = 9223372036854775807n;
+
+// Mirrors the server's per-type parseLiteral failures (org.minr.server.scripts.expression.ExpressionParser#parseLiteral
+// dispatching to {Int,Long,Float,Double}Type.parseLiteral, each backed by Java's parse{Int,Long,Float,Double}).
+// Returns a diagnostic message when the literal would throw at runtime, or undefined if it parses cleanly.
+// Note: tokenisation splits unary `-` from the literal, so `2147483648` is invalid Int even when written
+// as `-2147483648` in source \u2014 matching the server's own behaviour.
+function checkNumberLiteral(literal: string): string | undefined {
+	const lower = literal.toLowerCase();
+
+	if (lower.endsWith('l')) {
+		const numericPart = literal.slice(0, -1);
+		if (numericPart.includes('.')) {
+			return `Long literal '${literal}' cannot contain a decimal point`;
+		}
+		try {
+			const value = BigInt(numericPart);
+			if (value < LONG_MIN || value > LONG_MAX) {
+				return `Long literal '${literal}' is out of range (${LONG_MIN} to ${LONG_MAX})`;
+			}
+		} catch {
+			return `Invalid Long literal '${literal}'`;
+		}
+		return undefined;
+	}
+
+	if (lower.endsWith('d')) {
+		const value = Number(literal.slice(0, -1));
+		if (!isFinite(value)) {
+			return `Invalid Double literal '${literal}'`;
+		}
+		return undefined;
+	}
+
+	if (literal.includes('.')) {
+		const value = Number(literal);
+		if (!isFinite(value)) {
+			return `Invalid Float literal '${literal}'`;
+		}
+		return undefined;
+	}
+
+	try {
+		const value = BigInt(literal);
+		if (value < INT_MIN || value > INT_MAX) {
+			const fitsInLong = value >= LONG_MIN && value <= LONG_MAX;
+			const hint = fitsInLong ? `; use the 'L' suffix for Long` : '';
+			return `Int literal '${literal}' is out of range (${INT_MIN} to ${INT_MAX})${hint}`;
+		}
+	} catch {
+		return `Invalid Int literal '${literal}'`;
+	}
+	return undefined;
 }
 
 interface OperatorOverload {

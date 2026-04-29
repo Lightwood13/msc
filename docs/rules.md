@@ -795,6 +795,26 @@ Array literals must be prefixed with their element type — there is no untyped 
 
 ---
 
+<a id="sem024"></a>
+### SEM024: literal-out-of-range (semantic error)
+
+Number literals must fit the type the server will parse them as. The server picks the type from the suffix and the presence of a `.`: `…L` is `Long`, `…d`/`…D` is `Double`, anything else with a `.` is `Float`, otherwise `Int`. The literal also has to be syntactically valid for that type — e.g. a `Long` literal cannot have a decimal point.
+
+Tokenisation splits unary `-` from the literal, so `-2147483648` is the `-` operator applied to `2147483648`, which is out of range for `Int`. To produce `Int.MIN_VALUE`, write it as `-2147483647 - 1`, or use a `Long` and assign with `L` suffix.
+
+```msc
+# bad
+@define Int myVar = 10000000000000000000      # exceeds Long too
+@define Int big = 5000000000                  # exceeds Int but fits Long
+@define Long bad = 1.5L                       # Long cannot have a decimal
+
+# good
+@define Long big = 5000000000L
+@define Double pi2 = 1.5D
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 
