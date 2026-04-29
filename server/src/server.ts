@@ -32,9 +32,6 @@ import {
 	Location
 } from 'vscode-languageserver-protocol';
 import {
-	readFile
-} from 'fs';
-import {
 	access,
 	readFile as readFileAsync
 } from 'fs/promises';
@@ -129,38 +126,67 @@ connection.onInitialized(() => {
 		});
 	}
 	connection.sendNotification('getDefaultNamespaces');
-	refreshNamespaceFiles();
+	void refreshNamespaceFiles();
 });
 
 const documentResolutions: Map<string, Promise<DocumentResolution>> = new Map();
 const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
+const defaultClasses: Map<string, ClassInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
 const implicitThisTypeCache: Map<string, string | undefined> = new Map();
 let defaultNamespacesSourceUri: string = '';
 
-function refreshNamespaceFiles() {
-	// search for .nms files in all subfolders
-	files('.', (err, files) => {
-		if (err)
-			return console.log('Unable to scan directory: ' + err);
+// Diagnostic publishing is gated on these: until both sources of namespace
+// state have been loaded at least once, validateAndReportDiagnostics emits
+// empty diagnostics. Each loader flips its flag and revalidates open docs.
+let defaultsLoaded = false;
+let workspaceLoaded = false;
+
+async function refreshNamespaceFiles() {
+	try {
+		let fileList: string[];
+		try {
+			fileList = await new Promise<string[]>((res, rej) => {
+				files('.', (err, found) => err ? rej(err) : res(found));
+			});
+		} catch (err) {
+			console.log('Unable to scan directory: ' + err);
+			return;
+		}
+
 		documentResolutions.clear();
 		namespaces.clear();
+		classes.clear();
 		implicitThisTypeCache.clear();
-		defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
-			namespaces.set(key, value);
-		});
-			for (const filename of files) {
-				const filenamesSplit = filename.split('.');
-				if (filenamesSplit[filenamesSplit.length - 1] === 'nms') {
-					readFile(filename, (err, data) => {
-						if (err) return console.log('Unable to read file: ' + err);
-						parseNamespaceFile(data.toString(), namespaces, classes, pathToFileURL(resolve(filename)).toString());
-					});
+		defaultNamespaces.forEach((value, key) => namespaces.set(key, value));
+		defaultClasses.forEach((value, key) => classes.set(key, value));
+
+		await Promise.all(fileList
+			.filter(filename => filename.split('.').pop() === 'nms')
+			.map(async filename => {
+				try {
+					const data = await readFileAsync(filename);
+					parseNamespaceFile(data.toString(), namespaces, classes, pathToFileURL(resolve(filename)).toString());
+				} catch (err) {
+					console.log('Unable to read file: ' + err);
 				}
-			}
-		});
+			}));
+	} finally {
+		// Always flip the gate, even on scan failure — otherwise diagnostics
+		// stay permanently disabled for the session.
+		workspaceLoaded = true;
+		// Open documents resolved before this point may have been validated
+		// against a partial namespace map; re-run them now that loading is done.
+		revalidateAllOpenDocuments();
 	}
+}
+
+function revalidateAllOpenDocuments() {
+	for (const document of documents.all()) {
+		void validateAndReportDiagnostics(document);
+	}
+}
 
 function getDocumentResolution(documentUri: string): Promise<DocumentResolution> {
 	let result = documentResolutions.get(documentUri);
@@ -659,11 +685,12 @@ interface DefaultNamespacesPayload {
 
 connection.onNotification('processDefaultNamespaces', (payload: DefaultNamespacesPayload) => {
 	defaultNamespacesSourceUri = payload.sourceUri;
-	parseNamespaceFile(payload.text, defaultNamespaces, classes, payload.sourceUri);
-	defaultNamespaces.forEach((value: NamespaceInfo, key: string) => {
-		namespaces.set(key, value);
-	});
+	parseNamespaceFile(payload.text, defaultNamespaces, defaultClasses, payload.sourceUri);
+	defaultNamespaces.forEach((value, key) => namespaces.set(key, value));
+	defaultClasses.forEach((value, key) => classes.set(key, value));
 	documentResolutions.clear();
+	defaultsLoaded = true;
+	revalidateAllOpenDocuments();
 });
 
 interface NamespaceFunction {
@@ -2269,6 +2296,15 @@ function validateUndefinedIdentifiers(lines: readonly string[], resolution: Docu
 }
 
 async function validateAndReportDiagnostics(textDocument: TextDocument): Promise<void> {
+	// Suppress diagnostics until both the default namespaces (sent by the
+	// client) and the workspace `.nms` scan have loaded at least once;
+	// otherwise nearly every type/namespace reference flags as unknown.
+	// revalidateAllOpenDocuments() re-runs us once each loader flips its flag.
+	if (!defaultsLoaded || !workspaceLoaded) {
+		connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+		return;
+	}
+
 	const text = textDocument.getText();
 	const lines = text.split('\n');
 	const suppressions = parseSuppressions(lines);
@@ -2369,7 +2405,7 @@ documents.onDidClose(e => {
 });
 
 connection.onDidChangeWatchedFiles(_ => {
-	refreshNamespaceFiles();
+	void refreshNamespaceFiles();
 });
 
 // Listen on the connection
