@@ -304,6 +304,8 @@ Use `@fi` to close `@if`, and `@done` to close `@for`.
 @fi
 ```
 
+The quick fix swaps `@fi` ↔ `@done` to match the opener.
+
 ---
 
 <a id="syn018"></a>

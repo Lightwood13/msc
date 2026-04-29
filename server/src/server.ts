@@ -1467,7 +1467,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 	}
 }
 
-function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
+function processControlStatements(firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, lineText: string, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const currentScopeHadReturnBeforeThisLine = parsingContext.currentScopeHadReturn();
 	const duplicateReturn = firstWord === '@return' && currentScopeHadReturnBeforeThisLine;
 
@@ -1501,10 +1501,17 @@ function processControlStatements(firstWord: string, lineNumber: number, lineSta
 			} else {
 				if ((firstWord === '@fi' && lastBlock.type !== 'if') ||
 					(firstWord === '@done' && lastBlock.type !== 'for')) {
+					const expected = lastBlock.type === 'if' ? '@fi' : '@done';
 					raise(diagnostics, RULES.SYN017, {
 						start: { line: lineNumber, character: lineStartIndex },
 						end: { line: lineNumber, character: lineStartIndex + firstWord.length }
-					}, { message: `Mismatched ${firstWord}: expected ${lastBlock.type === 'if' ? '@fi' : '@done'}` });
+					}, {
+						message: `Mismatched ${firstWord}: expected ${expected}`,
+						fix: {
+							title: `Replace with ${expected}`,
+							edits: [{ kind: 'replace', line: lineNumber, content: lineText.replace(firstWord, expected) }]
+						}
+					});
 				}
 			}
 			break;
@@ -1577,7 +1584,7 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 	const lineStartIndex = line.indexOf(firstWord);
 
 	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, line, diagnostics);
-	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
+	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, line, parsingContext, diagnostics);
 	validateHeaderPosition(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
 }
 
