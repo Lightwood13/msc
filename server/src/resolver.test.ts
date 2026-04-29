@@ -538,6 +538,27 @@ describe('MSC resolver', () => {
 		assert.deepStrictEqual(unknown.diagnostics, []);
 	});
 
+	it('treats `\\\\"` as an escaped quote when tokenizing strings', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		// Without escape handling, the inner `"` would close the string early
+		// and the rest of the expression would mis-tokenize, producing SEM001
+		// on the surrounding `(`.
+		const escapedInString = resolution.analyzeExpression('"a" + ":\\"" + "b"', 0, 0);
+		assert.deepStrictEqual(escapedInString.diagnostics, []);
+		assert.strictEqual(escapedInString.type, 'String');
+
+		const escapedAlone = resolution.analyzeExpression('"\\""', 0, 0);
+		assert.deepStrictEqual(escapedAlone.diagnostics, []);
+		assert.strictEqual(escapedAlone.type, 'String');
+
+		// `\\` (escaped backslash) followed by `"` should still terminate.
+		const trailingBackslash = resolution.analyzeExpression('"a\\\\" + "b"', 0, 0);
+		assert.deepStrictEqual(trailingBackslash.diagnostics, []);
+		assert.strictEqual(trailingBackslash.type, 'String');
+	});
+
 	it('flags an untyped `[]` literal as SEM023', () => {
 		const document = createDocument('@return 1');
 		const resolution = resolveDocument({ document, namespaces, classes });

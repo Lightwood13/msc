@@ -1129,13 +1129,7 @@ function tokenizeCode(text: string, offset: number, line: number, tokens: Token[
 		}
 
 		if (c === '"') {
-			let end = index + 1;
-			for (; end < text.length; end++) {
-				if (text[end] === '"') {
-					end++;
-					break;
-				}
-			}
+			const end = findStringEnd(text, index);
 			const stringEnd = Math.min(end, text.length);
 			tokens.push(makeToken('stringLiteral', line, offset + index, offset + stringEnd, text.slice(index, stringEnd), flags));
 			if (stringEnd - index > 2) {
@@ -1860,13 +1854,7 @@ function tokenizeExpression(expression: string): ExpressionToken[] {
 		}
 
 		if (c === '"') {
-			let end = index + 1;
-			for (; end < expression.length; end++) {
-				if (expression[end] === '"') {
-					end++;
-					break;
-				}
-			}
+			const end = findStringEnd(expression, index);
 			tokens.push({ kind: 'string', text: expression.slice(index, end), start: index, end });
 			index = end;
 			continue;
@@ -2153,15 +2141,32 @@ function getMemberAccessHostExpression(codePrefix: string): MemberAccessHostExpr
 	};
 }
 
+// MSC strings use `\` as the escape character (see ParseUtil#findEnd in the
+// server). Returns the index just past the closing `"`, or `text.length` if
+// the string is unterminated. `start` must point at the opening `"`.
+function findStringEnd(text: string, start: number): number {
+	for (let i = start + 1; i < text.length; i++) {
+		if (text[i] === '\\') {
+			i++;
+			continue;
+		}
+		if (text[i] === '"') {
+			return i + 1;
+		}
+	}
+	return text.length;
+}
+
 function skipStringBackward(line: string, pos: number): number | undefined {
 	if (line[pos] !== '"') {
 		return pos;
 	}
 
 	for (pos--; pos >= 0; pos--) {
-		if (line[pos] === '"') {
-			return pos;
-		}
+		if (line[pos] !== '"') continue;
+		let backslashes = 0;
+		for (let p = pos - 1; p >= 0 && line[p] === '\\'; p--) backslashes++;
+		if (backslashes % 2 === 0) return pos;
 	}
 	return undefined;
 }
