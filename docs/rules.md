@@ -778,6 +778,23 @@ A `final` namespace variable or class field cannot be reassigned. Update the `.n
 
 ---
 
+<a id="sem023"></a>
+### SEM023: untyped-array-literal (semantic error)
+
+Array literals must be prefixed with their element type — there is no untyped `[...]` form, since the server needs the type to construct the list. Empty and populated literals both follow this shape.
+
+```msc
+# bad
+@var levels = []
+@var picks = [a, b, c]
+
+# good
+@var levels = Level[]
+@var picks = Player[a, b, c]
+```
+
+---
+
 <a id="sec001"></a>
 ### SEC001: bypass-script-banned (security error)
 

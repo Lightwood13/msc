@@ -989,7 +989,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 			return undefined;
 		}
 
-		let namespaceEnd = scopeOperatorStart;
+		const namespaceEnd = scopeOperatorStart;
 		let namespaceStart = namespaceEnd - 1;
 		while (namespaceStart >= 0 && /[a-zA-Z0-9_]/.test(lineText[namespaceStart])) {
 			namespaceStart--;
@@ -1422,7 +1422,7 @@ class ExpressionTypeParser {
 			}
 
 			this.index++;
-			let right = parseOperand();
+			const right = parseOperand();
 			if (right.diagnostic !== undefined) {
 				return right;
 			}
@@ -1488,6 +1488,13 @@ class ExpressionTypeParser {
 		if (token.kind === 'number') {
 			this.index++;
 			return this.parsePostfix(literalType(token.text));
+		}
+
+		if (token.kind === 'lbrack') {
+			this.index++;
+			return {
+				diagnostic: this.makeDiagnostic(token, 'No array initialiser found: arrays should be written as Type[].', 'SEM023')
+			};
 		}
 
 		if (token.kind !== 'identifier') {

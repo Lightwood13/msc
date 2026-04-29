@@ -533,6 +533,19 @@ describe('MSC resolver', () => {
 		assert.deepStrictEqual(unknown.diagnostics, []);
 	});
 
+	it('flags an untyped `[]` literal as SEM023', () => {
+		const document = createDocument('@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const empty = resolution.analyzeExpression('[]', 0, 0);
+		assert.strictEqual(empty.diagnostics.length, 1);
+		assert.strictEqual(empty.diagnostics[0].code, 'SEM023');
+
+		const populated = resolution.analyzeExpression('[1, 2]', 0, 0);
+		assert.strictEqual(populated.diagnostics.length, 1);
+		assert.strictEqual(populated.diagnostics[0].code, 'SEM023');
+	});
+
 	it('flags member access on null literal', () => {
 		const document = createDocument('@return 1');
 		const resolution = resolveDocument({ document, namespaces, classes });

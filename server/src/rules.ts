@@ -332,6 +332,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Cannot access a member of null'
 	},
+	SEM023: {
+		code: 'SEM023',
+		name: 'untyped-array-literal',
+		category: 'semantic',
+		severity: 'error',
+		description: 'Array literal must be prefixed with its element type, e.g. Int[] or Player[a, b]'
+	},
 	SEC001: {
 		code: 'SEC001',
 		name: 'bypass-script-banned',
