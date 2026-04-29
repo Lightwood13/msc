@@ -1842,10 +1842,15 @@ function validateVarAssignments(lines: readonly string[], resolution: DocumentRe
 	}
 }
 
-function validateClassAsValue(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+function validateClassAsValue(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'classType') continue;
 		if (reference.token.flags?.declaration) continue;
+		const lineText = lines[reference.token.line] ?? '';
+		let i = reference.token.range.end.character;
+		while (i < lineText.length && /\s/.test(lineText[i])) i++;
+		// `Type[...]` is array-literal syntax, not a value use of the class.
+		if (lineText[i] === '[') continue;
 		raise(diagnostics, RULES.SEM018, reference.token.range, {
 			message: `'${reference.token.text}' is a class name, not a value. Did you mean '${reference.token.text}(...)' to call the constructor?`
 		});
@@ -2299,7 +2304,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateStringLiterals(resolution, diagnostics);
 		validateCallArguments(lines, resolution, diagnostics);
 		validateCallableUsage(lines, resolution, diagnostics);
-		validateClassAsValue(resolution, diagnostics);
+		validateClassAsValue(lines, resolution, diagnostics);
 		validatePromptTarget(lines, resolution, diagnostics);
 		validateFinalReassignment(lines, resolution, diagnostics);
 	}

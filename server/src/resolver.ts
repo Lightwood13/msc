@@ -155,6 +155,7 @@ interface SpecialSpan {
 }
 
 const FIRST_LINE_PARAM_REGEXP = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g;
+const TYPE_NAME_REGEXP = /^(?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*$/;
 const RESERVED_VARIABLE_NAMES = new Set(['true', 'false', 'this', 'null', 'final', 'relative', 'private', 'pi']);
 
 class DocumentResolutionImpl implements DocumentResolution {
@@ -311,7 +312,8 @@ class DocumentResolutionImpl implements DocumentResolution {
 			resolveChainType: segment => this.resolveStandaloneExpressionType(segment, lineNumber),
 			normalizeType: type => this.normalizeTypeName(type, lineNumber),
 			resolveMemberType: (hostType, memberName, isCall) => this.resolveMemberType(hostType, memberName, isCall, lineNumber),
-			resolveIndexType: hostType => this.resolveIndexedType(hostType, lineNumber)
+			resolveIndexType: hostType => this.resolveIndexedType(hostType, lineNumber),
+			resolveArrayLiteralType: typeName => this.resolveArrayLiteralType(typeName, lineNumber)
 		}).analyze();
 	}
 
@@ -925,6 +927,18 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return this.normalizeTypeName(normalizedHostType.slice(0, -2), lineNumber);
 	}
 
+	// `Type[...]` is MSC's array-literal syntax (e.g. `Int[]`, `Level[a, b]`),
+	// dispatched server-side via ExpressionParser.parseArrayInit. Returns the
+	// normalized class name so the parser can treat the chain as an array
+	// initializer instead of a non-array index access.
+	private resolveArrayLiteralType(chain: string, lineNumber: number): string | undefined {
+		if (!TYPE_NAME_REGEXP.test(chain)) {
+			return undefined;
+		}
+		const normalized = this.normalizeTypeName(chain, lineNumber);
+		return this.classes.has(normalized) ? normalized : undefined;
+	}
+
 	private resolveTokenSymbol(token: Token): ResolvedSymbol | undefined {
 		const lineText = this.lines[token.line];
 		const activeNamespace = this.activeNamespaceByLine[token.line];
@@ -1040,12 +1054,13 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 		if (/[A-Z]/.test(name[0])) {
 			const className = name.endsWith('()') ? name.substring(0, name.length - 2) : name;
-			const currentClass = this.classes.get(className);
+			const normalizedClassName = this.normalizeTypeName(className, lineNumber);
+			const currentClass = this.classes.get(normalizedClassName);
 			if (currentClass === undefined) return undefined;
 			return {
 				kind: name.endsWith('()') ? 'constructor' : 'classType',
 				name,
-				type: className,
+				type: normalizedClassName,
 				definition: currentClass.definition,
 				classInfo: currentClass
 			};
@@ -1304,6 +1319,7 @@ interface ExpressionTypeParserOptions {
 	normalizeType: (type: string) => string;
 	resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
 	resolveIndexType: (hostType: string) => string | undefined;
+	resolveArrayLiteralType: (chain: string) => string | undefined;
 }
 
 type ExpressionParseResult = {
@@ -1319,6 +1335,7 @@ class ExpressionTypeParser {
 	private readonly normalizeType: (type: string) => string;
 	private readonly resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
 	private readonly resolveIndexType: (hostType: string) => string | undefined;
+	private readonly resolveArrayLiteralType: (chain: string) => string | undefined;
 	private readonly tokens: readonly ExpressionToken[];
 	private index = 0;
 
@@ -1330,6 +1347,7 @@ class ExpressionTypeParser {
 		this.normalizeType = options.normalizeType;
 		this.resolveMemberType = options.resolveMemberType;
 		this.resolveIndexType = options.resolveIndexType;
+		this.resolveArrayLiteralType = options.resolveArrayLiteralType;
 		this.tokens = tokenizeExpression(options.expression);
 	}
 
@@ -1508,6 +1526,12 @@ class ExpressionTypeParser {
 			}
 		}
 
+		// Bare type name (no calls/members yet) followed by `[` is an array
+		// literal, e.g. `Int[]` or `tools::Widget[a, b]`. Once a call or
+		// member access has happened the chain is a value, so `[` reverts
+		// to indexing.
+		let isBareTypeChain = true;
+
 		for (;;) {
 			const token = this.peek();
 			if (token === undefined) {
@@ -1522,10 +1546,26 @@ class ExpressionTypeParser {
 					};
 				}
 				end = endToken.end;
+				isBareTypeChain = false;
 				continue;
 			}
 
 			if (token.kind === 'lbrack') {
+				if (isBareTypeChain) {
+					const baseChain = this.expression.slice(start, end);
+					const arrayElementType = this.resolveArrayLiteralType(baseChain);
+					if (arrayElementType !== undefined) {
+						return this.parseArrayLiteral(token, arrayElementType);
+					}
+					// Mirror the server's `parseArrayInit` heuristic (uppercase
+					// identifier directly followed by `[`). If the type is unknown
+					// the SEM004 on the type token already explains the error;
+					// committing to the array-literal path here suppresses a
+					// misleading SEM001 on the closing bracket.
+					if (TYPE_NAME_REGEXP.test(baseChain)) {
+						return this.parseArrayLiteral(token, baseChain);
+					}
+				}
 				const hostType = this.resolveChainType(this.expression.slice(start, end));
 				if (hostType !== undefined && hostType !== 'Unknown' && !hostType.endsWith('[]')) {
 					return {
@@ -1563,6 +1603,7 @@ class ExpressionTypeParser {
 				}
 				end = member.end;
 				this.index++;
+				isBareTypeChain = false;
 				continue;
 			}
 
@@ -1571,6 +1612,35 @@ class ExpressionTypeParser {
 
 		const type = this.resolveChainType(this.expression.slice(start, end));
 		return this.parsePostfix(type);
+	}
+
+	private parseArrayLiteral(openToken: ExpressionToken, elementTypeName: string): ExpressionParseResult {
+		this.index++;
+		const arrayType = `${elementTypeName}[]`;
+
+		if (this.peek()?.kind === 'rbrack') {
+			this.index++;
+			return this.parsePostfix(arrayType);
+		}
+
+		for (;;) {
+			const element = this.parseOr();
+			if (element.diagnostic !== undefined) {
+				return element;
+			}
+			const next = this.peek();
+			if (next?.kind === 'comma') {
+				this.index++;
+				continue;
+			}
+			if (next?.kind === 'rbrack') {
+				this.index++;
+				return this.parsePostfix(arrayType);
+			}
+			return {
+				diagnostic: this.makeDiagnostic(next ?? openToken, `Encountered unexpected operator: ${next?.text ?? openToken.text}. No right-side arguments found.`)
+			};
+		}
 	}
 
 	private parsePostfix(baseType: string | undefined): ExpressionParseResult {

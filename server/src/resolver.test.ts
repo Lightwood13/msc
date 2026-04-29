@@ -504,6 +504,35 @@ describe('MSC resolver', () => {
 		assert.strictEqual(wrongHost.diagnostics[0].code, 'SEM014');
 	});
 
+	it('treats `Type[...]` as an array literal, including via active namespace', () => {
+		const document = createDocument('@using transmute\n@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		// Bare `Machine` resolves through the active `transmute` namespace.
+		const empty = resolution.analyzeExpression('Machine[]', 1, 0);
+		assert.deepStrictEqual(empty.diagnostics, []);
+		assert.strictEqual(empty.type, 'transmute::Machine[]');
+
+		const populated = resolution.analyzeExpression('Widget[player, player]', 1, 0);
+		assert.deepStrictEqual(populated.diagnostics, []);
+		assert.strictEqual(populated.type, 'Widget[]');
+
+		const namespaced = resolution.analyzeExpression('tools::Widget[]', 1, 0);
+		assert.deepStrictEqual(namespaced.diagnostics, []);
+		assert.strictEqual(namespaced.type, 'tools::Widget[]');
+
+		// After the literal, postfix `[...]` is ordinary indexing on the array.
+		const indexed = resolution.analyzeExpression('Widget[player][0]', 1, 0);
+		assert.deepStrictEqual(indexed.diagnostics, []);
+		assert.strictEqual(indexed.type, 'Widget');
+
+		// Unknown uppercase identifier followed by `[` still parses as an array
+		// literal so the SEM004 raised on the type token is not joined by a
+		// spurious SEM001 on the closing bracket.
+		const unknown = resolution.analyzeExpression('Mystery[]', 1, 0);
+		assert.deepStrictEqual(unknown.diagnostics, []);
+	});
+
 	it('flags member access on null literal', () => {
 		const document = createDocument('@return 1');
 		const resolution = resolveDocument({ document, namespaces, classes });
