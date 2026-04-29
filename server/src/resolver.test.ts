@@ -9,7 +9,7 @@ function createDefinition(uri: string, line: number, character: number): Definit
 	return { uri, line, character };
 }
 
-function createMember(name: string, kind: 'variable' | 'function' | 'constructor', returnType: string, uri: string): MemberInfo {
+function createMember(name: string, kind: 'variable' | 'function' | 'constructor', returnType: string, uri: string, options?: { isRelative?: boolean }): MemberInfo {
 	const label = kind === 'function' || kind === 'constructor' ? `${returnType === 'Void' ? '' : `${returnType} `}${name}` : `${returnType} ${name}`;
 	return {
 		name,
@@ -23,7 +23,8 @@ function createMember(name: string, kind: 'variable' | 'function' | 'constructor
 		},
 		signature: kind === 'function' || kind === 'constructor' ? SignatureInformation.create(label, undefined) : undefined,
 		definition: createDefinition(uri, 0, 0),
-		isFinal: false
+		isFinal: false,
+		isRelative: options?.isRelative ?? false
 	};
 }
 
@@ -114,6 +115,10 @@ describe('MSC resolver', () => {
 		['transmute', createNamespace([
 			createMember('machine10a', 'variable', 'Machine', transmuteUri),
 			createMember('machines', 'variable', 'Machine[]', transmuteUri)
+		])],
+		['akrobots', createNamespace([
+			createMember('sideToMove', 'variable', 'Int', toolsUri, { isRelative: true }),
+			createMember('board', 'variable', 'Int[]', toolsUri, { isRelative: true })
 		])]
 	]);
 	const transmuteMachineArrayClass = createClass('transmute::Machine[]', 'transmute', [
@@ -507,6 +512,46 @@ describe('MSC resolver', () => {
 		const wrongHost = resolution.analyzeExpression('n[0]', 2, 0);
 		assert.strictEqual(wrongHost.diagnostics.length, 1);
 		assert.strictEqual(wrongHost.diagnostics[0].code, 'SEM014');
+	});
+
+	it('allows Player indexing on relative namespace variables', () => {
+		const document = createDocument('@using akrobots\n@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		// Bare relative is the underlying type (implicit executing player).
+		const bareScalar = resolution.analyzeExpression('sideToMove', 1, 0);
+		assert.deepStrictEqual(bareScalar.diagnostics, []);
+		assert.strictEqual(bareScalar.type, 'Int');
+
+		// Explicit per-player lookup keeps the type.
+		const playerScalar = resolution.analyzeExpression('sideToMove[player]', 1, 0);
+		assert.deepStrictEqual(playerScalar.diagnostics, []);
+		assert.strictEqual(playerScalar.type, 'Int');
+
+		// Relative array: per-player lookup returns the array, then Int index works.
+		const playerArray = resolution.analyzeExpression('board[player]', 1, 0);
+		assert.deepStrictEqual(playerArray.diagnostics, []);
+		assert.strictEqual(playerArray.type, 'Int[]');
+
+		const playerThenIndex = resolution.analyzeExpression('board[player][0]', 1, 0);
+		assert.deepStrictEqual(playerThenIndex.diagnostics, []);
+		assert.strictEqual(playerThenIndex.type, 'Int');
+
+		// Implicit player: Int index on a relative array is the array element.
+		const implicitIndex = resolution.analyzeExpression('board[0]', 1, 0);
+		assert.deepStrictEqual(implicitIndex.diagnostics, []);
+		assert.strictEqual(implicitIndex.type, 'Int');
+
+		// Player indexing only works on the original variable; once consumed
+		// the next [player] is rejected.
+		const doublePlayer = resolution.analyzeExpression('board[player][player]', 1, 0);
+		assert.strictEqual(doublePlayer.diagnostics.length, 1);
+		assert.strictEqual(doublePlayer.diagnostics[0].code, 'SEM015');
+
+		// Non-relative array still rejects Player indexing.
+		const nonRelative = resolution.analyzeExpression('machines[player]', 1, 0);
+		assert.strictEqual(nonRelative.diagnostics.length, 1);
+		assert.strictEqual(nonRelative.diagnostics[0].code, 'SEM015');
 	});
 
 	it('treats `Type[...]` as an array literal, including via active namespace', () => {

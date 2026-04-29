@@ -1535,7 +1535,7 @@ function processLine(line: string, lineNumber: number, parsingContext: ScriptPar
 	const firstWord = trimmedLine.split(" ")[0];
 	const lineStartIndex = line.indexOf(firstWord);
 
-	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, diagnostics);
+	validateScriptOperatorSyntax(trimmedLine, firstWord, lineNumber, lineStartIndex, line.length, line, diagnostics);
 	processControlStatements(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
 	validateHeaderPosition(firstWord, lineNumber, lineStartIndex, line.length, parsingContext, diagnostics);
 }

@@ -631,7 +631,7 @@ A function, method, or constructor call must match one of the declared overloads
 <a id="sem014"></a>
 ### SEM014: index-non-array (semantic error)
 
-The `[...]` index operator only applies to array types (`Int[]`, `Player[]`, ...).
+The `[...]` index operator only applies to array types (`Int[]`, `Player[]`, ...). The exception is a `relative T` namespace variable, where `var[somePlayer]` is the per-player lookup and yields `T`.
 
 ```msc
 # bad
@@ -641,6 +641,7 @@ The `[...]` index operator only applies to array types (`Int[]`, `Player[]`, ...
 # good
 @define Int[] xs = newInts()
 @return xs[0]
+@return sideToMove[player]   # `relative Int sideToMove` namespace variable
 ```
 
 ---
@@ -648,15 +649,17 @@ The `[...]` index operator only applies to array types (`Int[]`, `Player[]`, ...
 <a id="sem015"></a>
 ### SEM015: non-int-index (semantic error)
 
-An array index expression must produce an `Int`. There is no implicit conversion from `Long`/`Float`/`Double`/`String`/etc.
+An array index expression must produce an `Int`. There is no implicit conversion from `Long`/`Float`/`Double`/`String`/etc. `Player` is only allowed when indexing a `relative` namespace variable.
 
 ```msc
 # bad
 @define Int[] xs = newInts()
 @return xs["zero"]
+@return ys[player]           # ys is not a relative namespace variable
 
 # good
 @return xs[0]
+@return ys[player]           # `relative Int[] ys` namespace variable
 ```
 
 ---

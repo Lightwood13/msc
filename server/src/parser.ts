@@ -22,6 +22,10 @@ export interface MemberInfo {
 	signature: SignatureInformation | undefined
 	definition: DefinitionLocation | undefined
 	isFinal: boolean
+	// `relative T x` is a per-player namespace variable: dereference is
+	// implicit (uses the executing player) but `x[someplayer]` is also legal
+	// and yields T. Only set on namespace-level variables.
+	isRelative: boolean
 }
 export interface NamespaceInfo {
 	members: Map<string, MemberInfo>
@@ -208,7 +212,8 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		signature: undefined,
 		documentation: undefined,
 		definition: undefined,
-		isFinal: false
+		isFinal: false,
+		isRelative: false
 	};
 
 	if (functionRegExpRes !== null) {
@@ -260,6 +265,7 @@ function parseVariableOrFunctionAtLine(namePrefix: string, lines: string[], line
 		result.kind = 'variable';
 		result.returnType = variableRegExpRes[5];
 		result.isFinal = variableRegExpRes[3] !== undefined;
+		result.isRelative = variableRegExpRes[2] !== undefined || variableRegExpRes[4] !== undefined;
 		result.suggestion = {
 			label: variableRegExpRes[6],
 			kind: CompletionItemKind.Variable,

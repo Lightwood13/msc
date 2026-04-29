@@ -314,7 +314,8 @@ class DocumentResolutionImpl implements DocumentResolution {
 			normalizeType: type => this.normalizeTypeName(type, lineNumber),
 			resolveMemberType: (hostType, memberName, isCall) => this.resolveMemberType(hostType, memberName, isCall, lineNumber),
 			resolveIndexType: hostType => this.resolveIndexedType(hostType, lineNumber),
-			resolveArrayLiteralType: typeName => this.resolveArrayLiteralType(typeName, lineNumber)
+			resolveArrayLiteralType: typeName => this.resolveArrayLiteralType(typeName, lineNumber),
+			isRelativeReference: segment => this.isRelativeReference(segment, lineNumber)
 		}).analyze();
 	}
 
@@ -940,6 +941,29 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return this.classes.has(normalized) ? normalized : undefined;
 	}
 
+	// `relative T x` namespace variables accept `x[somePlayer]` to look up the
+	// per-player value; result type is still T. Server-side this is gated on
+	// the host being a Variable with the RELATIVE qualifier (IndexedValue.java),
+	// so the relative tag is consumed once any chain step has happened.
+	private isRelativeReference(segment: string, lineNumber: number): boolean {
+		if (!/^(?:[a-zA-Z][a-zA-Z0-9_]*::)?[a-z][a-zA-Z0-9_]*$/.test(segment)) {
+			return false;
+		}
+		const scopePos = segment.indexOf('::');
+		if (scopePos !== -1) {
+			const ns = segment.substring(0, scopePos);
+			const name = segment.substring(scopePos + 2);
+			return this.namespaces.get(ns)?.members.get(name)?.isRelative === true;
+		}
+		// Local bindings are never relative; an explicit local shadows the namespace var.
+		if (this.findVisibleBinding(segment, lineNumber) !== undefined) {
+			return false;
+		}
+		const activeNamespace = this.activeNamespaceByLine[lineNumber];
+		if (activeNamespace === undefined) return false;
+		return this.namespaces.get(activeNamespace)?.members.get(segment)?.isRelative === true;
+	}
+
 	private resolveTokenSymbol(token: Token): ResolvedSymbol | undefined {
 		const lineText = this.lines[token.line];
 		const activeNamespace = this.activeNamespaceByLine[token.line];
@@ -1322,6 +1346,7 @@ interface ExpressionTypeParserOptions {
 	resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
 	resolveIndexType: (hostType: string) => string | undefined;
 	resolveArrayLiteralType: (chain: string) => string | undefined;
+	isRelativeReference: (segment: string) => boolean;
 }
 
 type ExpressionParseResult = {
@@ -1338,6 +1363,7 @@ class ExpressionTypeParser {
 	private readonly resolveMemberType: (hostType: string, memberName: string, isCall: boolean) => string | undefined;
 	private readonly resolveIndexType: (hostType: string) => string | undefined;
 	private readonly resolveArrayLiteralType: (chain: string) => string | undefined;
+	private readonly isRelativeReference: (segment: string) => boolean;
 	private readonly tokens: readonly ExpressionToken[];
 	private index = 0;
 
@@ -1350,6 +1376,7 @@ class ExpressionTypeParser {
 		this.resolveMemberType = options.resolveMemberType;
 		this.resolveIndexType = options.resolveIndexType;
 		this.resolveArrayLiteralType = options.resolveArrayLiteralType;
+		this.isRelativeReference = options.isRelativeReference;
 		this.tokens = tokenizeExpression(options.expression);
 	}
 
@@ -1547,6 +1574,12 @@ class ExpressionTypeParser {
 		// to indexing.
 		let isBareTypeChain = true;
 
+		// `relative T x` namespace variables accept `x[somePlayer]` as a
+		// per-player lookup (result type T). Server-side this requires the
+		// host to still be a Variable, so any chain step (call, member, or
+		// even the deref itself) consumes the relative tag.
+		let isRelativeChain = this.isRelativeReference(this.expression.slice(start, end));
+
 		for (;;) {
 			const token = this.peek();
 			if (token === undefined) {
@@ -1562,6 +1595,7 @@ class ExpressionTypeParser {
 				}
 				end = endToken.end;
 				isBareTypeChain = false;
+				isRelativeChain = false;
 				continue;
 			}
 
@@ -1582,11 +1616,6 @@ class ExpressionTypeParser {
 					}
 				}
 				const hostType = this.resolveChainType(this.expression.slice(start, end));
-				if (hostType !== undefined && hostType !== 'Unknown' && !hostType.endsWith('[]')) {
-					return {
-						diagnostic: this.makeDiagnostic(token, `Cannot index a non-array type ${hostType}`, 'SEM014')
-					};
-				}
 				this.index++;
 				const inner = this.parseOr();
 				if (inner.diagnostic !== undefined) {
@@ -1598,6 +1627,20 @@ class ExpressionTypeParser {
 						diagnostic: this.makeDiagnostic(token, `Encountered unexpected operator: ${token.text}. No right-side arguments found.`)
 					};
 				}
+				// Relative dereference: `var[somePlayer]` on a `relative T`
+				// keeps the type as T and bypasses the array-host check. The
+				// rest of the chain is no longer a known-name reference, so
+				// hand it off to parsePostfix instead of trying to resolve a
+				// composite slice that includes `[player]` as array index.
+				if (isRelativeChain && inner.type === 'Player') {
+					this.index++;
+					return this.parsePostfix(hostType);
+				}
+				if (hostType !== undefined && hostType !== 'Unknown' && !hostType.endsWith('[]')) {
+					return {
+						diagnostic: this.makeDiagnostic(token, `Cannot index a non-array type ${hostType}`, 'SEM014')
+					};
+				}
 				if (inner.type !== undefined && inner.type !== 'Unknown' && inner.type !== 'Int') {
 					return {
 						diagnostic: this.makeDiagnostic(token, `Array index must be Int, got ${inner.type}`, 'SEM015')
@@ -1605,6 +1648,7 @@ class ExpressionTypeParser {
 				}
 				end = close.end;
 				this.index++;
+				isRelativeChain = false;
 				continue;
 			}
 
@@ -1619,6 +1663,7 @@ class ExpressionTypeParser {
 				end = member.end;
 				this.index++;
 				isBareTypeChain = false;
+				isRelativeChain = false;
 				continue;
 			}
 
