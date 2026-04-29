@@ -1776,7 +1776,7 @@ function validateDefineInitializers(lines: readonly string[], resolution: Docume
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@define\s+([\w:]+(?:\[\])?)\s+\w+\s*=\s*(.+)$/.exec(lines[lineNumber]);
 		if (match === null) continue;
-		const declaredType = match[2];
+		const declaredType = resolution.normalizeType(match[2], lineNumber);
 		const initializerText = match[3].trimEnd();
 		const initializerStart = lines[lineNumber].length - match[3].length;
 		const analysis = resolution.analyzeExpression(initializerText, lineNumber, initializerStart);
@@ -2221,7 +2221,7 @@ function validateForIterable(lines: readonly string[], resolution: DocumentResol
 	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 		const match = /^(\s*)@for\s+([\w:]+(?:\[\])?)\s+\w+\s+in\s+(.+)$/.exec(lines[lineNumber]);
 		if (match === null) continue;
-		const declaredType = match[2];
+		const declaredType = resolution.normalizeType(match[2], lineNumber);
 		const iterableText = match[3].trimEnd();
 		const iterableStart = lines[lineNumber].length - match[3].length;
 		const analysis = resolution.analyzeExpression(iterableText, lineNumber, iterableStart);

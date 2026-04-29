@@ -551,6 +551,19 @@ describe('MSC resolver', () => {
 		assert.strictEqual(populated.diagnostics[0].code, 'SEM023');
 	});
 
+	it('normalizes bare type names against the active namespace', () => {
+		// Validators in server.ts read declared types from regex captures
+		// (e.g. `@define Machine m`) and must normalize before comparing to
+		// a constructor result that already carries its namespace prefix.
+		const document = createDocument('@using transmute\n@return 1');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		assert.strictEqual(resolution.normalizeType('Machine', 1), 'transmute::Machine');
+		assert.strictEqual(resolution.normalizeType('Machine[]', 1), 'transmute::Machine[]');
+		assert.strictEqual(resolution.normalizeType('Player', 1), 'Player');
+		assert.strictEqual(resolution.normalizeType('Mystery', 1), 'Mystery');
+	});
+
 	it('resolves member access through an indexed namespace-array variable', () => {
 		const document = createDocument('@using transmute\n@var machines[0].state = "x"');
 		const resolution = resolveDocument({ document, namespaces, classes });
