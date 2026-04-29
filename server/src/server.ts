@@ -1835,13 +1835,25 @@ function validateNamespaceReferences(resolution: DocumentResolution, diagnostics
 	}
 }
 
-function validateNamespaceMembers(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+function validateNamespaceMembers(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
 		const namespaceName = resolution.getNamespaceQualifier(reference.token.range.start);
 		if (namespaceName === undefined) continue;
+		const suggestion = closestName(reference.token.text, resolution.getNamespaceMemberNames(namespaceName));
+		const lineText = lines[reference.token.line] ?? '';
 		raise(diagnostics, RULES.SEM006, reference.token.range, {
-			message: `Namespace '${namespaceName}' has no member named '${reference.token.text}'`
+			message: suggestion === undefined
+				? `Namespace '${namespaceName}' has no member named '${reference.token.text}'`
+				: `Namespace '${namespaceName}' has no member named '${reference.token.text}'. Did you mean '${suggestion}'?`,
+			fix: suggestion === undefined ? undefined : {
+				title: `Replace with ${suggestion}`,
+				edits: [{
+					kind: 'replace',
+					line: reference.token.line,
+					content: lineText.slice(0, reference.token.range.start.character) + suggestion + lineText.slice(reference.token.range.end.character)
+				}]
+			}
 		});
 	}
 }
@@ -2404,7 +2416,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateMemberAccess(lines, resolution, diagnostics);
 		validateUndefinedIdentifiers(lines, resolution, diagnostics);
 		validateNamespaceReferences(resolution, diagnostics);
-		validateNamespaceMembers(resolution, diagnostics);
+		validateNamespaceMembers(lines, resolution, diagnostics);
 		validateConditionTypes(lines, resolution, diagnostics);
 		validateForIterable(lines, resolution, diagnostics);
 		validateDefineInitializers(lines, resolution, diagnostics);

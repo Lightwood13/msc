@@ -459,7 +459,7 @@ The quick fix replaces the typo with the closest valid member name.
 <a id="sem004"></a>
 ### SEM004: undefined-identifier (semantic error)
 
-A bare identifier in an expression position must resolve to a local binding, namespace member, or class. Member access (`x.y`) and namespace-qualified names (`tools::y`) are handled by their own rules, and identifiers inside operator-syntax positions like `@cooldown 5s` or `@for Int x in xs` are not flagged.
+A bare identifier in an expression position must resolve to a local binding, namespace member, or class.
 
 ```msc
 # bad
@@ -506,6 +506,8 @@ A `namespace::member` reference must point at a real member of that namespace. T
 @return math::square(3)
 ```
 
+The quick fix replaces the typo with the closest valid member name.
+
 ---
 
 <a id="sem007"></a>
@@ -549,7 +551,7 @@ The expression after `in` in a `@for` loop must have an array type.
 <a id="sem009"></a>
 ### SEM009: for-element-type-mismatch (semantic error)
 
-The variable type declared after `@for` must match the array's element type. The declared type is verbatim — no implicit numeric widening.
+The variable type declared after `@for` must match the array's element type.
 
 ```msc
 # bad

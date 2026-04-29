@@ -139,6 +139,7 @@ export interface DocumentResolution {
 	normalizeType(type: string, lineNumber: number): string;
 	hasMember(typeName: string, memberName: string): boolean;
 	getMemberNames(typeName: string): readonly string[];
+	getNamespaceMemberNames(namespaceName: string): readonly string[];
 }
 
 interface ResolutionInputs {
@@ -373,6 +374,12 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 	getMemberNames(typeName: string): readonly string[] {
 		const members = this.classes.get(typeName)?.members;
+		if (members === undefined) return [];
+		return [...members.keys()].map(name => name.endsWith('()') ? name.slice(0, -2) : name);
+	}
+
+	getNamespaceMemberNames(namespaceName: string): readonly string[] {
+		const members = this.namespaces.get(namespaceName)?.members;
 		if (members === undefined) return [];
 		return [...members.keys()].map(name => name.endsWith('()') ? name.slice(0, -2) : name);
 	}
