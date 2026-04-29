@@ -599,25 +599,29 @@ describe('MSC resolver', () => {
 		assert.strictEqual(chain.type, 'String');
 	});
 
-	it('tokenizes Double/Long literal suffixes as part of the number, not as identifiers', () => {
-		const document = createDocument('@define Double scale = 2.0D\n@define Long big = 10L\n');
+	it('tokenizes numeric literal suffixes as part of the number, not as identifiers', () => {
+		const document = createDocument('@define Double scale = 2.0D\n@define Long big = 10L\n@define Float small = 0.18655F * 2.0F\n@define Double sci = 1.5E-4\n');
 		const resolution = resolveDocument({ document, namespaces, classes });
 
-		// `D`/`L` should not appear as identifier tokens — they are part of the literal.
-		const dToken = resolution.getTokenAtPosition(positionOf(document, '2.0D'));
-		assert.ok(dToken);
-		assert.strictEqual(dToken!.kind, 'numberLiteral');
-		assert.strictEqual(dToken!.text, '2.0D');
+		const cases: [string, string][] = [
+			['2.0D', '2.0D'],
+			['10L', '10L'],
+			['0.18655F', '0.18655F'],
+			['2.0F', '2.0F'],
+			['1.5E-4', '1.5E-4']
+		];
+		for (const [needle, expected] of cases) {
+			const token = resolution.getTokenAtPosition(positionOf(document, needle));
+			assert.ok(token, `expected a token at ${needle}`);
+			assert.strictEqual(token!.kind, 'numberLiteral', `wrong kind for ${needle}`);
+			assert.strictEqual(token!.text, expected);
+		}
 
-		const lToken = resolution.getTokenAtPosition(positionOf(document, '10L'));
-		assert.ok(lToken);
-		assert.strictEqual(lToken!.kind, 'numberLiteral');
-		assert.strictEqual(lToken!.text, '10L');
-
-		// Nothing on these lines should resolve as a free reference.
-		const unresolvedRefs = resolution.references.filter(ref =>
-			ref.symbol.kind === 'unresolved' && (ref.token.text === 'D' || ref.token.text === 'L'));
-		assert.deepStrictEqual(unresolvedRefs, []);
+		// No suffix character or exponent fragment should leak out as a free identifier.
+		const stragglers = resolution.references.filter(ref =>
+			ref.symbol.kind === 'unresolved' && /^[a-zA-Z][a-zA-Z0-9]*$/.test(ref.token.text) &&
+			['D', 'L', 'F', 'E', 'E4'].includes(ref.token.text));
+		assert.deepStrictEqual(stragglers, []);
 	});
 
 	it('infers types for well-formed numeric literals', () => {
@@ -632,7 +636,10 @@ describe('MSC resolver', () => {
 			['1.5', 'Float'],
 			['1.5D', 'Double'],
 			['2.0d', 'Double'],
-			['10l', 'Long']
+			['10l', 'Long'],
+			['0.18655F', 'Float'],
+			['2.0f', 'Float'],
+			['1.5E-4', 'Float']
 		];
 		for (const [literal, expectedType] of cases) {
 			const analysis = resolution.analyzeExpression(literal, 0, 0);
@@ -667,6 +674,13 @@ describe('MSC resolver', () => {
 		assert.strictEqual(decimalLong.diagnostics.length, 1);
 		assert.strictEqual(decimalLong.diagnostics[0].code, 'SEM024');
 		assert.match(decimalLong.diagnostics[0].message, /decimal point/);
+
+		// Server routes `123F` to IntType (no decimal) and Integer.parseInt rejects
+		// the `F`. Surface the underlying mismatch with a Float-specific hint.
+		const floatNoDecimal = resolution.analyzeExpression('123F', 0, 0);
+		assert.strictEqual(floatNoDecimal.diagnostics.length, 1);
+		assert.strictEqual(floatNoDecimal.diagnostics[0].code, 'SEM024');
+		assert.match(floatNoDecimal.diagnostics[0].message, /decimal point/);
 	});
 
 	it('flags member access on null literal', () => {

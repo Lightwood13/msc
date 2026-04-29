@@ -1140,21 +1140,7 @@ function tokenizeCode(text: string, offset: number, line: number, tokens: Token[
 		}
 
 		if (/[0-9]/.test(c)) {
-			let end = index + 1;
-			while (end < text.length && /[0-9.]/.test(text[end])) {
-				end++;
-			}
-			if (text[end] === '-' && text[end - 1] === 'E') {
-				end++;
-				while (end < text.length && /[0-9.]/.test(text[end])) {
-					end++;
-				}
-			}
-			// `dDlL` are MSC's Double/Long literal suffixes (see ExpressionParser.parseLiteral).
-			// Consuming them here keeps the suffix from being lexed as a free identifier.
-			if (/[dDlL]/.test(text[end] ?? '')) {
-				end++;
-			}
+			const end = scanNumericLiteral(text, index);
 			tokens.push(makeToken('numberLiteral', line, offset + index, offset + end, text.slice(index, end), flags));
 			index = end;
 			continue;
@@ -1873,19 +1859,7 @@ function tokenizeExpression(expression: string): ExpressionToken[] {
 		}
 
 		if (/[0-9]/.test(c)) {
-			let end = index + 1;
-			while (end < expression.length && /[0-9.]/.test(expression[end])) {
-				end++;
-			}
-			if (expression[end] === '-' && expression[end - 1] === 'E') {
-				end++;
-				while (end < expression.length && /[0-9.]/.test(expression[end])) {
-					end++;
-				}
-			}
-			if (/[dDlL]/.test(expression[end] ?? '')) {
-				end++;
-			}
+			const end = scanNumericLiteral(expression, index);
 			tokens.push({ kind: 'number', text: expression.slice(index, end), start: index, end });
 			index = end;
 			continue;
@@ -1928,16 +1902,33 @@ function tokenizeExpression(expression: string): ExpressionToken[] {
 }
 
 function literalType(literal: string): string {
-	if (literal.toLowerCase().endsWith('l')) {
+	const lower = literal.toLowerCase();
+	if (lower.endsWith('l')) {
 		return 'Long';
 	}
-	if (literal.toLowerCase().endsWith('d') || literal === 'pi' || literal === '\u03c0') {
+	if (lower.endsWith('d') || literal === 'pi' || literal === '\u03c0') {
 		return 'Double';
 	}
 	if (literal.includes('.')) {
 		return 'Float';
 	}
 	return 'Int';
+}
+
+// Mirrors the server's `ParseUtil.firstNonAlphanumerical(s, ".")` plus the
+// explicit `E-` carve-out in ExpressionParser.parseLiteral: starting from a
+// digit, consume any alphanumerics/underscores/dots, then optionally a `-`
+// preceded by `E` (scientific notation) and the run that follows. Suffix
+// validity (L, D, F, \u2026) is checked later by `checkNumberLiteral`.
+function scanNumericLiteral(text: string, start: number): number {
+	const isNumericRun = (c: string | undefined) => c !== undefined && /[a-zA-Z0-9_.]/.test(c);
+	let end = start + 1;
+	while (isNumericRun(text[end])) end++;
+	if (text[end] === '-' && text[end - 1] === 'E') {
+		end++;
+		while (isNumericRun(text[end])) end++;
+	}
+	return end;
 }
 
 const INT_MIN = -2147483648n;
@@ -1978,11 +1969,19 @@ function checkNumberLiteral(literal: string): string | undefined {
 	}
 
 	if (literal.includes('.')) {
-		const value = Number(literal);
+		// Float accepts a trailing F/f (Float.parseFloat eats it); JS Number() does not.
+		const numericPart = lower.endsWith('f') ? literal.slice(0, -1) : literal;
+		const value = Number(numericPart);
 		if (!isFinite(value)) {
 			return `Invalid Float literal '${literal}'`;
 		}
 		return undefined;
+	}
+
+	// `123F` reaches IntType.parseLiteral on the server (no decimal → not a Float),
+	// where Integer.parseInt rejects the F. Surface a friendlier hint.
+	if (lower.endsWith('f')) {
+		return `Float literal '${literal}' must contain a decimal point`;
 	}
 
 	try {
