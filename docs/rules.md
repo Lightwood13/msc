@@ -149,6 +149,8 @@ The quick fix inserts a `Type` placeholder when only the type is missing.
 @define String name = "Minr"
 ```
 
+The quick fix inserts a `Type` placeholder when only the type is missing.
+
 ---
 
 <a id="syn008"></a>

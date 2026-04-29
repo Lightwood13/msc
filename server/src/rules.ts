@@ -72,7 +72,15 @@ export const RULES: Record<string, Rule> = {
 		name: 'define-syntax',
 		category: 'syntax',
 		severity: 'error',
-		description: 'Invalid @define syntax; expected `@define <type> <variable> [= <expression>]`'
+		description: 'Invalid @define syntax; expected `@define <type> <variable> [= <expression>]`',
+		fix: ({ lineText, line }) => {
+			const m = lineText.match(/^(\s*)@define\s+([a-z]\w*)\s*(=\s*\S.*)$/);
+			if (!m) return null;
+			return {
+				title: 'Insert `Type` placeholder',
+				edits: [{ kind: 'replace', line, content: `${m[1]}@define Type ${m[2]} ${m[3]}` }]
+			};
+		}
 	},
 	SYN008: {
 		code: 'SYN008',
