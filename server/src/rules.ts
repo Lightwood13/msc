@@ -57,7 +57,15 @@ export const RULES: Record<string, Rule> = {
 		name: 'for-syntax',
 		category: 'syntax',
 		severity: 'error',
-		description: 'Invalid @for syntax; expected `@for <type> <variable> in <list>`'
+		description: 'Invalid @for syntax; expected `@for <type> <variable> in <list>`',
+		fix: ({ lineText, line }) => {
+			const m = lineText.match(/^(\s*)@for\s+([a-z]\w*)\s+in\s+(.+\S)\s*$/);
+			if (!m) return null;
+			return {
+				title: 'Insert `Type` placeholder',
+				edits: [{ kind: 'replace', line, content: `${m[1]}@for Type ${m[2]} in ${m[3]}` }]
+			};
+		}
 	},
 	SYN007: {
 		code: 'SYN007',

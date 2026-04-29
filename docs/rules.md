@@ -132,6 +132,8 @@ The quick fix removes the trailing content.
 @for Player p in onlinePlayers
 ```
 
+The quick fix inserts a `Type` placeholder when only the type is missing.
+
 ---
 
 <a id="syn007"></a>
