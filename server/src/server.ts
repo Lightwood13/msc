@@ -6,6 +6,7 @@ import {
 	createConnection,
 	TextDocuments,
 	Diagnostic,
+	DiagnosticSeverity,
 	CodeAction,
 	CodeActionKind,
 	CodeActionParams,
@@ -68,7 +69,7 @@ import {
 	keywordsWithoutAtSymbol,
 	minecraftCommands
 } from './keywords';
-import { DiagnosticData, Fix, lineOpsToEdits, parseSuppressions, raise } from './lint';
+import { DiagnosticData, Fix, lineOpsToEdits, parseSuppressions, raise, RuleCategory } from './lint';
 import { RULES } from './rules';
 import {
 	DocumentResolution,
@@ -127,6 +128,14 @@ connection.onInitialized(() => {
 	}
 	connection.sendNotification('getDefaultNamespaces');
 	void refreshNamespaceFiles();
+	void refreshCategoryOverrides();
+});
+
+connection.onDidChangeConfiguration(async () => {
+	await refreshCategoryOverrides();
+	for (const document of documents.all()) {
+		void validateAndReportDiagnostics(document);
+	}
 });
 
 const documentResolutions: Map<string, Promise<DocumentResolution>> = new Map();
@@ -142,6 +151,36 @@ let defaultNamespacesSourceUri: string = '';
 // empty diagnostics. Each loader flips its flag and revalidates open docs.
 let defaultsLoaded = false;
 let workspaceLoaded = false;
+
+// User-configured per-category severity overrides (`msc.diagnostics.categories.*`).
+// `'default'` (or absent) keeps each rule's built-in severity; `'off'` drops the
+// diagnostic entirely. Refreshed on init and on workspace/didChangeConfiguration.
+type CategoryOverride = 'default' | 'error' | 'warning' | 'info' | 'off';
+const CATEGORIES: readonly RuleCategory[] = ['lexical', 'syntax', 'semantic', 'security', 'style'];
+const SEVERITY_FROM_OVERRIDE: Record<Exclude<CategoryOverride, 'default' | 'off'>, DiagnosticSeverity> = {
+	error: DiagnosticSeverity.Error,
+	warning: DiagnosticSeverity.Warning,
+	info: DiagnosticSeverity.Information
+};
+const categoryOverrides: Map<RuleCategory, CategoryOverride> = new Map();
+
+async function refreshCategoryOverrides(): Promise<void> {
+	try {
+		const settings = await connection.workspace.getConfiguration('msc.diagnostics.categories');
+		categoryOverrides.clear();
+		if (settings && typeof settings === 'object') {
+			for (const category of CATEGORIES) {
+				const value = (settings as Record<string, unknown>)[category];
+				if (value === 'error' || value === 'warning' || value === 'info' || value === 'off' || value === 'default') {
+					categoryOverrides.set(category, value);
+				}
+			}
+		}
+	} catch {
+		// Client may not support workspace/configuration; fall back to rule defaults.
+		categoryOverrides.clear();
+	}
+}
 
 async function refreshNamespaceFiles() {
 	try {
@@ -2450,14 +2489,22 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 	}
 
 	const fileCodes = suppressions.file;
-	const filtered = diagnostics.filter(d => {
+	const filtered: Diagnostic[] = [];
+	for (const d of diagnostics) {
 		const code = diagnosticCode(d);
-		if (code && fileCodes.has(code)) return false;
+		if (code && fileCodes.has(code)) continue;
 		const lineSup = suppressions.perLine.get(d.range.start.line);
-		if (lineSup === 'any') return false;
-		if (lineSup && code && lineSup.has(code)) return false;
-		return true;
-	});
+		if (lineSup === 'any') continue;
+		if (lineSup && code && lineSup.has(code)) continue;
+
+		const rule = code ? RULES[code] : undefined;
+		const override = rule ? categoryOverrides.get(rule.category) : undefined;
+		if (override === 'off') continue;
+		if (override !== undefined && override !== 'default') {
+			d.severity = SEVERITY_FROM_OVERRIDE[override];
+		}
+		filtered.push(d);
+	}
 
 	connection.sendDiagnostics({
 		uri: textDocument.uri,

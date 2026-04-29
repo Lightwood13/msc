@@ -2,25 +2,6 @@
 
 Each rule has a stable six-long alphanumeric code used in diagnostics and in `# msc-ignore` comments. When highlighting an error, VSCode links to the section below for more information.
 
-## Ignore comments
-
-To suppress a rule, use `# msc-ignore` comments:
-
-| Comment | Effect |
-|---|---|
-| `# msc-ignore` | Suppress all rules on the next non-blank, non-comment line |
-| `# msc-ignore CODE [CODE...]` | Suppress listed rules on the next non-blank, non-comment line |
-| `# msc-ignore file` | Suppress all rules across the whole file |
-| `# msc-ignore file CODE [CODE...]` | Suppress listed rules across the whole file |
-
-`any` and `all` are accepted as filler and treated as "all rules": `# msc-ignore any` is equivalent to `# msc-ignore`.
-
-The three quick-fix actions on every diagnostic are:
-
-- **Ignore this error** inserts `# msc-ignore <CODE>` on the line above.
-- **Ignore this error and others like it** inserts `# msc-ignore file <CODE>` at the top of the file.
-- **Disable error checking in this file** inserts `# msc-ignore file` at the top of the file.
-
 ## Types of rule
 
 There are five categories of rule.
@@ -30,6 +11,33 @@ There are five categories of rule.
 - **SEM** rules are *semantic*: these govern code which are problematic given the contets of your codebase, such as passing arguments of the incorrect type to a function.
 - **SEC** rules are *security*: these highlights represent features the MSC interpreter refuses to run to prevent crashes or exploits.
 - **STY** rules are *stylistic*: this is for warnings, conventions or recommendations about best practices.
+
+VS Code settings under `msc.diagnostics.categories.*` let you remap or disable a whole category at once:
+
+- `default` keeps each rule's built-in severity.
+- `error` / `warning` / `info` shows every rule in that category at this severity.
+- `off` suppresses every rule in that category.
+
+## Ignore comments
+
+To suppress a rule in just one place, use `# msc-ignore` comments:
+
+| Comment | Effect |
+|---|---|
+| `# msc-ignore` | Suppress all rules on the next non-blank, non-comment line |
+| `# msc-ignore CODE [CODE...]` | Suppress listed rules on the next non-blank, non-comment line |
+| `# msc-ignore file` | Suppress all rules across the whole file |
+| `# msc-ignore file CODE [CODE...]` | Suppress listed rules across the whole file |
+
+Codes `any` and `all` are accepted as filler and treated as "all rules": `# msc-ignore any` is equivalent to `# msc-ignore`. These take priority over your personal settings.
+
+The three quick-fix actions on every diagnostic are:
+
+- **Ignore this error** inserts `# msc-ignore <CODE>` on the line above.
+- **Ignore this error and others like it** inserts `# msc-ignore file <CODE>` at the top of the file.
+- **Disable error checking in this file** inserts `# msc-ignore file` at the top of the file.
+
+Rules may also ome with their own individual quick fixes.
 
 ## Glossary of rules
 
