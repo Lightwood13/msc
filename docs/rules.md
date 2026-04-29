@@ -83,6 +83,8 @@ The first word of a non-comment line must be a recognised script operator (`@if`
 @iff condition
 ```
 
+If a known operator is close to the offending word, the diagnostic suggests it and offers a quick fix to substitute it.
+
 ---
 
 <a id="syn004"></a>

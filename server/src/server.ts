@@ -1154,6 +1154,37 @@ const validStarters = [
 	'@fast', '@slow', '@return'
 ];
 
+function closestScriptOperator(word: string): string | undefined {
+	let best: string | undefined;
+	let bestDistance = Infinity;
+	for (const candidate of validStarters) {
+		const d = editDistance(word, candidate);
+		if (d < bestDistance) {
+			bestDistance = d;
+			best = candidate;
+		}
+	}
+	return best !== undefined && bestDistance <= 2 ? best : undefined;
+}
+
+function editDistance(a: string, b: string): number {
+	const m = a.length, n = b.length;
+	if (m === 0) return n;
+	if (n === 0) return m;
+	let prev = new Array(n + 1);
+	let curr = new Array(n + 1);
+	for (let j = 0; j <= n; j++) prev[j] = j;
+	for (let i = 1; i <= m; i++) {
+		curr[0] = i;
+		for (let j = 1; j <= n; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+		}
+		[prev, curr] = [curr, prev];
+	}
+	return prev[n];
+}
+
 const HEADER_OPERATORS: ReadonlySet<string> = new Set([
 	'@using', '@chatscript', '@cooldown', '@global_cooldown', '@cancel',
 	'@slow', '@fast'
@@ -1209,12 +1240,22 @@ function validateTime(str: string, lineNumber: number, startIndex: number, endIn
 	}
 }
 
-function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, diagnostics: Diagnostic[]) {
+function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, lineNumber: number, lineStartIndex: number, lineLength: number, lineText: string, diagnostics: Diagnostic[]) {
 	if (!validStarters.includes(firstWord)) {
+		const suggestion = closestScriptOperator(firstWord);
+		const fix: Fix | undefined = suggestion === undefined ? undefined : {
+			title: `Replace with ${suggestion}`,
+			edits: [{ kind: 'replace', line: lineNumber, content: lineText.replace(firstWord, suggestion) }]
+		};
 		raise(diagnostics, RULES.SYN003, {
 			start: { line: lineNumber, character: lineStartIndex },
 			end: { line: lineNumber, character: lineStartIndex + firstWord.length }
-		}, { message: `Invalid script option ${firstWord}` });
+		}, {
+			message: suggestion === undefined
+				? `Invalid script option ${firstWord}`
+				: `Invalid script option ${firstWord}. Did you mean ${suggestion}?`,
+			fix
+		});
 		return;
 	}
 
