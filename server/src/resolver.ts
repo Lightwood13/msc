@@ -87,11 +87,16 @@ interface LocalBinding {
 	characterDeclared: number;
 	lineUndeclared?: number;
 	builtin: boolean;
+	// For bindings declared outside the current document (e.g. function/method
+	// parameters sourced from the `.nms` signature). When present, this is the
+	// authoritative go-to-definition target.
+	externalDefinition?: DefinitionLocation;
 }
 
 interface ImplicitVariable {
 	name: string;
 	type: string;
+	definition?: DefinitionLocation;
 }
 
 interface NameAndType {
@@ -140,6 +145,10 @@ export interface DocumentResolution {
 	hasMember(typeName: string, memberName: string): boolean;
 	getMemberNames(typeName: string): readonly string[];
 	getNamespaceMemberNames(namespaceName: string): readonly string[];
+	// Names bound from outside the document body (parameters from the `.nms`
+	// signature, `this`, and implicit `player`/`block`). Used by redeclaration
+	// and shadowing validators that need to know what's already in scope.
+	getInitialScopeNames(): readonly string[];
 }
 
 interface ResolutionInputs {
@@ -157,7 +166,6 @@ interface SpecialSpan {
 	flags?: TokenFlags;
 }
 
-const FIRST_LINE_PARAM_REGEXP = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g;
 const TYPE_NAME_REGEXP = /^(?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*$/;
 const RESERVED_VARIABLE_NAMES = new Set(['true', 'false', 'this', 'null', 'final', 'relative', 'private', 'pi']);
 
@@ -378,6 +386,11 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return [...members.keys()].map(name => name.endsWith('()') ? name.slice(0, -2) : name);
 	}
 
+	getInitialScopeNames(): readonly string[] {
+		const bindings = this.visibleBindingsByLine[0] ?? [];
+		return bindings.filter(b => b.lineDeclared < 0).map(b => b.name);
+	}
+
 	getNamespaceMemberNames(namespaceName: string): readonly string[] {
 		const members = this.namespaces.get(namespaceName)?.members;
 		if (members === undefined) return [];
@@ -480,9 +493,6 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 		if (trimmed.startsWith('#')) {
 			tokens.push(makeToken('comment', line, 0, lineText.length, lineText));
-			if (line === 0) {
-				this.tokenizeFirstLineParameters(lineText, line, tokens);
-			}
 			return tokens;
 		}
 
@@ -528,41 +538,6 @@ class DocumentResolutionImpl implements DocumentResolution {
 				commandText: true
 			}));
 		}
-	}
-
-	private tokenizeFirstLineParameters(lineText: string, line: number, tokens: Token[]) {
-		const openingBracketPos = lineText.indexOf('(');
-		const closingBracketPos = lineText.indexOf(')');
-		const paramListStart = openingBracketPos === -1 ? lineText.indexOf('#') : openingBracketPos;
-		const paramListEnd = closingBracketPos === -1 ? lineText.length : closingBracketPos;
-		if (paramListStart === -1 || paramListEnd <= paramListStart) {
-			return;
-		}
-
-		const paramsText = lineText.substring(paramListStart + 1, paramListEnd);
-		const spans: SpecialSpan[] = [];
-		for (const match of paramsText.matchAll(FIRST_LINE_PARAM_REGEXP)) {
-			if (match.index === undefined) continue;
-			const typeStart = paramListStart + 1 + match.index;
-			const typeEnd = typeStart + match[1].length;
-			const nameStart = typeEnd + paramsText.substring(match.index + match[1].length).search(/\S/);
-			spans.push({
-				line,
-				start: typeStart,
-				end: typeEnd,
-				kind: 'typeName',
-				flags: { declaration: true }
-			});
-			spans.push({
-				line,
-				start: nameStart,
-				end: nameStart + match[2].length,
-				kind: 'variableName',
-				flags: { declaration: true }
-			});
-		}
-
-		this.applySpans(tokens, spans, lineText);
 	}
 
 	private applySpecialSpans(lineText: string, line: number, tokens: Token[], firstWord: string, offset: number) {
@@ -654,7 +629,10 @@ class DocumentResolutionImpl implements DocumentResolution {
 				type: variable.type,
 				lineDeclared: -1,
 				characterDeclared: 0,
-				builtin: variable.name !== 'this'
+				// Genuinely user-declared parameters carry an external definition;
+				// `this`/`player`/`block` are always builtin.
+				builtin: variable.name !== 'this' && variable.definition === undefined,
+				externalDefinition: variable.definition
 			});
 		}
 
@@ -662,30 +640,6 @@ class DocumentResolutionImpl implements DocumentResolution {
 		const lines = this.lines;
 		let currentNamespace: string | undefined = undefined;
 		const activeNamespaceByLine: (string | undefined)[] = new Array(lines.length).fill(undefined);
-
-		if (lines.length > 0) {
-			const firstLine = lines[0];
-			const openingBracketPos = firstLine.indexOf('(');
-			const closingBracketPos = firstLine.indexOf(')');
-			const paramListStart = openingBracketPos === -1 ? firstLine.indexOf('#') : openingBracketPos;
-			const paramListEnd = closingBracketPos === -1 ? firstLine.length : closingBracketPos;
-			if (paramListStart !== -1 && paramListEnd > paramListStart) {
-				const paramsText = firstLine.substring(paramListStart + 1, paramListEnd);
-				for (const match of paramsText.matchAll(FIRST_LINE_PARAM_REGEXP)) {
-					if (match.index === undefined) continue;
-					const type = match[1];
-					const name = match[2];
-					const nameStart = paramListStart + 1 + match.index + match[1].length + paramsText.substring(match.index + match[1].length).search(/\S/);
-					globalBindings.push({
-						name,
-						type,
-						lineDeclared: 0,
-						characterDeclared: nameStart,
-						builtin: false
-					});
-				}
-			}
-		}
 
 		for (let i = 0; i < lines.length; i++) {
 			activeNamespaceByLine[i] = currentNamespace;
@@ -1290,15 +1244,17 @@ function bindingToSymbol(binding: LocalBinding, uri: string): ResolvedSymbol {
 		};
 	}
 
+	const definition = binding.externalDefinition ?? (binding.lineDeclared >= 0 ? {
+		uri,
+		line: binding.lineDeclared,
+		character: binding.characterDeclared
+	} : undefined);
+
 	return {
 		kind: binding.builtin ? 'builtinVariable' : 'localVariable',
 		name: binding.name,
 		type: binding.type,
-		definition: binding.lineDeclared >= 0 ? {
-			uri,
-			line: binding.lineDeclared,
-			character: binding.characterDeclared
-		} : undefined
+		definition
 	};
 }
 

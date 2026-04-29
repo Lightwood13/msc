@@ -146,14 +146,31 @@ describe('MSC resolver', () => {
 		assert.strictEqual(reference!.symbol.definition?.line, 0);
 	});
 
-	it('resolves first-line parameter comment variables', () => {
+	it('resolves signature parameters supplied as implicit variables', () => {
+		const document = createDocument('@return age');
+		const resolution = resolveDocument({
+			document,
+			namespaces,
+			classes,
+			implicitVariables: [
+				{ name: 'age', type: 'Int', definition: { uri: 'file:///source.nms', line: 4, character: 18 } }
+			]
+		});
+		const reference = resolution.getReferenceAtPosition(positionOf(document, 'age'));
+
+		assert.ok(reference);
+		assert.strictEqual(reference!.symbol.kind, 'localVariable');
+		assert.strictEqual(reference!.symbol.type, 'Int');
+		assert.deepStrictEqual(reference!.symbol.definition, { uri: 'file:///source.nms', line: 4, character: 18 });
+	});
+
+	it('does not scan the first-line comment for parameters', () => {
 		const document = createDocument('#(Int age)\n@return age');
 		const resolution = resolveDocument({ document, namespaces, classes });
 		const reference = resolution.getReferenceAtPosition(positionOf(document, 'age', 1));
 
 		assert.ok(reference);
-		assert.strictEqual(reference!.symbol.kind, 'localVariable');
-		assert.strictEqual(reference!.symbol.definition?.line, 0);
+		assert.strictEqual(reference!.symbol.kind, 'unresolved');
 	});
 
 	it('handles shadowing inside nested blocks', () => {
@@ -772,13 +789,6 @@ describe('MSC resolver', () => {
 		assert.ok(forRef);
 		assert.strictEqual(forRef!.token.kind, 'typeName');
 		assert.strictEqual(forRef!.symbol.kind, 'unresolved');
-
-		const paramDocument = createDocument('#(Mystery thing)\n@return thing');
-		const paramResolution = resolveDocument({ document: paramDocument, namespaces, classes });
-		const paramRef = paramResolution.getReferenceAtPosition(positionOf(paramDocument, 'Mystery'));
-		assert.ok(paramRef);
-		assert.strictEqual(paramRef!.token.kind, 'typeName');
-		assert.strictEqual(paramRef!.symbol.kind, 'unresolved');
 
 		const knownDocument = createDocument('@define Widget w');
 		const knownResolution = resolveDocument({ document: knownDocument, namespaces, classes });

@@ -143,7 +143,21 @@ const defaultNamespaces: Map<string, NamespaceInfo> = new Map();
 const defaultClasses: Map<string, ClassInfo> = new Map();
 const namespaces: Map<string, NamespaceInfo> = new Map();
 const classes: Map<string, ClassInfo> = new Map();
-const implicitThisTypeCache: Map<string, string | undefined> = new Map();
+interface ScriptParameter {
+	name: string;
+	type: string;
+	uri: string;
+	line: number;
+	character: number;
+}
+
+interface ScriptContext {
+	thisType?: string;
+	parameters: readonly ScriptParameter[];
+}
+
+const EMPTY_SCRIPT_CONTEXT: ScriptContext = { parameters: [] };
+const scriptContextCache: Map<string, ScriptContext> = new Map();
 let defaultNamespacesSourceUri: string = '';
 
 // Diagnostic publishing is gated on these: until both sources of namespace
@@ -197,7 +211,7 @@ async function refreshNamespaceFiles() {
 		documentResolutions.clear();
 		namespaces.clear();
 		classes.clear();
-		implicitThisTypeCache.clear();
+		scriptContextCache.clear();
 		defaultNamespaces.forEach((value, key) => namespaces.set(key, value));
 		defaultClasses.forEach((value, key) => classes.set(key, value));
 
@@ -242,12 +256,23 @@ function refreshDocumentResolution(documentUri: string): Promise<DocumentResolut
 			throw new Error(`Could not read document ${documentUri}`);
 		}
 
-		const implicitThisType = await resolveImplicitThisType(documentUri);
+		const context = await resolveScriptContext(documentUri);
+		const implicitVariables = [];
+		if (context.thisType !== undefined) {
+			implicitVariables.push({ name: 'this', type: context.thisType });
+		}
+		for (const param of context.parameters) {
+			implicitVariables.push({
+				name: param.name,
+				type: param.type,
+				definition: { uri: param.uri, line: param.line, character: param.character }
+			});
+		}
 		return resolveDocument({
 			document,
 			namespaces,
 			classes,
-			implicitVariables: implicitThisType === undefined ? [] : [{ name: 'this', type: implicitThisType }]
+			implicitVariables
 		});
 	})();
 	documentResolutions.set(documentUri, result);
@@ -263,8 +288,52 @@ async function fileExists(path: string): Promise<boolean> {
 	}
 }
 
-function collectImplicitThisType(namespaceDefinitionPath: string, text: string, targetPath: string): string | undefined {
+// Parse a `(Type name, ...)` parameter list out of an .nms signature line and
+// return per-parameter positions so the resolver can wire them up as bindings
+// with proper go-to-definition targets.
+const SIGNATURE_PARAM_REGEXP = /^\s*((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)\s*$/;
+
+function parseSignatureParameters(line: string, uri: string, lineNumber: number): ScriptParameter[] {
+	const open = line.indexOf('(');
+	const close = line.lastIndexOf(')');
+	if (open === -1 || close <= open) return [];
+
+	const inside = line.substring(open + 1, close);
+	const baseOffset = open + 1;
+	const segments: { text: string; start: number }[] = [];
+	let depth = 0;
+	let segmentStart = 0;
+	for (let i = 0; i < inside.length; i++) {
+		const c = inside[i];
+		if (c === '(' || c === '[') depth++;
+		else if (c === ')' || c === ']') depth--;
+		else if (c === ',' && depth === 0) {
+			segments.push({ text: inside.slice(segmentStart, i), start: segmentStart });
+			segmentStart = i + 1;
+		}
+	}
+	segments.push({ text: inside.slice(segmentStart), start: segmentStart });
+
+	const params: ScriptParameter[] = [];
+	for (const { text, start } of segments) {
+		const match = SIGNATURE_PARAM_REGEXP.exec(text);
+		if (match === null) continue;
+		const [, type, name] = match;
+		const nameOffsetInSegment = text.lastIndexOf(name);
+		params.push({
+			name,
+			type,
+			uri,
+			line: lineNumber,
+			character: baseOffset + start + nameOffsetInSegment
+		});
+	}
+	return params;
+}
+
+function collectScriptContext(namespaceDefinitionPath: string, text: string, targetPath: string, expectedKind: 'namespace' | 'class'): ScriptContext | undefined {
 	const normalizedTargetPath = normalize(targetPath);
+	const namespaceUri = pathToFileURL(namespaceDefinitionPath).toString();
 	const lines = text.split(newLineRegExp);
 
 	for (let i = 0; i < lines.length; i++) {
@@ -282,10 +351,18 @@ function collectImplicitThisType(namespaceDefinitionPath: string, text: string, 
 
 		const namespaceName = namespaceMatch[1];
 		const namespaceFolderPath = join(dirname(namespaceDefinitionPath), namespaceName);
+
 		for (let j = i + 1; j < namespaceEndLine; j++) {
+			if (expectedKind === 'namespace') {
+				const fnMatch = functionSignatureRegExp.exec(lines[j]);
+				if (fnMatch === null) continue;
+				const fnPath = normalize(join(namespaceFolderPath, `${fnMatch[2]}.msc`));
+				if (fnPath !== normalizedTargetPath) continue;
+				return { parameters: parseSignatureParameters(lines[j], namespaceUri, j) };
+			}
+
 			const classMatch = classSignatureRegExp.exec(lines[j]);
-			if (classMatch === null)
-				continue;
+			if (classMatch === null) continue;
 
 			let classEndLine = j;
 			for (; classEndLine < namespaceEndLine; classEndLine++) {
@@ -302,13 +379,21 @@ function collectImplicitThisType(namespaceDefinitionPath: string, text: string, 
 				const constructorMatch = constructorSignatureRegExp.exec(lines[k]);
 				if (methodMatch !== null) {
 					const methodPath = normalize(join(namespaceFolderPath, className, `${methodMatch[2]}.msc`));
-					if (methodPath === normalizedTargetPath)
-						return classType;
+					if (methodPath === normalizedTargetPath) {
+						return {
+							thisType: classType,
+							parameters: parseSignatureParameters(lines[k], namespaceUri, k)
+						};
+					}
 				} else if (constructorMatch !== null) {
 					const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
 					const constructorPath = normalize(join(namespaceFolderPath, className, `${constructorSignature}.msc`));
-					if (constructorPath === normalizedTargetPath)
-						return classType;
+					if (constructorPath === normalizedTargetPath) {
+						return {
+							thisType: classType,
+							parameters: parseSignatureParameters(lines[k], namespaceUri, k)
+						};
+					}
 				}
 			}
 
@@ -321,44 +406,52 @@ function collectImplicitThisType(namespaceDefinitionPath: string, text: string, 
 	return undefined;
 }
 
-async function resolveImplicitThisType(documentUri: string): Promise<string | undefined> {
-	if (implicitThisTypeCache.has(documentUri))
-		return implicitThisTypeCache.get(documentUri);
-
-	const result = await computeImplicitThisType(documentUri);
-	implicitThisTypeCache.set(documentUri, result);
+async function resolveScriptContext(documentUri: string): Promise<ScriptContext> {
+	const cached = scriptContextCache.get(documentUri);
+	if (cached !== undefined) return cached;
+	const result = await computeScriptContext(documentUri);
+	scriptContextCache.set(documentUri, result);
 	return result;
 }
 
-async function computeImplicitThisType(documentUri: string): Promise<string | undefined> {
+async function computeScriptContext(documentUri: string): Promise<ScriptContext> {
 	let targetPath: string;
 	try {
 		targetPath = normalize(fileURLToPath(documentUri));
 	} catch (_err) {
-		return undefined;
+		return EMPTY_SCRIPT_CONTEXT;
 	}
 
 	const scriptFileName = basename(targetPath, extname(targetPath));
 	if (scriptFileName === '__init__')
-		return undefined;
+		return EMPTY_SCRIPT_CONTEXT;
 
 	const scriptDirectoryPath = dirname(targetPath);
 	const directNamespaceName = basename(scriptDirectoryPath);
 	const directNamespaceDefinitionPath = join(dirname(scriptDirectoryPath), `${directNamespaceName}.nms`);
 
-	// if the file is directly inside a namespace folder, it's a namespace function — no implicit this
-	if (await fileExists(directNamespaceDefinitionPath))
-		return undefined;
+	// File directly inside a namespace folder: it's a namespace function. The
+	// `.nms` signature contributes parameters but no implicit `this`.
+	if (await fileExists(directNamespaceDefinitionPath)) {
+		try {
+			const text = await readFileAsync(directNamespaceDefinitionPath, 'utf8');
+			return collectScriptContext(directNamespaceDefinitionPath, text, targetPath, 'namespace') ?? EMPTY_SCRIPT_CONTEXT;
+		} catch (_err) {
+			return EMPTY_SCRIPT_CONTEXT;
+		}
+	}
 
+	// Otherwise it's nested under a class folder; the enclosing dir's `.nms`
+	// owns the method/constructor signature (with implicit `this`).
 	const enclosingNamespaceDirectoryPath = dirname(scriptDirectoryPath);
 	const nestedNamespaceName = basename(enclosingNamespaceDirectoryPath);
 	const nestedNamespaceDefinitionPath = join(dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`);
 
 	try {
 		const text = await readFileAsync(nestedNamespaceDefinitionPath, 'utf8');
-		return collectImplicitThisType(nestedNamespaceDefinitionPath, text, targetPath);
+		return collectScriptContext(nestedNamespaceDefinitionPath, text, targetPath, 'class') ?? EMPTY_SCRIPT_CONTEXT;
 	} catch (_err) {
-		return undefined;
+		return EMPTY_SCRIPT_CONTEXT;
 	}
 }
 
@@ -2008,36 +2101,12 @@ function validateClassAsValue(lines: readonly string[], resolution: DocumentReso
 	}
 }
 
-function validateRedeclarations(lines: readonly string[], diagnostics: Diagnostic[]) {
+function validateRedeclarations(lines: readonly string[], initialScopeNames: readonly string[], diagnostics: Diagnostic[]) {
 	const stack: Map<string, true>[] = [new Map()];
 	const topScope = () => stack[stack.length - 1];
+	for (const name of initialScopeNames) topScope().set(name, true);
 
-	const collectFirstLineParams = (line: string) => {
-		const open = line.indexOf('(');
-		const close = line.indexOf(')');
-		const start = open === -1 ? line.indexOf('#') : open;
-		const end = close === -1 ? line.length : close;
-		if (start === -1 || end <= start) return;
-		const inside = line.substring(start + 1, end);
-		const re = /((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g;
-		for (const m of inside.matchAll(re)) {
-			if (m.index === undefined) continue;
-			const name = m[2];
-			const nameOffset = start + 1 + m.index + m[1].length + inside.substring(m.index + m[1].length).search(/\S/);
-			if (topScope().has(name)) {
-				raise(diagnostics, RULES.SEM017, {
-					start: { line: 0, character: nameOffset },
-					end: { line: 0, character: nameOffset + name.length }
-				}, { message: `'${name}' is already declared in this scope` });
-				continue;
-			}
-			topScope().set(name, true);
-		}
-	};
-
-	if (lines.length > 0) collectFirstLineParams(lines[0]);
-
-	for (let i = (lines.length > 0 ? 1 : 0); i < lines.length; i++) {
+	for (let i = 0; i < lines.length; i++) {
 		const lineText = lines[i];
 		const trimmed = lineText.trim();
 		if (trimmed === '' || trimmed.startsWith('#')) continue;
@@ -2186,25 +2255,12 @@ function validateEmptyBlocks(lines: readonly string[], diagnostics: Diagnostic[]
 	}
 }
 
-function validateShadowing(lines: readonly string[], diagnostics: Diagnostic[]) {
+function validateShadowing(lines: readonly string[], initialScopeNames: readonly string[], diagnostics: Diagnostic[]) {
 	const stack: Map<string, true>[] = [new Map()];
 	const top = () => stack[stack.length - 1];
+	for (const name of initialScopeNames) top().set(name, true);
 
-	const collectFirstLineParams = (line: string) => {
-		const open = line.indexOf('(');
-		const close = line.indexOf(')');
-		const start = open === -1 ? line.indexOf('#') : open;
-		const end = close === -1 ? line.length : close;
-		if (start === -1 || end <= start) return;
-		const inside = line.substring(start + 1, end);
-		for (const m of inside.matchAll(/((?:[a-zA-Z][a-zA-Z0-9_]*::)?[A-Z][a-zA-Z0-9_]*(?:\[\])?)\s+([a-z][a-zA-Z0-9_]*)/g)) {
-			top().set(m[2], true);
-		}
-	};
-
-	if (lines.length > 0) collectFirstLineParams(lines[0]);
-
-	for (let i = (lines.length > 0 ? 1 : 0); i < lines.length; i++) {
+	for (let i = 0; i < lines.length; i++) {
 		const trimmed = lines[i].trim();
 		if (trimmed === '' || trimmed.startsWith('#')) continue;
 		const op = trimmed.split(/\s+/)[0];
@@ -2469,11 +2525,12 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateFinalReassignment(lines, resolution, diagnostics);
 	}
 
-	validateRedeclarations(lines, diagnostics);
+	const initialScopeNames = resolution?.getInitialScopeNames() ?? [];
+	validateRedeclarations(lines, initialScopeNames, diagnostics);
 	validateConstantConditions(lines, diagnostics);
 	validateRedundantUsing(lines, diagnostics);
 	validateEmptyBlocks(lines, diagnostics);
-	validateShadowing(lines, diagnostics);
+	validateShadowing(lines, initialScopeNames, diagnostics);
 
 	if (parsingContext.blockStack.length > 0) {
 		for (const block of parsingContext.blockStack) {
