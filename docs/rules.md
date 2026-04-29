@@ -409,6 +409,26 @@ A `{{` opens an interpolation that must be closed with `}}` on the same line.
 
 ---
 
+<a id="syn024"></a>
+### SYN024: no-space-after-hash (lexical error)
+
+A comment must have a space between the `#` and the comment text. Bare `#` and whitespace-only lines are fine.
+
+```msc
+# bad
+#hello
+   #@if condition
+
+# good
+# hello
+#
+   # @if condition
+```
+
+The quick fix inserts the missing space.
+
+---
+
 <a id="sem001"></a>
 ### SEM001: invalid-operator-types (semantic error)
 

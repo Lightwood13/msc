@@ -194,6 +194,13 @@ export const RULES: Record<string, Rule> = {
 		severity: 'error',
 		description: 'Unterminated {{...}} interpolation'
 	},
+	SYN024: {
+		code: 'SYN024',
+		name: 'no-space-after-hash',
+		category: 'lexical',
+		severity: 'error',
+		description: 'Comments require a space after the #.'
+	},
 	SEM001: {
 		code: 'SEM001',
 		name: 'invalid-operator-types',

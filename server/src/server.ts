@@ -1708,7 +1708,21 @@ function validateHeaderPosition(firstWord: string, lineNumber: number, lineStart
 function processLine(line: string, lineNumber: number, parsingContext: ScriptParsingContext, diagnostics: Diagnostic[]) {
 	const trimmedLine = line.trim();
 
-	if (trimmedLine === '' || trimmedLine.startsWith("# ") || trimmedLine === "#") {
+	if (trimmedLine === '' || trimmedLine.startsWith('# ') || trimmedLine === '#') {
+		return;
+	}
+
+	if (trimmedLine.startsWith('#')) {
+		const hashIndex = line.indexOf('#');
+		raise(diagnostics, RULES.SYN024, {
+			start: { line: lineNumber, character: hashIndex },
+			end: { line: lineNumber, character: hashIndex + 1 }
+		}, {
+			fix: {
+				title: 'Insert space after #',
+				edits: [{ kind: 'replace', line: lineNumber, content: `${line.slice(0, hashIndex + 1)} ${line.slice(hashIndex + 1)}` }]
+			}
+		});
 		return;
 	}
 
