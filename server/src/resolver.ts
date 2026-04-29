@@ -2209,24 +2209,38 @@ function getLastNameAndTypeFromCallChain(
 	let currentClass = '';
 	let currentName = '';
 	let startingI = 1;
+	// Track the namespace the chain originates from (explicit prefix or
+	// active `@using`). Used to qualify intermediate types — namespace
+	// members and class fields declared without their namespace prefix
+	// (the common .nms style) must be re-qualified before further lookup.
+	let chainNamespace: string | undefined = activeNamespaceName;
+
+	const qualifyType = (type: string): string => {
+		if (classes.has(type)) return type;
+		if (chainNamespace === undefined) return type;
+		const qualified = `${chainNamespace}::${type}`;
+		return classes.has(qualified) ? qualified : type;
+	};
+
 	if (callChain[0].endsWith(':')) {
 		startingI = 2;
 		if (callChain.length === 1) {
 			return undefined;
 		}
 		currentName = callChain[0].concat(callChain[1]);
+		chainNamespace = callChain[0].substring(0, callChain[0].length - 2);
 		if (/[A-Z]/.test(callChain[1][0])) {
 			if (!callChain[1].endsWith('()')) {
 				return undefined;
 			}
-			currentClass = currentName.substring(0, currentName.length - 2);
+			currentClass = qualifyType(currentName.substring(0, currentName.length - 2));
 		} else {
-			const currentNamespaceInfo = namespaces.get(callChain[0].substring(0, callChain[0].length - 2));
+			const currentNamespaceInfo = namespaces.get(chainNamespace);
 			const currentNamespaceMember = currentNamespaceInfo?.members.get(callChain[1]);
 			if (currentNamespaceMember === undefined) {
 				return undefined;
 			}
-			currentClass = currentNamespaceMember.returnType;
+			currentClass = qualifyType(currentNamespaceMember.returnType);
 		}
 	} else {
 		currentName = callChain[0];
@@ -2234,11 +2248,11 @@ function getLastNameAndTypeFromCallChain(
 			if (!callChain[0].endsWith('()')) {
 				return undefined;
 			}
-			currentClass = callChain[0].substring(0, callChain[0].length - 2);
+			currentClass = qualifyType(callChain[0].substring(0, callChain[0].length - 2));
 		} else {
 			const currentBinding = findVisibleBinding(callChain[0]);
 			if (currentBinding !== undefined) {
-				currentClass = currentBinding.type;
+				currentClass = qualifyType(currentBinding.type);
 			} else {
 				if (activeNamespaceName === undefined) {
 					return undefined;
@@ -2249,7 +2263,7 @@ function getLastNameAndTypeFromCallChain(
 					return undefined;
 				}
 				currentName = activeNamespaceName + '::' + callChain[0];
-				currentClass = currentMember.returnType;
+				currentClass = qualifyType(currentMember.returnType);
 			}
 		}
 	}
@@ -2263,23 +2277,16 @@ function getLastNameAndTypeFromCallChain(
 			currentClass = currentClass.substring(0, currentClass.length - 2);
 			continue;
 		}
-		let currentClassInfo = classes.get(currentClass);
+		const currentClassInfo = classes.get(currentClass);
 		if (currentClassInfo === undefined) {
-			if (i !== 1 || activeNamespaceName === undefined) {
-				return undefined;
-			}
-			currentClassInfo = classes.get(activeNamespaceName + '::' + currentClass);
-			if (currentClassInfo === undefined) {
-				return undefined;
-			}
-			currentClass = activeNamespaceName + '::' + currentClass;
+			return undefined;
 		}
 		const nextMember = currentClassInfo.members.get(callChain[i]);
 		if (nextMember === undefined) {
 			return undefined;
 		}
 		currentName = currentClass + '.' + nextMember.name;
-		currentClass = nextMember.returnType;
+		currentClass = qualifyType(nextMember.returnType);
 	}
 
 	return {

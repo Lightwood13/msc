@@ -112,15 +112,20 @@ describe('MSC resolver', () => {
 			createMember('count', 'variable', 'Int', toolsUri)
 		])],
 		['transmute', createNamespace([
-			createMember('machine10a', 'variable', 'Machine', transmuteUri)
+			createMember('machine10a', 'variable', 'Machine', transmuteUri),
+			createMember('machines', 'variable', 'Machine[]', transmuteUri)
 		])]
+	]);
+	const transmuteMachineArrayClass = createClass('transmute::Machine[]', 'transmute', [
+		createMember('length()', 'function', 'Int', transmuteUri)
 	]);
 	const classes = new Map<string, ClassInfo>([
 		['Player', playerClass],
 		['String', stringClass],
 		['Widget', widgetClass],
 		['tools::Widget', toolsWidgetClass],
-		['transmute::Machine', transmuteMachineClass]
+		['transmute::Machine', transmuteMachineClass],
+		['transmute::Machine[]', transmuteMachineArrayClass]
 	]);
 
 	it('resolves local declarations and references', () => {
@@ -544,6 +549,20 @@ describe('MSC resolver', () => {
 		const populated = resolution.analyzeExpression('[1, 2]', 0, 0);
 		assert.strictEqual(populated.diagnostics.length, 1);
 		assert.strictEqual(populated.diagnostics[0].code, 'SEM023');
+	});
+
+	it('resolves member access through an indexed namespace-array variable', () => {
+		const document = createDocument('@using transmute\n@var machines[0].state = "x"');
+		const resolution = resolveDocument({ document, namespaces, classes });
+
+		const stateRef = resolution.getReferenceAtPosition(positionOf(document, 'state'));
+		assert.ok(stateRef);
+		assert.strictEqual(stateRef!.symbol.kind, 'instanceField');
+		assert.strictEqual(stateRef!.symbol.name, 'transmute::Machine.state');
+
+		const chain = resolution.analyzeExpression('machines[0].state', 1, 0);
+		assert.deepStrictEqual(chain.diagnostics, []);
+		assert.strictEqual(chain.type, 'String');
 	});
 
 	it('flags member access on null literal', () => {
