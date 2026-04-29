@@ -138,6 +138,7 @@ export interface DocumentResolution {
 	getCallableSignatures(reference: ResolvedReference): readonly SignatureInformation[];
 	normalizeType(type: string, lineNumber: number): string;
 	hasMember(typeName: string, memberName: string): boolean;
+	getMemberNames(typeName: string): readonly string[];
 }
 
 interface ResolutionInputs {
@@ -368,6 +369,12 @@ class DocumentResolutionImpl implements DocumentResolution {
 
 	hasMember(typeName: string, memberName: string): boolean {
 		return this.classes.get(typeName)?.members.has(memberName) ?? false;
+	}
+
+	getMemberNames(typeName: string): readonly string[] {
+		const members = this.classes.get(typeName)?.members;
+		if (members === undefined) return [];
+		return [...members.keys()].map(name => name.endsWith('()') ? name.slice(0, -2) : name);
 	}
 
 	private getContextToken(position: Position): Token | undefined {

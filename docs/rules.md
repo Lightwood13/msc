@@ -442,7 +442,7 @@ A type written in a `@define`, `@for`, or first-line parameter declaration must 
 <a id="sem003"></a>
 ### SEM003: unknown-member (semantic error)
 
-A `.member` access only fires this rule when the host's type is a known class â€” that way a broken receiver (`mystery.field`, `bogusFn().sub`) is reported once at the upstream cause rather than chained downstream.
+A `.member` access on a known type must reference a real member of that type.
 
 ```msc
 # bad
@@ -451,6 +451,8 @@ A `.member` access only fires this rule when the host's type is a known class â€
 # good
 @var name = widget.name
 ```
+
+The quick fix replaces the typo with the closest valid member name.
 
 ---
 

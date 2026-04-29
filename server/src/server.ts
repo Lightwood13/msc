@@ -1752,7 +1752,7 @@ function validateDeclaredTypes(resolution: DocumentResolution, diagnostics: Diag
 	}
 }
 
-function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+function validateMemberAccess(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
 	for (const reference of resolution.references) {
 		if (reference.symbol.kind !== 'unresolved') continue;
 		const hostType = resolution.getMemberAccessHostType(reference.token.range.start);
@@ -1763,10 +1763,35 @@ function validateMemberAccess(resolution: DocumentResolution, diagnostics: Diagn
 			});
 			continue;
 		}
+		const suggestion = closestName(reference.token.text, resolution.getMemberNames(hostType));
+		const lineText = lines[reference.token.line] ?? '';
 		raise(diagnostics, RULES.SEM003, reference.token.range, {
-			message: `Type '${hostType}' has no member named '${reference.token.text}'`
+			message: suggestion === undefined
+				? `Type '${hostType}' has no member named '${reference.token.text}'`
+				: `Type '${hostType}' has no member named '${reference.token.text}'. Did you mean '${suggestion}'?`,
+			fix: suggestion === undefined ? undefined : {
+				title: `Replace with ${suggestion}`,
+				edits: [{
+					kind: 'replace',
+					line: reference.token.line,
+					content: lineText.slice(0, reference.token.range.start.character) + suggestion + lineText.slice(reference.token.range.end.character)
+				}]
+			}
 		});
 	}
+}
+
+function closestName(word: string, candidates: readonly string[]): string | undefined {
+	let best: string | undefined;
+	let bestDistance = Infinity;
+	for (const candidate of candidates) {
+		const d = editDistance(word, candidate);
+		if (d < bestDistance) {
+			bestDistance = d;
+			best = candidate;
+		}
+	}
+	return best !== undefined && bestDistance <= 2 ? best : undefined;
 }
 
 function getExpressionRangeOnLine(lineText: string): { start: number; end: number } | undefined {
@@ -2376,7 +2401,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 	if (resolution !== undefined) {
 		validateSemanticExpressions(lines, resolution, diagnostics);
 		validateDeclaredTypes(resolution, diagnostics);
-		validateMemberAccess(resolution, diagnostics);
+		validateMemberAccess(lines, resolution, diagnostics);
 		validateUndefinedIdentifiers(lines, resolution, diagnostics);
 		validateNamespaceReferences(resolution, diagnostics);
 		validateNamespaceMembers(resolution, diagnostics);
