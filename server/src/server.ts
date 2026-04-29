@@ -155,9 +155,9 @@ let workspaceLoaded = false;
 // User-configured per-category severity overrides (`msc.diagnostics.categories.*`).
 // `'default'` (or absent) keeps each rule's built-in severity; `'off'` drops the
 // diagnostic entirely. Refreshed on init and on workspace/didChangeConfiguration.
-type CategoryOverride = 'default' | 'error' | 'warning' | 'info' | 'off';
+type CategoryOverride = 'error' | 'warning' | 'info' | 'off';
 const CATEGORIES: readonly RuleCategory[] = ['lexical', 'syntax', 'semantic', 'security', 'style'];
-const SEVERITY_FROM_OVERRIDE: Record<Exclude<CategoryOverride, 'default' | 'off'>, DiagnosticSeverity> = {
+const SEVERITY_FROM_OVERRIDE: Record<Exclude<CategoryOverride, 'off'>, DiagnosticSeverity> = {
 	error: DiagnosticSeverity.Error,
 	warning: DiagnosticSeverity.Warning,
 	info: DiagnosticSeverity.Information
@@ -171,7 +171,7 @@ async function refreshCategoryOverrides(): Promise<void> {
 		if (settings && typeof settings === 'object') {
 			for (const category of CATEGORIES) {
 				const value = (settings as Record<string, unknown>)[category];
-				if (value === 'error' || value === 'warning' || value === 'info' || value === 'off' || value === 'default') {
+				if (value === 'error' || value === 'warning' || value === 'info' || value === 'off') {
 					categoryOverrides.set(category, value);
 				}
 			}
@@ -2500,7 +2500,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		const rule = code ? RULES[code] : undefined;
 		const override = rule ? categoryOverrides.get(rule.category) : undefined;
 		if (override === 'off') continue;
-		if (override !== undefined && override !== 'default') {
+		if (override !== undefined) {
 			d.severity = SEVERITY_FROM_OVERRIDE[override];
 		}
 		filtered.push(d);

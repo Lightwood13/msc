@@ -14,8 +14,7 @@ There are five categories of rule.
 
 VS Code settings under `msc.diagnostics.categories.*` let you remap or disable a whole category at once:
 
-- `default` keeps each rule's built-in severity.
-- `error` / `warning` / `info` shows every rule in that category at this severity.
+- `error` / `warning` / `info` forces every rule in that category to display at this severity.
 - `off` suppresses every rule in that category.
 
 ## Ignore comments

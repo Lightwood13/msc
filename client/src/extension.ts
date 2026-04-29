@@ -823,7 +823,10 @@ export function activate(context: ExtensionContext) {
 		synchronize: {
 			// notify the server about file changes to '.nms' files contained in the workspace
 			// to update code suggestions
-			fileEvents: workspace.createFileSystemWatcher('**/*.nms')
+			fileEvents: workspace.createFileSystemWatcher('**/*.nms'),
+			// forward msc.* setting changes so the server can refresh category
+			// severity overrides without a window reload
+			configurationSection: 'msc'
 		}
 	};
 
