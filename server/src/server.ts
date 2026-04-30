@@ -17,7 +17,8 @@ import {
 	TextDocumentPositionParams,
 	TextDocumentSyncKind,
 	InitializeResult,
-	MarkupKind
+	MarkupKind,
+	FileChangeType
 } from 'vscode-languageserver/node';
 
 import {
@@ -41,11 +42,9 @@ import {
 } from 'vscode-languageserver-protocol';
 import {
 	access,
+	readdir,
 	readFile as readFileAsync
 } from 'fs/promises';
-import {
-	files
-} from 'node-dir';
 import {
 	basename,
 	dirname,
@@ -208,13 +207,88 @@ async function refreshCategoryOverrides(): Promise<void> {
 	}
 }
 
+// Directory names that virtually never contain MSC sources but balloon
+// workspace walks. Skipping them at directory level (not post-filtering
+// the file list) avoids stat'ing thousands of irrelevant entries.
+const EXCLUDED_WALK_DIRS = new Set([
+	'node_modules', '.git', '.hg', '.svn', '.idea', '.vscode',
+	'dist', 'build', 'out', 'target', '.next', '.cache', '.turbo'
+]);
+
+async function findNmsFiles(root: string): Promise<string[]> {
+	const result: string[] = [];
+	async function walk(dir: string): Promise<void> {
+		let entries;
+		try {
+			entries = await readdir(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		await Promise.all(entries.map(async entry => {
+			if (entry.isDirectory()) {
+				if (EXCLUDED_WALK_DIRS.has(entry.name) || entry.name.startsWith('.')) return;
+				await walk(join(dir, entry.name));
+			} else if (entry.isFile() && entry.name.endsWith('.nms')) {
+				result.push(join(dir, entry.name));
+			}
+		}));
+	}
+	await walk(root);
+	return result;
+}
+
+// Tracks which namespace and class keys originated from each .nms file URI,
+// so incremental refreshes (file change/delete) can evict only that file's
+// contributions instead of rebuilding the whole world.
+const nmsFileOwnership: Map<string, { namespaces: string[]; classes: string[] }> = new Map();
+
+function evictNmsFile(uri: string) {
+	const owned = nmsFileOwnership.get(uri);
+	if (owned === undefined) return;
+	for (const name of owned.namespaces) {
+		// Only evict if still owned by this URI — another file may have
+		// since redeclared and taken over the key.
+		if (namespaces.get(name) !== undefined && !defaultNamespaces.has(name)) {
+			namespaces.delete(name);
+		}
+	}
+	for (const key of owned.classes) {
+		if (classes.get(key) !== undefined && !defaultClasses.has(key)) {
+			classes.delete(key);
+		}
+	}
+	nmsFileOwnership.delete(uri);
+}
+
+async function loadNmsFile(filename: string): Promise<void> {
+	const uri = pathToFileURL(resolve(filename)).toString();
+	let text: string;
+	try {
+		text = (await readFileAsync(filename)).toString();
+	} catch (err) {
+		console.log('Unable to read file: ' + err);
+		evictNmsFile(uri);
+		return;
+	}
+	evictNmsFile(uri);
+	const namespacesBefore = new Set(namespaces.keys());
+	const classesBefore = new Set(classes.keys());
+	parseNamespaceFile(text, namespaces, classes, uri);
+	const owned = { namespaces: [] as string[], classes: [] as string[] };
+	for (const name of namespaces.keys()) {
+		if (!namespacesBefore.has(name)) owned.namespaces.push(name);
+	}
+	for (const key of classes.keys()) {
+		if (!classesBefore.has(key)) owned.classes.push(key);
+	}
+	nmsFileOwnership.set(uri, owned);
+}
+
 async function refreshNamespaceFiles() {
 	try {
 		let fileList: string[];
 		try {
-			fileList = await new Promise<string[]>((res, rej) => {
-				files('.', (err, found) => err ? rej(err) : res(found));
-			});
+			fileList = await findNmsFiles('.');
 		} catch (err) {
 			console.log('Unable to scan directory: ' + err);
 			return;
@@ -224,19 +298,11 @@ async function refreshNamespaceFiles() {
 		namespaces.clear();
 		classes.clear();
 		scriptContextCache.clear();
+		nmsFileOwnership.clear();
 		defaultNamespaces.forEach((value, key) => namespaces.set(key, value));
 		defaultClasses.forEach((value, key) => classes.set(key, value));
 
-		await Promise.all(fileList
-			.filter(filename => filename.split('.').pop() === 'nms')
-			.map(async filename => {
-				try {
-					const data = await readFileAsync(filename);
-					parseNamespaceFile(data.toString(), namespaces, classes, pathToFileURL(resolve(filename)).toString());
-				} catch (err) {
-					console.log('Unable to read file: ' + err);
-				}
-			}));
+		await Promise.all(fileList.map(loadNmsFile));
 	} finally {
 		// Always flip the gate, even on scan failure — otherwise diagnostics
 		// stay permanently disabled for the session.
@@ -249,7 +315,7 @@ async function refreshNamespaceFiles() {
 
 function revalidateAllOpenDocuments() {
 	for (const document of documents.all()) {
-		void validateAndReportDiagnostics(document);
+		scheduleValidate(document);
 	}
 }
 
@@ -2685,17 +2751,62 @@ documents.onDidOpen(change => {
 	void validateAndReportDiagnostics(change.document);
 });
 
+// Coalesce the resolve+validate pipeline during fast typing. Each keystroke
+// invalidates the cached resolution so on-demand handlers (hover, completion)
+// will lazily re-resolve against fresh content, but the heavy validator
+// pipeline only runs after the user pauses.
+const VALIDATE_DEBOUNCE_MS = 120;
+const validateTimers: Map<string, NodeJS.Timeout> = new Map();
+
+function scheduleValidate(document: TextDocument) {
+	const existing = validateTimers.get(document.uri);
+	if (existing !== undefined) clearTimeout(existing);
+	validateTimers.set(document.uri, setTimeout(() => {
+		validateTimers.delete(document.uri);
+		void validateAndReportDiagnostics(document);
+	}, VALIDATE_DEBOUNCE_MS));
+}
+
 documents.onDidChangeContent(e => {
-	void refreshDocumentResolution(e.document.uri);
-	void validateAndReportDiagnostics(e.document);
+	documentResolutions.delete(e.document.uri);
+	scheduleValidate(e.document);
 });
 
 documents.onDidClose(e => {
 	documentResolutions.delete(e.document.uri);
+	const timer = validateTimers.get(e.document.uri);
+	if (timer !== undefined) {
+		clearTimeout(timer);
+		validateTimers.delete(e.document.uri);
+	}
 });
 
-connection.onDidChangeWatchedFiles(_ => {
-	void refreshNamespaceFiles();
+// When .nms files change/are created/deleted, update only the affected
+// namespaces — full workspace rescans are expensive and dominate the
+// experience when the user is iterating on a .nms file.
+connection.onDidChangeWatchedFiles(async params => {
+	let touched = false;
+	for (const change of params.changes) {
+		if (!change.uri.endsWith('.nms')) continue;
+		touched = true;
+		if (change.type === FileChangeType.Deleted) {
+			evictNmsFile(change.uri);
+		} else {
+			try {
+				await loadNmsFile(fileURLToPath(change.uri));
+			} catch (err) {
+				console.log('Unable to refresh ' + change.uri + ': ' + err);
+			}
+		}
+	}
+	if (!touched) return;
+	// Resolutions and script contexts may depend on the changed namespaces;
+	// invalidate them and let validators (debounced) re-resolve lazily.
+	documentResolutions.clear();
+	scriptContextCache.clear();
+	for (const document of documents.all()) {
+		scheduleValidate(document);
+	}
 });
 
 // Listen on the connection
