@@ -1549,8 +1549,8 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const [_all, _variableType, variableName, _initializer] = forMatch;
 			if (!isValidVariableTag(variableName)) {
 				raise(diagnostics, RULES.STY001, {
-					start: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][0] },
-					end: { line: lineNumber, character: lineStartIndex + forMatch.indices![2][1] }
+					start: { line: lineNumber, character: lineStartIndex + forMatch.indices![2]![0] },
+					end: { line: lineNumber, character: lineStartIndex + forMatch.indices![2]![1] }
 				});
 			}
 			break;
@@ -1570,13 +1570,13 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			const [_all, _variableType, variableName, intializer, initializerExpression] = defineMatch;
 			if (!isValidVariableTag(variableName)) {
 				raise(diagnostics, RULES.STY001, {
-					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][0] },
-					end: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2][1] }
+					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2]![0] },
+					end: { line: lineNumber, character: lineStartIndex + defineMatch.indices![2]![1] }
 				});
 			}
 			if (intializer !== undefined && initializerExpression === undefined) {
 				raise(diagnostics, RULES.SYN008, {
-					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![3][1] },
+					start: { line: lineNumber, character: lineStartIndex + defineMatch.indices![3]![1] },
 					end: { line: lineNumber, character: lineLength }
 				});
 			}
@@ -1595,7 +1595,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 			}
 
 			const [_all, time, _group, _expression] = chatscriptMatch;
-			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1][0], lineStartIndex + chatscriptMatch.indices![1][1], diagnostics);
+			validateTime(time, lineNumber, lineStartIndex + chatscriptMatch.indices![1]![0], lineStartIndex + chatscriptMatch.indices![1]![1], diagnostics);
 			break;
 		}
 
@@ -1608,7 +1608,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 					end: { line: lineNumber, character: lineLength }
 				}, { message: `Invalid ${firstWord} syntax: expected\n${firstWord} time` });
 			} else {
-				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2][0], lineStartIndex + cooldownMatch.indices![2][1], diagnostics);
+				validateTime(cooldownMatch[2], lineNumber, lineStartIndex + cooldownMatch.indices![2]![0], lineStartIndex + cooldownMatch.indices![2]![1], diagnostics);
 			}
 			break;
 		}
@@ -1631,7 +1631,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 					end: { line: lineNumber, character: lineLength }
 				});
 			} else {
-				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1][0], lineStartIndex + delayMatch.indices![1][1], diagnostics);
+				validateTime(delayMatch[1], lineNumber, lineStartIndex + delayMatch.indices![1]![0], lineStartIndex + delayMatch.indices![1]![1], diagnostics);
 			}
 			break;
 		}
@@ -1644,7 +1644,7 @@ function validateScriptOperatorSyntax(trimmedLine: string, firstWord: string, li
 					end: { line: lineNumber, character: lineLength }
 				});
 			} else {
-				validateTime(promptMatch[1], lineNumber, lineStartIndex + promptMatch.indices![1][0], lineStartIndex + promptMatch.indices![1][1], diagnostics);
+				validateTime(promptMatch[1], lineNumber, lineStartIndex + promptMatch.indices![1]![0], lineStartIndex + promptMatch.indices![1]![1], diagnostics);
 			}
 			break;
 		}
@@ -1897,7 +1897,7 @@ function collectSemanticExpressions(line: string, lineNumber: number, resolution
 			if (forMatch) {
 				expressions.push({
 					text: forMatch[1],
-					startCharacter: forMatch.indices![1][0]
+					startCharacter: forMatch.indices![1]![0]
 				});
 			}
 			break;
@@ -1908,7 +1908,7 @@ function collectSemanticExpressions(line: string, lineNumber: number, resolution
 			if (defineMatch) {
 				expressions.push({
 					text: defineMatch[1],
-					startCharacter: defineMatch.indices![1][0]
+					startCharacter: defineMatch.indices![1]![0]
 				});
 			}
 			break;
@@ -1946,7 +1946,7 @@ function collectSemanticExpressions(line: string, lineNumber: number, resolution
 			if (chatscriptMatch) {
 				expressions.push({
 					text: chatscriptMatch[1],
-					startCharacter: chatscriptMatch.indices![1][0]
+					startCharacter: chatscriptMatch.indices![1]![0]
 				});
 			}
 			break;
