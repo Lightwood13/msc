@@ -30,7 +30,14 @@ import {
 	DefinitionParams,
 	Hover,
 	HoverParams,
-	Location
+	Location,
+	PrepareRenameParams,
+	RenameParams,
+	WorkspaceEdit,
+	TextEdit,
+	Range,
+	ResponseError,
+	ErrorCodes
 } from 'vscode-languageserver-protocol';
 import {
 	access,
@@ -107,7 +114,8 @@ connection.onInitialize((params: InitializeParams) => {
 				},
 				definitionProvider: true,
 				hoverProvider: true,
-				codeActionProvider: true
+				codeActionProvider: true,
+				renameProvider: { prepareProvider: true }
 			}
 		};
 	if (hasWorkspaceFolderCapability) {
@@ -727,6 +735,77 @@ connection.onDefinition(
 		if (reference === undefined)
 			return undefined;
 		return await getDefinitionLocationForSymbol(reference.symbol);
+	}
+);
+
+interface RenameableLocal {
+	resolution: DocumentResolution;
+	definitionLine: number;
+	definitionCharacter: number;
+	currentName: string;
+	tokenRange: Range;
+}
+
+async function findRenameableLocal(uri: string, position: TextDocumentPositionParams['position']): Promise<RenameableLocal | undefined> {
+	const resolution = await getDocumentResolution(uri);
+	const reference = resolution.getReferenceAtPosition(position);
+	if (reference === undefined) {
+		return undefined;
+	}
+	const symbol = reference.symbol;
+	if (symbol.kind !== 'localVariable') {
+		return undefined;
+	}
+	const definition = symbol.definition;
+	// `this` has no definition; external params (from a sibling .nms) point at
+	// another file. Neither is renameable from this document.
+	if (definition === undefined || definition.uri !== uri) {
+		return undefined;
+	}
+	return {
+		resolution,
+		definitionLine: definition.line,
+		definitionCharacter: definition.character,
+		currentName: symbol.name,
+		tokenRange: reference.token.range
+	};
+}
+
+connection.onPrepareRename(
+	async (params: PrepareRenameParams): Promise<Range | { range: Range; placeholder: string } | null> => {
+		const target = await findRenameableLocal(params.textDocument.uri, params.position);
+		if (target === undefined) {
+			return null;
+		}
+		return { range: target.tokenRange, placeholder: target.currentName };
+	}
+);
+
+connection.onRenameRequest(
+	async (params: RenameParams): Promise<WorkspaceEdit | ResponseError<void>> => {
+		const target = await findRenameableLocal(params.textDocument.uri, params.position);
+		if (target === undefined) {
+			return new ResponseError<void>(ErrorCodes.InvalidRequest, 'Only local variables can be renamed.');
+		}
+
+		const matchingReferences = target.resolution.references.filter(ref => {
+			const def = ref.symbol.definition;
+			return ref.symbol.kind === 'localVariable'
+				&& def !== undefined
+				&& def.uri === params.textDocument.uri
+				&& def.line === target.definitionLine
+				&& def.character === target.definitionCharacter;
+		});
+
+		const edits: TextEdit[] = matchingReferences.map(ref => ({
+			range: ref.token.range,
+			newText: params.newName
+		}));
+		return {
+			changes: {
+				[params.textDocument.uri]: edits
+			}
+		};
 	}
 );
 
