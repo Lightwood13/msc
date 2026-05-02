@@ -82,7 +82,8 @@ import {
 	makeCompletionItemForBinding,
 	resolveDocument,
 	ResolvedSymbol,
-	symbolToHoverText
+	symbolToHoverText,
+	Token
 } from './resolver';
 import { buildSemanticTokens, semanticTokensLegend } from './semanticTokens';
 
@@ -2039,15 +2040,54 @@ function collectSemanticExpressions(line: string, lineNumber: number, resolution
 		}
 	}
 
-	for (const token of resolution.tokens) {
-		if (token.line !== lineNumber || token.kind !== 'interpolation') continue;
+	for (const interp of iterateInterpolationsOnLine(resolution, lineNumber, line)) {
+		if (interp.close === undefined) continue;
 		expressions.push({
-			text: token.text.slice(2, -2),
-			startCharacter: token.range.start.character + 2
+			text: interp.innerText,
+			startCharacter: interp.innerStart
 		});
 	}
 
 	return expressions;
+}
+
+interface LineInterpolation {
+	openRange: Range;
+	close: { start: number; end: number } | undefined;
+	wholeRange: Range;
+	innerText: string;
+	innerStart: number;
+}
+
+// Pairs `{{` / `}}` delimiter tokens on a single line. `close` is undefined
+// when an `{{` has no matching `}}` before end-of-line.
+function iterateInterpolationsOnLine(resolution: DocumentResolution, lineNumber: number, lineText: string): LineInterpolation[] {
+	const result: LineInterpolation[] = [];
+	let pendingOpen: { start: number; end: number } | undefined;
+	const flush = (close: { start: number; end: number } | undefined) => {
+		if (pendingOpen === undefined) return;
+		const innerEnd = close?.start ?? lineText.length;
+		const wholeEnd = close?.end ?? lineText.length;
+		result.push({
+			openRange: { start: { line: lineNumber, character: pendingOpen.start }, end: { line: lineNumber, character: pendingOpen.end } },
+			close,
+			wholeRange: { start: { line: lineNumber, character: pendingOpen.start }, end: { line: lineNumber, character: wholeEnd } },
+			innerText: lineText.slice(pendingOpen.end, innerEnd),
+			innerStart: pendingOpen.end
+		});
+		pendingOpen = undefined;
+	};
+	for (const token of resolution.tokens) {
+		if (token.line !== lineNumber || token.kind !== 'interpolation') continue;
+		if (token.text === '{{') {
+			flush(undefined);
+			pendingOpen = { start: token.range.start.character, end: token.range.end.character };
+		} else if (token.text === '}}' && pendingOpen !== undefined) {
+			flush({ start: token.range.start.character, end: token.range.end.character });
+		}
+	}
+	flush(undefined);
+	return result;
 }
 
 function validateSemanticExpressions(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
@@ -2343,25 +2383,41 @@ function validateRedeclarations(lines: readonly string[], initialScopeNames: rea
 	}
 }
 
-function validateInterpolations(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
-	for (const token of resolution.tokens) {
-		if (token.kind !== 'interpolation') continue;
-		if (!token.text.endsWith('}}')) {
-			raise(diagnostics, RULES.SYN023, token.range);
-			continue;
+function validateInterpolations(lines: readonly string[], resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+		for (const interp of iterateInterpolationsOnLine(resolution, lineNumber, lines[lineNumber])) {
+			if (interp.close === undefined) {
+				raise(diagnostics, RULES.SYN023, interp.openRange);
+				continue;
+			}
+			if (interp.innerText.trim() === '') {
+				raise(diagnostics, RULES.SEM012, interp.wholeRange);
+			}
 		}
-		const inner = token.text.slice(2, -2);
-		if (inner.trim() !== '') continue;
-		raise(diagnostics, RULES.SEM012, token.range);
 	}
 }
 
 function validateStringLiterals(resolution: DocumentResolution, diagnostics: Diagnostic[]) {
+	// `"..."` strings are emitted as separate quote/fragment tokens (so inner
+	// interpolations don't overlap an outer string token). Unterminated means an
+	// opening `"` quote with no matching closing `"` on the same line.
+	let openQuote: Token | undefined;
+	let openLine = -1;
 	for (const token of resolution.tokens) {
-		if (token.kind !== 'stringLiteral') continue;
-		if (!token.text.startsWith('"')) continue;
-		if (token.text.length >= 2 && token.text.endsWith('"')) continue;
-		raise(diagnostics, RULES.SYN022, token.range);
+		if (openQuote !== undefined && token.line !== openLine) {
+			raise(diagnostics, RULES.SYN022, openQuote.range);
+			openQuote = undefined;
+		}
+		if (token.kind !== 'stringLiteral' || token.text !== '"') continue;
+		if (openQuote === undefined) {
+			openQuote = token;
+			openLine = token.line;
+		} else {
+			openQuote = undefined;
+		}
+	}
+	if (openQuote !== undefined) {
+		raise(diagnostics, RULES.SYN022, openQuote.range);
 	}
 }
 
@@ -2703,7 +2759,7 @@ async function validateAndReportDiagnostics(textDocument: TextDocument): Promise
 		validateForIterable(lines, resolution, diagnostics);
 		validateDefineInitializers(lines, resolution, diagnostics);
 		validateVarAssignments(lines, resolution, diagnostics);
-		validateInterpolations(resolution, diagnostics);
+		validateInterpolations(lines, resolution, diagnostics);
 		validateStringLiterals(resolution, diagnostics);
 		validateCallArguments(lines, resolution, diagnostics);
 		validateCallableUsage(lines, resolution, diagnostics);

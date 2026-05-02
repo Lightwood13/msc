@@ -1,21 +1,32 @@
 {
+	// Used for the shortcut to comment/uncomment lines
     "comments": {
-        // symbol used for single line comment. Remove this entry if your language does not support line comments
         "lineComment": "#"
     },
-    // symbols used as brackets
+
+    // Symbols used as brackets (used for matching, jump-to-pair, indent rules)
     "brackets": [
+        ["[", "]"],
+        ["(", ")"],
+        ["{", "}"]
+    ],
+
+    // Exclude `{` `}` so that `{{ }}` interpolation delimiters
+    // aren't rainbow-coloured as nested bracket pairs.
+    "colorizedBracketPairs": [
         ["[", "]"],
         ["(", ")"]
     ],
-    // symbols that are auto closed when typing
+
+    // Symbols that are auto closed when typing
     "autoClosingPairs": [
         ["[", "]"],
         ["(", ")"],
         ["{", "}"],
         ["\"", "\""]
     ],
-    // symbols that can be used to surround a selection
+
+    // Symbols that can be used to surround a selection without replacing
     "surroundingPairs": [
         ["[", "]"],
         ["(", ")"],
@@ -23,6 +34,7 @@
         ["\"", "\""]
     ],
 
+	// Allow collapse of `@if` blocks and `@for` blocks
     "folding": {
         "markers": {
           "start": "^\\s*(@if|@for)(\\s.*)?$",

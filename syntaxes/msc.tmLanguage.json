@@ -12,15 +12,25 @@
 			"end": "$"
 		},
 		"strings": {
-			"name": "string.quoted.double.msc",
 			"begin": "\"",
 			"end": "\"",
+			"beginCaptures": { "0": { "name": "string.quoted.double.msc" } },
+			"endCaptures": { "0": { "name": "string.quoted.double.msc" } },
 			"patterns": [
+				{ "include": "#interpolation" },
 				{
 					"name": "constant.character.escape.msc",
 					"match": "\\\\."
+				},
+				{
+					"name": "string.quoted.double.msc",
+					"match": "[^\"\\\\{]+|\\{(?!\\{)"
 				}
 			]
+		},
+		"interpolation": {
+			"begin": "\\{\\{",
+			"end": "\\}\\}"
 		}
 	}
 }

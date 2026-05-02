@@ -417,14 +417,32 @@ class DocumentResolutionImpl implements DocumentResolution {
 		return bestEndingToken;
 	}
 
+	// Returns a synthetic token spanning `{{` through the matching `}}` on the
+	// same line, if `position` falls inside one. The lexer emits the delimiters
+	// as separate 2-char tokens (so their ranges don't overlap the inner
+	// expression tokens); this method bracket-matches them to recover the span.
 	private getContainingInterpolation(position: Position): Token | undefined {
 		const lineTokens = this.lineTokens[position.line] ?? [];
-		return lineTokens
-			.filter(token => token.kind === 'interpolation')
-			.sort(compareRanges)
-			.find(token =>
-				token.range.start.character <= position.character &&
-				position.character < token.range.end.character);
+		let openToken: Token | undefined;
+		for (const token of lineTokens) {
+			if (token.kind !== 'interpolation') continue;
+			const startsAfter = token.range.start.character > position.character;
+			if (startsAfter) {
+				if (openToken !== undefined && token.text === '}}') {
+					return synthesizeInterpolationSpan(openToken, token, position.line);
+				}
+				return undefined;
+			}
+			if (token.text === '{{') {
+				openToken = token;
+			} else if (token.text === '}}') {
+				if (openToken !== undefined && token.range.end.character > position.character) {
+					return synthesizeInterpolationSpan(openToken, token, position.line);
+				}
+				openToken = undefined;
+			}
+		}
+		return undefined;
 	}
 
 	private getResolvablePrefix(position: Position): string | undefined {
@@ -1128,7 +1146,7 @@ function tokenizeInterpolatedText(text: string, offset: number, line: number, to
 			}));
 		}
 
-		const close = text.indexOf('}}', open + 2);
+		const close = findInterpolationEnd(text, open);
 		if (close === -1) {
 			tokens.push(makeToken(commandTextKind, line, offset + open, offset + text.length, text.slice(open), {
 				commandText: commandTextKind === 'commandText'
@@ -1136,14 +1154,13 @@ function tokenizeInterpolatedText(text: string, offset: number, line: number, to
 			return;
 		}
 
-		tokens.push(makeToken('interpolation', line, offset + open, offset + close + 2, text.slice(open, close + 2), {
+		const innerFlags = {
 			interpolation: true,
 			stringInterpolation: commandTextKind === 'stringLiteral'
-		}));
-		tokenizeCode(text.slice(open + 2, close), offset + open + 2, line, tokens, {
-			interpolation: true,
-			stringInterpolation: commandTextKind === 'stringLiteral'
-		});
+		};
+		tokens.push(makeToken('interpolation', line, offset + open, offset + open + 2, '{{', innerFlags));
+		tokenizeCode(text.slice(open + 2, close), offset + open + 2, line, tokens, innerFlags);
+		tokens.push(makeToken('interpolation', line, offset + close, offset + close + 2, '}}', innerFlags));
 		index = close + 2;
 	}
 }
@@ -1160,9 +1177,15 @@ function tokenizeCode(text: string, offset: number, line: number, tokens: Token[
 		if (c === '"') {
 			const end = findStringEnd(text, index);
 			const stringEnd = Math.min(end, text.length);
-			tokens.push(makeToken('stringLiteral', line, offset + index, offset + stringEnd, text.slice(index, stringEnd), flags));
-			if (stringEnd - index > 2) {
-				tokenizeInterpolatedText(text.slice(index + 1, stringEnd - 1), offset + index + 1, line, tokens, 'stringLiteral');
+			const hasClosing = stringEnd >= index + 2 && text[stringEnd - 1] === '"';
+			tokens.push(makeToken('stringLiteral', line, offset + index, offset + index + 1, '"', flags));
+			const innerStart = index + 1;
+			const innerEnd = hasClosing ? stringEnd - 1 : stringEnd;
+			if (innerEnd > innerStart) {
+				tokenizeInterpolatedText(text.slice(innerStart, innerEnd), offset + innerStart, line, tokens, 'stringLiteral');
+			}
+			if (hasClosing) {
+				tokens.push(makeToken('stringLiteral', line, offset + stringEnd - 1, offset + stringEnd, '"', flags));
 			}
 			index = stringEnd;
 			continue;
@@ -1206,6 +1229,16 @@ function makeToken(kind: TokenKind, line: number, start: number, end: number, te
 			end: { line, character: end }
 		},
 		flags
+	};
+}
+
+function synthesizeInterpolationSpan(openToken: Token, closeToken: Token, line: number): Token {
+	return {
+		kind: 'interpolation',
+		line,
+		text: '',
+		range: { start: openToken.range.start, end: closeToken.range.end },
+		flags: openToken.flags
 	};
 }
 
@@ -2196,16 +2229,43 @@ function getMemberAccessHostExpression(codePrefix: string): MemberAccessHostExpr
 // server). Returns the index just past the closing `"`, or `text.length` if
 // the string is unterminated. `start` must point at the opening `"`.
 function findStringEnd(text: string, start: number): number {
-	for (let i = start + 1; i < text.length; i++) {
-		if (text[i] === '\\') {
-			i++;
+	let i = start + 1;
+	while (i < text.length) {
+		const c = text[i];
+		if (c === '\\') {
+			i += 2;
 			continue;
 		}
-		if (text[i] === '"') {
+		if (c === '"') {
 			return i + 1;
 		}
+		if (c === '{' && text[i + 1] === '{') {
+			const close = findInterpolationEnd(text, i);
+			i = close === -1 ? text.length : close + 2;
+			continue;
+		}
+		i++;
 	}
 	return text.length;
+}
+
+// Returns the index of the closing `}}` (i.e. the first `}`), or -1 if there
+// isn't one. Skips over nested `"..."` strings so that quotes/braces inside
+// embedded literals don't terminate the interpolation prematurely.
+function findInterpolationEnd(text: string, start: number): number {
+	let i = start + 2;
+	while (i < text.length) {
+		const c = text[i];
+		if (c === '"') {
+			i = findStringEnd(text, i);
+			continue;
+		}
+		if (c === '}' && text[i + 1] === '}') {
+			return i;
+		}
+		i++;
+	}
+	return -1;
 }
 
 function skipStringBackward(line: string, pos: number): number | undefined {
