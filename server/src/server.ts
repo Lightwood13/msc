@@ -84,6 +84,7 @@ import {
 	ResolvedSymbol,
 	symbolToHoverText
 } from './resolver';
+import { buildSemanticTokens, semanticTokensLegend } from './semanticTokens';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -114,7 +115,11 @@ connection.onInitialize((params: InitializeParams) => {
 				definitionProvider: true,
 				hoverProvider: true,
 				codeActionProvider: true,
-				renameProvider: { prepareProvider: true }
+				renameProvider: { prepareProvider: true },
+				semanticTokensProvider: {
+					legend: semanticTokensLegend,
+					full: true
+				}
 			}
 		};
 	if (hasWorkspaceFolderCapability) {
@@ -803,6 +808,21 @@ connection.onDefinition(
 		return await getDefinitionLocationForSymbol(reference.symbol);
 	}
 );
+
+connection.languages.semanticTokens.on(async (params) => {
+	const uri = params.textDocument.uri;
+	const document = documents.get(uri);
+	if (document === undefined || document.languageId !== 'msc') {
+		return { data: [] };
+	}
+	const resolution = await getDocumentResolution(uri);
+	const data = buildSemanticTokens(resolution, {
+		documentUri: uri,
+		isBuiltInDefinition,
+		isBuiltInNamespace: (name) => defaultNamespaces.has(name),
+	});
+	return { data };
+});
 
 interface RenameableLocal {
 	resolution: DocumentResolution;
