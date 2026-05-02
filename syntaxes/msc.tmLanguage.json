@@ -1,0 +1,26 @@
+{
+	"name": "msc",
+	"scopeName": "source.msc",
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#strings" }
+	],
+	"repository": {
+		"comments": {
+			"name": "comment.line.number-sign.msc",
+			"begin": "^\\s*#",
+			"end": "$"
+		},
+		"strings": {
+			"name": "string.quoted.double.msc",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.msc",
+					"match": "\\\\."
+				}
+			]
+		}
+	}
+}

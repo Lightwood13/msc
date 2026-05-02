@@ -48,6 +48,11 @@
 		],
 		"grammars": [
 			{
+				"language": "msc",
+				"scopeName": "source.msc",
+				"path": "./syntaxes/msc.tmLanguage.json"
+			},
+			{
 				"language": "nms",
 				"scopeName": "source.nms",
 				"path": "./syntaxes/nms.tmLanguage.json"
