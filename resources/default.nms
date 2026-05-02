@@ -1006,3 +1006,68 @@
 		String string()
 	@endclass
 @endnamespace
+
+
+
+@namespace format
+
+	@class TextFormat
+		TextFormat(String value)
+
+		String string()
+	@endclass
+
+	final TextFormat black
+	final TextFormat darkBlue
+	final TextFormat darkGreen
+	final TextFormat darkAqua
+	final TextFormat darkRed
+	final TextFormat darkPurple
+	final TextFormat gold
+	final TextFormat gray
+	final TextFormat darkGray
+	final TextFormat blue
+	final TextFormat green
+	final TextFormat aqua
+	final TextFormat red
+	final TextFormat lightPurple
+	final TextFormat yellow
+	final TextFormat white
+	final TextFormat bold
+	final TextFormat italic
+	final TextFormat underline
+	final TextFormat strikethrough
+	final TextFormat obfuscated
+	final TextFormat reset
+
+	String stripColor(String input)
+	format::TextFormat getChatColorFromChat(String character)
+	String formatDate(Long unixDateMillis, String format)
+@endnamespace
+
+
+
+@namespace minr
+
+	@class Map
+		Map(String tag)
+
+		Player getPlayerFromRank(Int rank)
+		Player getPlayerFromTime(Long time)
+		Int getRankOfTime(Long time)
+		Long getTimeFromRank(Int rank)
+		Long getTimeOfPlayer(Player player)
+		String string()
+	@endclass
+
+	@class Challenge
+		Challenge(String tag)
+
+		Player getPlayerFromRank(Int rank)
+		Player getPlayerFromTime(Long time)
+		Int getRankOfTime(Long time)
+		Long getTimeFromRank(Int rank)
+		Long getTimeOfPlayer(Player player)
+		String string()
+	@endclass
+@endnamespace
