@@ -8,7 +8,7 @@ This Visual Studio Code extension adds syntax highlighting and code completion f
 
 Highlighting is applied to files with the `.msc` extension.
 
-![screenshot_1](images/screenshot_1.png)
+![syntax-highlighting](images/syntax-highlighting-demo.png)
 
 ### Code Completion
 
@@ -25,7 +25,7 @@ Note that when you're typing something at the beginning of the line, only comman
 
 This extension also provides hover hints: if you hover your mouse over a variable, function or field name, the extension will show its information. You can ctrl-click or press F12 on local variables to jump to their declarations, on custom namespace functions and methods to jump to their backing script files when available, and on constructors to jump to their namespace declarations.
 
-![feature_1](images/feature_1.gif)
+![completion](images/completion-demo.gif)
 
 ### Upload/Download using [Hastebin](https://paste.minr.org/)
 
@@ -80,7 +80,7 @@ Each namespace should be backed up by a corresponding folder which contains the 
 
 Note that any use of variables and classes in .nms file has to include the namespace. For example, the ```getMyClass()``` method in example returns ```myNamespace::myClass```, not just ```myClass```. The only exception is the constructor name.
 
-![feature_3](images/feature_3.gif)
+![namespace-function-example](images/namespace-demo.gif)
 
 ## Release Notes
 
