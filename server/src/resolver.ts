@@ -640,10 +640,7 @@ class DocumentResolutionImpl implements DocumentResolution {
 	}
 
 	private buildBindings(implicitVariables: readonly ImplicitVariable[], implicitNamespace?: string) {
-		const globalBindings: LocalBinding[] = [
-			{ name: 'player', type: 'Player', lineDeclared: -1, characterDeclared: 0, builtin: true },
-			{ name: 'block', type: 'Block', lineDeclared: -1, characterDeclared: 0, builtin: true }
-		];
+		const globalBindings: LocalBinding[] = [];
 		for (const variable of implicitVariables) {
 			globalBindings.push({
 				name: variable.name,

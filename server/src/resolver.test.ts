@@ -5,6 +5,14 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ClassInfo, DefinitionLocation, MemberInfo, NamespaceInfo } from './parser';
 import { resolveDocument } from './resolver';
 
+// `player` and `block` are no longer seeded by the resolver — only default /
+// trigger scripts get them, and the server pushes them via `implicitVariables`
+// in that case. Tests that use them in fixtures pass this constant through.
+const playerBlockImplicits = [
+	{ name: 'player', type: 'Player' },
+	{ name: 'block', type: 'Block' },
+];
+
 function createDefinition(uri: string, line: number, character: number): DefinitionLocation {
 	return { uri, line, character };
 }
@@ -251,7 +259,7 @@ describe('MSC resolver', () => {
 
 	it('treats a completed variable token as a member-completion host', () => {
 		const document = createDocument('@return player');
-		const resolution = resolveDocument({ document, namespaces, classes });
+		const resolution = resolveDocument({ document, namespaces, classes, implicitVariables: playerBlockImplicits });
 		const context = resolution.getCompletionContext({ line: 0, character: '@return player'.length });
 
 		assert.strictEqual(context.kind, 'member');
@@ -325,7 +333,7 @@ describe('MSC resolver', () => {
 		);
 
 		const interpolationDocument = createDocument('@command /give {{player}} diamond 1');
-		const interpolationResolution = resolveDocument({ document: interpolationDocument, namespaces, classes });
+		const interpolationResolution = resolveDocument({ document: interpolationDocument, namespaces, classes, implicitVariables: playerBlockImplicits });
 		const interpolationContext = interpolationResolution.getCompletionContext({
 			line: 0,
 			character: '@command /give {{player'.length
@@ -346,7 +354,7 @@ describe('MSC resolver', () => {
 
 	it('resolves operator expressions for member completion', () => {
 		const document = createDocument('@return ("a" + player).');
-		const resolution = resolveDocument({ document, namespaces, classes });
+		const resolution = resolveDocument({ document, namespaces, classes, implicitVariables: playerBlockImplicits });
 		const context = resolution.getCompletionContext({
 			line: 0,
 			character: '@return ("a" + player).'.length
@@ -429,7 +437,8 @@ describe('MSC resolver', () => {
 		const interpolationResolution = resolveDocument({
 			document: interpolationDocument,
 			namespaces,
-			classes
+			classes,
+			implicitVariables: playerBlockImplicits
 		});
 		const callContext = interpolationResolution.getCallContext({
 			line: 0,
@@ -441,7 +450,7 @@ describe('MSC resolver', () => {
 
 	it('only resolves interpolation inside command payloads and strings', () => {
 		const commandDocument = createDocument('@command /give {{player}} diamond 1');
-		const commandResolution = resolveDocument({ document: commandDocument, namespaces, classes });
+		const commandResolution = resolveDocument({ document: commandDocument, namespaces, classes, implicitVariables: playerBlockImplicits });
 		assert.strictEqual(commandResolution.getReferenceAtPosition(positionOf(commandDocument, 'give')), undefined);
 		assert.strictEqual(commandResolution.getReferenceAtPosition(positionOf(commandDocument, 'player'))?.symbol.kind, 'builtinVariable');
 
@@ -533,7 +542,7 @@ describe('MSC resolver', () => {
 
 	it('allows Player indexing on relative namespace variables', () => {
 		const document = createDocument('@using akrobots\n@return 1');
-		const resolution = resolveDocument({ document, namespaces, classes });
+		const resolution = resolveDocument({ document, namespaces, classes, implicitVariables: playerBlockImplicits });
 
 		// Bare relative is the underlying type (implicit executing player).
 		const bareScalar = resolution.analyzeExpression('sideToMove', 1, 0);
@@ -769,7 +778,7 @@ describe('MSC resolver', () => {
 
 	it('resolves member access on string literals and parenthesized expressions', () => {
 		const document = createDocument('@return "abc".length()\n@return (player).name');
-		const resolution = resolveDocument({ document, namespaces, classes });
+		const resolution = resolveDocument({ document, namespaces, classes, implicitVariables: playerBlockImplicits });
 
 		const lengthRef = resolution.getReferenceAtPosition(positionOf(document, 'length'));
 		assert.ok(lengthRef);

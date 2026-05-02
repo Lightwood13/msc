@@ -171,9 +171,14 @@ interface ScriptContext {
 	// runs with its own namespace active without a leading `@using`.
 	implicitNamespace?: string;
 	parameters: readonly ScriptParameter[];
+	// True for default/trigger scripts (interact, walk, area, command, etc.):
+	// scripts not bound to a `.nms` function/method/constructor signature.
+	// Only these have `player` and `block` implicitly in scope.
+	isDefaultScript?: boolean;
 }
 
 const EMPTY_SCRIPT_CONTEXT: ScriptContext = { parameters: [] };
+const DEFAULT_SCRIPT_CONTEXT: ScriptContext = { parameters: [], isDefaultScript: true };
 const scriptContextCache: Map<string, ScriptContext> = new Map();
 let defaultNamespacesSourceUri: string = '';
 
@@ -342,6 +347,12 @@ function refreshDocumentResolution(documentUri: string): Promise<DocumentResolut
 
 		const context = await resolveScriptContext(documentUri);
 		const implicitVariables = [];
+		if (context.isDefaultScript) {
+			implicitVariables.push({ name: 'player', type: 'Player' });
+			implicitVariables.push({ name: 'block', type: 'Block' });
+			implicitVariables.push({ name: 'entity', type: 'Entity' });
+			implicitVariables.push({ name: 'region', type: 'Region' });
+		}
 		if (context.thisType !== undefined) {
 			implicitVariables.push({ name: 'this', type: context.thisType });
 		}
@@ -507,10 +518,11 @@ async function computeScriptContext(documentUri: string): Promise<ScriptContext>
 	try {
 		targetPath = normalize(fileURLToPath(documentUri));
 	} catch (_err) {
-		return EMPTY_SCRIPT_CONTEXT;
+		return DEFAULT_SCRIPT_CONTEXT;
 	}
 
 	const scriptFileName = basename(targetPath, extname(targetPath));
+	// `__init__` runs once at namespace import — no `player`/`block` in scope.
 	if (scriptFileName === '__init__')
 		return EMPTY_SCRIPT_CONTEXT;
 
@@ -518,16 +530,9 @@ async function computeScriptContext(documentUri: string): Promise<ScriptContext>
 	const directNamespaceName = basename(scriptDirectoryPath);
 	const directNamespaceDefinitionPath = join(dirname(scriptDirectoryPath), `${directNamespaceName}.nms`);
 
-	// File directly inside a namespace folder: it's a namespace function. The
-	// `.nms` signature contributes parameters but no implicit `this`.
-	if (await fileExists(directNamespaceDefinitionPath)) {
-		try {
-			const text = await readFileAsync(directNamespaceDefinitionPath, 'utf8');
-			return collectScriptContext(directNamespaceDefinitionPath, text, targetPath, 'namespace') ?? EMPTY_SCRIPT_CONTEXT;
-		} catch (_err) {
-			return EMPTY_SCRIPT_CONTEXT;
-		}
-	}
+	// File directly inside a namespace folder: it's a namespace function.
+	const directContext = await tryReadScriptContext(directNamespaceDefinitionPath, targetPath, 'namespace');
+	if (directContext !== undefined) return directContext;
 
 	// Otherwise it's nested under a class folder; the enclosing dir's `.nms`
 	// owns the method/constructor signature (with implicit `this`).
@@ -535,12 +540,21 @@ async function computeScriptContext(documentUri: string): Promise<ScriptContext>
 	const nestedNamespaceName = basename(enclosingNamespaceDirectoryPath);
 	const nestedNamespaceDefinitionPath = join(dirname(enclosingNamespaceDirectoryPath), `${nestedNamespaceName}.nms`);
 
+	const nestedContext = await tryReadScriptContext(nestedNamespaceDefinitionPath, targetPath, 'class');
+	if (nestedContext !== undefined) return nestedContext;
+
+	// No nearby `.nms` — this is a standalone trigger/command/etc. script.
+	return DEFAULT_SCRIPT_CONTEXT;
+}
+
+async function tryReadScriptContext(nmsPath: string, targetPath: string, kind: 'namespace' | 'class'): Promise<ScriptContext | undefined> {
+	let text: string;
 	try {
-		const text = await readFileAsync(nestedNamespaceDefinitionPath, 'utf8');
-		return collectScriptContext(nestedNamespaceDefinitionPath, text, targetPath, 'class') ?? EMPTY_SCRIPT_CONTEXT;
+		text = await readFileAsync(nmsPath, 'utf8');
 	} catch (_err) {
-		return EMPTY_SCRIPT_CONTEXT;
+		return undefined;
 	}
+	return collectScriptContext(nmsPath, text, targetPath, kind) ?? EMPTY_SCRIPT_CONTEXT;
 }
 
 function skipStringForward(line: string, pos: number): number | undefined {
