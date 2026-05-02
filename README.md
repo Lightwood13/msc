@@ -84,30 +84,4 @@ Note that any use of variables and classes in .nms file has to include the names
 
 ## Release Notes
 
-### 3.2.0
-
-Expanded Minecraft command autocomplete to cover all commands, with hints for common arguments.
-
-### 3.1.0
-
-Added script export caching and import command improvements, `this` autocomplete in methods and constructors, and go to definition for custom scripts.
-
-### 3.0.0
-
-Added command completion, error highlighting, automatic formatting, and improved autofill.
-
-### 2.1.0
-
-Added namespace upload.
-
-### 2.0.0
-
-Added code completion, signature help, hover help, custom namespaces.
-
-### 1.1.0
-
-Added code snippets.
-
-### 1.0.0
-
-Initial release of Minr Scripts Extension.
+See [the changelog](docs/CHANGELOG.md) for the full version history.
