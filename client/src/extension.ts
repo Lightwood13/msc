@@ -832,8 +832,8 @@ export function activate(context: ExtensionContext) {
 
 	// create the language client and start it
 	client = new LanguageClient(
-		'languageServerExample',
-		'Language Server Example',
+		'mscLanguageServer',
+		'Minr Script Code Extension',
 		serverOptions,
 		clientOptions
 	);
