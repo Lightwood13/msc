@@ -32,6 +32,7 @@ import {
 	Hover,
 	HoverParams,
 	Location,
+	ReferenceParams,
 	PrepareRenameParams,
 	RenameParams,
 	WorkspaceEdit,
@@ -114,6 +115,7 @@ connection.onInitialize((params: InitializeParams) => {
 					triggerCharacters: ['(', ',']
 				},
 				definitionProvider: true,
+				referencesProvider: true,
 				hoverProvider: true,
 				codeActionProvider: true,
 				renameProvider: { prepareProvider: true },
@@ -226,7 +228,7 @@ const EXCLUDED_WALK_DIRS = new Set([
 	'dist', 'build', 'out', 'target', '.next', '.cache', '.turbo'
 ]);
 
-async function findNmsFiles(root: string): Promise<string[]> {
+async function findFilesByExtension(root: string, extension: string): Promise<string[]> {
 	const result: string[] = [];
 	async function walk(dir: string): Promise<void> {
 		let entries;
@@ -239,13 +241,21 @@ async function findNmsFiles(root: string): Promise<string[]> {
 			if (entry.isDirectory()) {
 				if (EXCLUDED_WALK_DIRS.has(entry.name) || entry.name.startsWith('.')) return;
 				await walk(join(dir, entry.name));
-			} else if (entry.isFile() && entry.name.endsWith('.nms')) {
+			} else if (entry.isFile() && entry.name.endsWith(extension)) {
 				result.push(join(dir, entry.name));
 			}
 		}));
 	}
 	await walk(root);
 	return result;
+}
+
+function findNmsFiles(root: string): Promise<string[]> {
+	return findFilesByExtension(root, '.nms');
+}
+
+function findMscFiles(root: string): Promise<string[]> {
+	return findFilesByExtension(root, '.msc');
 }
 
 // Tracks which namespace and class keys originated from each .nms file URI,
@@ -821,6 +831,129 @@ connection.onDefinition(
 		if (reference === undefined)
 			return undefined;
 		return await getDefinitionLocationForSymbol(reference.symbol);
+	}
+);
+
+// Identity key for "two ResolvedSymbols refer to the same thing." Returns
+// undefined for symbols that are not interesting to track across documents
+// (builtins, unresolved/inert/keyword) or that don't have enough info to be
+// identified.
+function symbolIdentityKey(symbol: ResolvedSymbol): string | undefined {
+	switch (symbol.kind) {
+		case 'localVariable': {
+			const def = symbol.definition;
+			if (def === undefined) return undefined;
+			return `local|${def.uri}|${def.line}|${def.character}`;
+		}
+		case 'namespaceFunction':
+		case 'namespaceVariable':
+			if (symbol.namespaceName === undefined) return undefined;
+			return `nsmember|${symbol.namespaceName}|${symbol.name}`;
+		case 'instanceField':
+		case 'instanceMethod':
+			if (symbol.classInfo === undefined) return undefined;
+			return `instmember|${symbol.classInfo.namespaceName}::${symbol.classInfo.className}|${symbol.name}`;
+		case 'classType':
+		case 'constructor':
+			if (symbol.classInfo !== undefined) {
+				return `class|${symbol.classInfo.namespaceName}::${symbol.classInfo.className}`;
+			}
+			return `class|${symbol.type}`;
+		case 'namespace':
+			return `namespace|${symbol.name}`;
+		default:
+			return undefined;
+	}
+}
+
+async function resolveFileFromDisk(absolutePath: string): Promise<DocumentResolution | undefined> {
+	const uri = pathToFileURL(absolutePath).toString();
+	const opened = documents.get(uri);
+	if (opened !== undefined) {
+		return getDocumentResolution(uri);
+	}
+	let text: string;
+	try {
+		text = await readFileAsync(absolutePath, 'utf8');
+	} catch {
+		return undefined;
+	}
+	const document = TextDocument.create(uri, 'msc', 1, text);
+	const context = await resolveScriptContext(uri);
+	const implicitVariables = [];
+	if (context.thisType !== undefined) {
+		implicitVariables.push({ name: 'this', type: context.thisType });
+	}
+	for (const param of context.parameters) {
+		implicitVariables.push({
+			name: param.name,
+			type: param.type,
+			definition: { uri: param.uri, line: param.line, character: param.character }
+		});
+	}
+	return resolveDocument({
+		document,
+		namespaces,
+		classes,
+		implicitVariables,
+		implicitNamespace: context.implicitNamespace
+	});
+}
+
+connection.onReferences(
+	async (params: ReferenceParams): Promise<Location[] | undefined> => {
+		const startResolution = await getDocumentResolution(params.textDocument.uri);
+		const startReference = startResolution.getReferenceAtPosition(params.position);
+		if (startReference === undefined) return undefined;
+		const targetKey = symbolIdentityKey(startReference.symbol);
+		if (targetKey === undefined) return [];
+
+		const includeDeclaration = params.context.includeDeclaration;
+		const seen = new Set<string>();
+		const locations: Location[] = [];
+		const recordReference = (uri: string, range: Range, isDeclaration: boolean) => {
+			if (isDeclaration && !includeDeclaration) return;
+			const key = `${uri}|${range.start.line}|${range.start.character}`;
+			if (seen.has(key)) return;
+			seen.add(key);
+			locations.push({ uri, range });
+		};
+		const scan = (resolution: DocumentResolution, docUri: string) => {
+			for (const ref of resolution.references) {
+				if (symbolIdentityKey(ref.symbol) === targetKey) {
+					recordReference(docUri, ref.token.range, ref.isDeclaration);
+				}
+			}
+		};
+
+		// Locals (including parameters bound from a sibling .nms) only have
+		// references inside the document body; no need to walk the workspace.
+		if (startReference.symbol.kind === 'localVariable') {
+			scan(startResolution, params.textDocument.uri);
+		} else {
+			const mscPaths = await findMscFiles('.');
+			await Promise.all(mscPaths.map(async path => {
+				const fileUri = pathToFileURL(path).toString();
+				const resolution = await resolveFileFromDisk(path);
+				if (resolution === undefined) return;
+				scan(resolution, fileUri);
+			}));
+		}
+
+		// The declaration of a namespace member, class, etc. lives in a .nms
+		// file we don't tokenize through the resolver. Fold it in explicitly.
+		if (includeDeclaration) {
+			const def = startReference.symbol.definition;
+			if (def !== undefined) {
+				const range: Range = {
+					start: { line: def.line, character: def.character },
+					end: { line: def.line, character: def.character + startReference.symbol.name.length }
+				};
+				recordReference(def.uri, range, false);
+			}
+		}
+
+		return locations;
 	}
 );
 
