@@ -81,7 +81,7 @@ export function parseSuppressions(lines: string[]): Suppressions {
 
 	const isContentful = (s: string) => {
 		const t = s.trim();
-		return t !== '' && !t.startsWith('# ');
+		return t !== '' && !t.startsWith('#');
 	};
 
 	const findNextContentful = (from: number): number => {
