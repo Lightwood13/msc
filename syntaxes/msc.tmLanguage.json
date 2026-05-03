@@ -1,128 +1,36 @@
 {
-	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "msc",
+	"scopeName": "source.msc",
 	"patterns": [
-		{
-			"include": "#keywords"
-		},
-		{
-			"include": "#strings"
-		},
-		{
-			"include": "#comments"
-		},
-		{
-			"include": "#numeric_literals"
-		},
-		{
-			"include": "#operators"
-		},
-		{
-			"include": "#punctuation"
-		},
-		{
-			"include": "#types"
-		},
-		{
-			"include": "#includes"
-		}
+		{ "include": "#comments" },
+		{ "include": "#strings" }
 	],
 	"repository": {
-		"keywords": {
-			"patterns": [{
-				"name": "keyword.control.msc",
-				"match": "(?<=^\\s*)@(bypass|cancel|chatscript|command|console|cooldown|define|delay|done|else|elseif|fast|fi|for|global_cooldown|if|player|prompt|return|slow|using|var)(?=\\s)"
-			}]
+		"comments": {
+			"name": "comment.line.number-sign.msc",
+			"begin": "^\\s*#",
+			"end": "$"
 		},
 		"strings": {
-			"name": "string.quoted.double.msc",
 			"begin": "\"",
 			"end": "\"",
+			"beginCaptures": { "0": { "name": "string.quoted.double.msc" } },
+			"endCaptures": { "0": { "name": "string.quoted.double.msc" } },
 			"patterns": [
+				{ "include": "#interpolation" },
 				{
 					"name": "constant.character.escape.msc",
 					"match": "\\\\."
 				},
 				{
-					"name": "punctuation.msc",
-					"begin": "\\{\\{",
-					"end": "\\}\\}",
-					"patterns": [{
-						"include": "source.msc"
-					}]
-				},
-				{
-					"include": "#includes"
+					"name": "string.quoted.double.msc",
+					"match": "[^\"\\\\{]+|\\{(?!\\{)"
 				}
 			]
 		},
-		"comments": {
-			"name": "comment.msc",
-			"begin": "^\\s*\\#\\s",
-			"end": "$",
-			"patterns": [
-				{
-					"include": "#includes"
-				}
-			]
-		},
-		"numeric_literals": {
-			"patterns": [
-				{
-					"include": "#integer_literals"
-				},
-				{
-					"include": "#float_literals"
-				},
-				{
-					"include": "#bool_literals"
-				}
-			],
-			"repository": {
-				"integer_literals": {
-					"patterns": [{
-						"name": "constant.numeric.msc",
-						"match": "(?<!\\w)(\\d+[Ltsmhdwy]?)(?!\\w)"
-					}]
-				},
-				"float_literals": {
-					"patterns": [{
-						"name": "constant.numeric.msc",
-						"match": "(?<!\\w)(\\d+\\.?\\d*D?)(?!\\w)"
-					}]
-				},
-				"bool_literals": {
-					"patterns": [{
-						"name": "constant.language.msc",
-						"match": "(?<!\\w)(true|false)(?!\\w)"
-					}]
-				}
-			}
-		},
-		"operators": {
-			"patterns": [{
-				"name": "keyword.operator.msc",
-				"match": "[\\+\\-\\*\\/\\=\\!\\&\\|\\%\\^]"
-			}]
-		},
-		"punctuation": {
-			"patterns": [{
-				"name": "punctuation.msc",
-				"match": "[\\.\\(\\)\\[\\]\\{\\}]|\\::"
-			}]
-		},
-		"types": {
-			"patterns": [{
-				"name": "storage.type.msc",
-				"match": "(?<!\\w)(String|Int|Long|Float|Double|Boolean|String|Player|Entity|Block|Item|Location|BlockLocation|Position|Vector2|BlockVector2|Vector3|BlockVector3|Region)(?!\\w)"
-			}]
-		},
-		"includes": {
-			"patterns": [{
-				"name": "storage.type.msc",
-				"match": "<#[^#][^\n]*?>"
-			}]
+		"interpolation": {
+			"begin": "\\{\\{",
+			"end": "\\}\\}"
 		}
-	},
-	"scopeName": "source.msc"
+	}
 }
