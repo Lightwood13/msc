@@ -2,7 +2,7 @@
 	"name": "msc",
 	"displayName": "Minr Scripts",
 	"description": "Minr Scripts VS Code extension",
-	"version": "3.2.1",
+	"version": "4.0.0",
 	"icon": "images/minr.png",
 	"repository": {
 		"type": "git",
@@ -106,27 +106,52 @@
 			"properties": {
 				"msc.diagnostics.categories.lexical": {
 					"type": "string",
-					"enum": ["error", "warning", "info", "off"],
+					"enum": [
+						"error",
+						"warning",
+						"info",
+						"off"
+					],
 					"markdownDescription": "Severity for **lexical** diagnostics (LEX/SYN0xx where the source can't be tokenised). Use `off` to suppress them entirely. Unset (the gear → *Reset Setting*) keeps each rule's built-in severity."
 				},
 				"msc.diagnostics.categories.syntax": {
 					"type": "string",
-					"enum": ["error", "warning", "info", "off"],
+					"enum": [
+						"error",
+						"warning",
+						"info",
+						"off"
+					],
 					"markdownDescription": "Severity for **syntax** diagnostics (SYN, e.g. unclosed `@if`, malformed `@delay`). Use `off` to suppress them entirely. Unset (the gear → *Reset Setting*) keeps each rule's built-in severity."
 				},
 				"msc.diagnostics.categories.semantic": {
 					"type": "string",
-					"enum": ["error", "warning", "info", "off"],
+					"enum": [
+						"error",
+						"warning",
+						"info",
+						"off"
+					],
 					"markdownDescription": "Severity for **semantic** diagnostics (SEM, e.g. undefined names, type mismatches). Use `off` to suppress them entirely. Unset (the gear → *Reset Setting*) keeps each rule's built-in severity."
 				},
 				"msc.diagnostics.categories.security": {
 					"type": "string",
-					"enum": ["error", "warning", "info", "off"],
+					"enum": [
+						"error",
+						"warning",
+						"info",
+						"off"
+					],
 					"markdownDescription": "Severity for **security** diagnostics (SEC, code the MSC interpreter refuses to run). Use `off` to suppress them entirely. Unset (the gear → *Reset Setting*) keeps each rule's built-in severity."
 				},
 				"msc.diagnostics.categories.style": {
 					"type": "string",
-					"enum": ["error", "warning", "info", "off"],
+					"enum": [
+						"error",
+						"warning",
+						"info",
+						"off"
+					],
 					"markdownDescription": "Severity for **style** diagnostics (STY, conventions and best-practice warnings). Use `off` to suppress them entirely. Unset (the gear → *Reset Setting*) keeps each rule's built-in severity."
 				}
 			}
