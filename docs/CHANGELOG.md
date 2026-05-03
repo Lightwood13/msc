@@ -15,6 +15,11 @@ All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 - Script parameters are now read from the `.nms` declaration rather than the first-line comment.
 - Operator expressions are resolved through a table, feeding into argument checking.
 - Various performance improvements, including debouncing validation, pruning file search, unifying the resolver, and pruning namespaces.
+- Implemented the standard tokenisation for code styling, improving syntax highlighting.
+- Improved handling of string interpolation using {{}} syntax.
+- Fixed the default variables in scope so player, block, entity, and region exist on non-function scripts..
+- Standardised the extension documentation with new examples and demos.
+- Updated the default namespace to bring it in line with server updates.
 
 ## 3.2.1
 
