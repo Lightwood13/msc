@@ -7,7 +7,7 @@ All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 - Added 40+ errors which are now highlighted correctly and with informative error messages.
 - Created a lint rule registry with stable codes grouped into categories.
 - Wrote documentation for each rule, which is surfaced by the error handler.
-- Severity of lint errors is now configurable per category via new `msc.lint.<category>` settings.
+- Severity of lint errors is now configurable per category via new `msc.diagnostics.categories.<category>` settings.
 - Added `# msc-ignore` syntax, which suppresses diagnostics for a specific error, all errors on the next line, or the entire file.
 - Added F2 rename support for local variables in `.msc` files, namespace functions, variables, classes, methods and fields.
 - Rewrote the whole parser to track actual types the entire way through scripts.
@@ -17,7 +17,7 @@ All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 - Various performance improvements, including debouncing validation, pruning file search, unifying the resolver, and pruning namespaces.
 - Implemented the standard tokenisation for code styling, improving syntax highlighting.
 - Improved handling of string interpolation using {{}} syntax.
-- Fixed the default variables in scope so player, block, entity, and region exist on non-function scripts..
+- Fixed the default variables in scope so player, block, entity, and region exist on non-function scripts.
 - Standardised the extension documentation with new examples and demos.
 - Updated the default namespace to bring it in line with server updates.
 
@@ -102,7 +102,7 @@ All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 
 ## 2.1.13
 
-- Added the built-in namespaces `scoreboard` and `timer` to the default anmespace.
+- Added the built-in namespaces `scoreboard` and `timer` to the default namespace.
 - Fixed a bug where stale namespace suggestions were never removed when a `.nms` file changed.
 - Fixed a bug where keyword suggestions were dropped in some contexts.
 - Fixed two more regex issues in the parser.
@@ -184,7 +184,7 @@ All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 ## 1.1.0
 
 - Added autocompletion snippets for each operator to expand out as you type.
-- Configured olding markers so `@if` ... `@fi` and `@for` ... `@done` blocks fold correctly in the editor.
+- Configured folding markers so `@if` ... `@fi` and `@for` ... `@done` blocks fold correctly in the editor.
 
 ## 1.0.2
 

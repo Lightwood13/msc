@@ -8,7 +8,7 @@ There are five categories of rule.
 
 - **LEX** rules are *lexical*: these occur when the source can't be parsed, processed or tokenised correctly.
 - **SYN** rules are *syntactical*: these govern code which is invalid due to the language, like providing the incorrect parameters to script operators.
-- **SEM** rules are *semantic*: these govern code which are problematic given the contets of your codebase, such as passing arguments of the incorrect type to a function.
+- **SEM** rules are *semantic*: these govern code which is problematic given the context of your codebase, such as passing arguments of the incorrect type to a function.
 - **SEC** rules are *security*: these highlights represent features the MSC interpreter refuses to run to prevent crashes or exploits.
 - **STY** rules are *stylistic*: this is for warnings, conventions or recommendations about best practices.
 
