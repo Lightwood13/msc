@@ -938,7 +938,7 @@ export function activate(context: ExtensionContext) {
 								'\n' + `@bypass /function define ${namespaceInfo.name} wilexafixu()`;
 							importLines.push(`@command /script import function ${namespaceInfo.name} wilexafixu() ${initLink}`);
 							namespaceInfo.initializeScript += '\n\n' + '@player &7[&#20a0d0VSCode&7] &eExecuting namespace initialisation function.' +
-								'\n' + `@bypass /function execute ${namespaceInfo.name}::wilexafixu()` +
+								'\n' + `@command /function execute ${namespaceInfo.name}::wilexafixu()` +
 								'\n' + `@bypass /function remove ${namespaceInfo.name} wilexafixu()`;
 						}, incrementProgress, true
 					);
