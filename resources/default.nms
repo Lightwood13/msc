@@ -759,6 +759,11 @@
         Quaternion inverse()
         Double dot()
         Vector3 vectorPart()
+        Double scalarPart()
+        Double getX()
+        Double getY()
+        Double getZ()
+        Double getW()
         String string()
     @endclass
 
