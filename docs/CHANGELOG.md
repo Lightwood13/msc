@@ -2,6 +2,11 @@
 
 All notable changes to the Minr Scripts VS Code extension from newest to oldest.
 
+## 4.0.2
+
+- Added support for expanded math namespace, containing max, min, round and atan2 functions.
+- Added support for Quaternion type.
+
 ## 4.0.0
 
 - Added 40+ errors which are now highlighted correctly and with informative error messages.

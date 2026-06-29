@@ -745,6 +745,29 @@
 	@endclass
 
 
+    @class Quaternion
+        Quaternion(Double x, Double y, Double z, Double w)
+        Quaternion(Vector3 left, Vector3 up, Vector3 forward)
+        Quaternion(Vector3 axis, Double angleInDegrees)
+        Quaternion(Vector3 from, Vector3 to)
+        Quaternion(Double yaw, Double pitch)
+
+        Double norm()
+        Double normSquared()
+        Quaternion normalize()
+        Quaternion conjugate()
+        Quaternion inverse()
+        Double dot()
+        Vector3 vectorPart()
+        Double scalarPart()
+        Double getX()
+        Double getY()
+        Double getZ()
+        Double getW()
+        String string()
+    @endclass
+
+
 	@class Region
 		Region(BlockVector2[] points, Int minY, Int maxY, String world)
 		Region(BlockVector3 min, BlockVector3 max, String world)
@@ -813,6 +836,7 @@
 	Double arccos(Double x)
 	Double arcsin(Double x)
 	Double arctan(Double x)
+	Double atan2(Double y, Double x)
 	Int ceil(Double x)
 	Double cos(Double x)
 	Double deg(Double x)
@@ -825,6 +849,7 @@
 	Double radcos(Double x)
 	Double radsin(Double x)
 	Double radtan(Double x)
+	Double radatan2(Double y, Double x)
 	Double random(Double min, Double max)
 	Double randomDouble()
 	Float randomFloat()
@@ -833,6 +858,17 @@
 	Double sin(Double x)
 	Double sqrt(Double x)
 	Double tan(Double x)
+	Int maxInt(Int a, Int b)
+	Long maxLong(Long a, Long b)
+	Float maxFloat(Float a, Float b)
+	Double maxDouble(Double a, Double b)
+	Int minInt(Int a, Int b)
+    Long minLong(Long a, Long b)
+    Float minFloat(Float a, Float b)
+    Double minDouble(Double a, Double b)
+    Int roundFloat(Float value)
+    Long roundDouble(Double value)
+    Double roundToPlaces(Double value, Int places)
 @endnamespace
 
 
