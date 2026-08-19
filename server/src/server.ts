@@ -564,7 +564,7 @@ async function tryReadScriptContext(nmsPath: string, targetPath: string, kind: '
 	} catch (_err) {
 		return undefined;
 	}
-	return collectScriptContext(nmsPath, text, targetPath, kind) ?? EMPTY_SCRIPT_CONTEXT;
+	return collectScriptContext(nmsPath, text, targetPath, kind);
 }
 
 function skipStringForward(line: string, pos: number): number | undefined {
