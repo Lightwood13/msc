@@ -496,7 +496,8 @@ function collectScriptContext(namespaceDefinitionPath: string, text: string, tar
 				} else if (constructorMatch !== null) {
 					const constructorSignature = getConstructorSignature(constructorMatch[1], constructorMatch[2]);
 					const constructorPath = normalize(join(namespaceFolderPath, className, `${constructorSignature}.msc`));
-					if (constructorPath === normalizedTargetPath) {
+					const constructorPathEscaped = normalize(join(namespaceFolderPath, className, `${escapeFunctionName(constructorSignature)}.msc`));
+					if (constructorPath === normalizedTargetPath || constructorPathEscaped === normalizedTargetPath) {
 						return {
 							thisType: classType,
 							implicitNamespace,
